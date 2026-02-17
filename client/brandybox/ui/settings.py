@@ -1,4 +1,8 @@
-"""Folder picker, login form, admin panel."""
+"""Folder picker, login form, admin panel.
+
+UI follows Google Material Design–inspired guidelines: clear hierarchy,
+consistent spacing, primary/secondary actions, and a light, clean theme.
+"""
 
 import logging
 import shutil
@@ -16,14 +20,114 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Material-inspired spacing (logical pixels)
+PAD_WINDOW = 24
+PAD_SECTION = 20
+PAD_ROW = 8
+PAD_CONTROL = 6
 
-def _center(win: tk.Tk) -> None:
+# Colors (Material-style)
+COLOR_PRIMARY = "#1a73e8"
+COLOR_PRIMARY_HOVER = "#1557b0"
+COLOR_SURFACE = "#ffffff"
+COLOR_BACKGROUND = "#f8f9fa"
+COLOR_ON_SURFACE = "#202124"
+COLOR_ON_SURFACE_VARIANT = "#5f6368"
+COLOR_OUTLINE = "#dadce0"
+
+
+def _apply_material_theme(root: tk.Tk | tk.Toplevel) -> None:
+    """Apply a clean, Material-inspired ttk theme (clam for consistent styling)."""
+    style = ttk.Style(root)
+    try:
+        style.theme_use("clam")
+    except tk.TclError:
+        pass
+    # Base
+    style.configure(
+        "TFrame",
+        background=COLOR_SURFACE,
+    )
+    style.configure(
+        "TLabel",
+        background=COLOR_SURFACE,
+        foreground=COLOR_ON_SURFACE,
+        font=("", 10),
+    )
+    style.configure(
+        "Title.TLabel",
+        background=COLOR_SURFACE,
+        foreground=COLOR_ON_SURFACE,
+        font=("", 12, "bold"),
+    )
+    style.configure(
+        "Caption.TLabel",
+        background=COLOR_SURFACE,
+        foreground=COLOR_ON_SURFACE_VARIANT,
+        font=("", 9),
+    )
+    style.configure(
+        "TEntry",
+        fieldbackground=COLOR_SURFACE,
+        foreground=COLOR_ON_SURFACE,
+        padding=8,
+    )
+    style.configure(
+        "TButton",
+        padding=(20, 10),
+        font=("", 10),
+    )
+    style.configure(
+        "Primary.TButton",
+        background=COLOR_PRIMARY,
+        foreground=COLOR_SURFACE,
+        padding=(24, 12),
+        font=("", 10, "bold"),
+    )
+    style.map(
+        "Primary.TButton",
+        background=[("active", COLOR_PRIMARY_HOVER), ("pressed", COLOR_PRIMARY_HOVER)],
+    )
+    style.configure(
+        "TRadiobutton",
+        background=COLOR_SURFACE,
+        foreground=COLOR_ON_SURFACE,
+        font=("", 10),
+    )
+    style.configure(
+        "TCheckbutton",
+        background=COLOR_SURFACE,
+        foreground=COLOR_ON_SURFACE,
+        font=("", 10),
+    )
+    style.configure(
+        "Horizontal.TSeparator",
+        background=COLOR_OUTLINE,
+    )
+    if hasattr(root, "configure"):
+        root.configure(bg=COLOR_SURFACE)
+
+
+def _section(parent: tk.Widget, title: str, row: int) -> tuple[ttk.Frame, int]:
+    """Create a section block with title. Returns (content frame, start row inside section)."""
+    container = ttk.Frame(parent)
+    container.grid(row=row, column=0, sticky="ew")
+    parent.columnconfigure(0, weight=1)
+    lbl = ttk.Label(container, text=title, style="Title.TLabel")
+    lbl.grid(row=0, column=0, sticky="w", pady=(0, PAD_ROW))
+    content = ttk.Frame(container, padding=(0, 0, 0, PAD_SECTION))
+    content.grid(row=1, column=0, sticky="ew")
+    content.columnconfigure(0, weight=1)
+    return content, 0
+
+
+def _center(win: tk.Tk | tk.Toplevel) -> None:
     """Center window on screen."""
     win.update_idletasks()
     w = win.winfo_width()
     h = win.winfo_height()
     x = (win.winfo_screenwidth() // 2) - (w // 2)
-    y = (win.winfo_screenheight() // 2) - (h // 2)
+    y = max(0, (win.winfo_screenheight() // 2) - (h // 2))
     win.geometry(f"+{x}+{y}")
 
 
@@ -37,19 +141,27 @@ def show_login(
     root = tk.Tk()
     root.title("Brandy Box – Login")
     root.resizable(False, False)
+    root.configure(bg=COLOR_SURFACE)
+    _apply_material_theme(root)
 
-    frame = ttk.Frame(root, padding=20)
-    frame.grid(row=0, column=0, sticky="nsew")
+    main = ttk.Frame(root, padding=PAD_WINDOW)
+    main.grid(row=0, column=0, sticky="nsew")
+    root.columnconfigure(0, weight=1)
+    root.rowconfigure(0, weight=1)
 
-    ttk.Label(frame, text="Email").grid(row=0, column=0, sticky="w", pady=(0, 2))
+    ttk.Label(main, text="Email", style="Caption.TLabel").grid(
+        row=0, column=0, sticky="w", pady=(0, 2)
+    )
     email_var = tk.StringVar()
-    email_entry = ttk.Entry(frame, textvariable=email_var, width=40)
-    email_entry.grid(row=1, column=0, pady=(0, 12))
+    email_entry = ttk.Entry(main, textvariable=email_var, width=40)
+    email_entry.grid(row=1, column=0, sticky="ew", pady=(0, PAD_ROW))
 
-    ttk.Label(frame, text="Password").grid(row=2, column=0, sticky="w", pady=(0, 2))
+    ttk.Label(main, text="Password", style="Caption.TLabel").grid(
+        row=2, column=0, sticky="w", pady=(PAD_ROW, 2)
+    )
     password_var = tk.StringVar()
-    password_entry = ttk.Entry(frame, textvariable=password_var, show="*", width=40)
-    password_entry.grid(row=3, column=0, pady=(0, 16))
+    password_entry = ttk.Entry(main, textvariable=password_var, show="*", width=40)
+    password_entry.grid(row=3, column=0, sticky="ew", pady=(0, PAD_SECTION))
 
     def do_login() -> None:
         email = email_var.get().strip()
@@ -68,11 +180,14 @@ def show_login(
         if on_cancel:
             on_cancel()
 
-    btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=4, column=0, pady=(0, 0))
-    ttk.Button(btn_frame, text="Login", command=do_login).pack(side="left", padx=(0, 8))
+    btn_frame = ttk.Frame(main)
+    btn_frame.grid(row=4, column=0, sticky="w", pady=(0, 0))
+    ttk.Button(btn_frame, text="Login", style="Primary.TButton", command=do_login).pack(
+        side="left", padx=(0, PAD_ROW)
+    )
     ttk.Button(btn_frame, text="Cancel", command=do_cancel).pack(side="left")
 
+    main.columnconfigure(0, weight=1)
     root.update_idletasks()
     _center(root)
     root.mainloop()
@@ -91,31 +206,43 @@ def show_settings(
     root = tk.Tk()
     root.title("Brandy Box – Settings")
     root.resizable(True, True)
-    root.minsize(420, 320)
+    root.minsize(460, 380)
+    root.configure(bg=COLOR_BACKGROUND)
+    _apply_material_theme(root)
 
-    frame = ttk.Frame(root, padding=20)
-    frame.grid(row=0, column=0, sticky="nsew")
+    # Scrollable content
+    canvas = tk.Canvas(root, bg=COLOR_BACKGROUND, highlightthickness=0)
+    scrollbar = ttk.Scrollbar(root)
+    frame = ttk.Frame(canvas, padding=PAD_WINDOW)
+
+    def _on_frame_configure(_event: object) -> None:
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    def _on_canvas_configure(event: tk.Event) -> None:
+        canvas.itemconfig(canvas_window_id, width=event.width)
+
+    frame.bind("<Configure>", _on_frame_configure)
+    canvas_window_id = canvas.create_window((0, 0), window=frame, anchor="nw")
+    canvas.bind("<Configure>", _on_canvas_configure)
+    canvas.configure(yscrollcommand=scrollbar.set)
+    scrollbar.configure(command=canvas.yview)
+
+    canvas.grid(row=0, column=0, sticky="nsew")
+    scrollbar.grid(row=0, column=1, sticky="ns")
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=1)
-    frame.columnconfigure(0, weight=1)
 
     row = 0
 
     # --- Server / base URL ---
-    ttk.Label(frame, text="Server (base URL)", font=("", 10, "bold")).grid(
-        row=row, column=0, columnspan=2, sticky="w", pady=(0, 4)
-    )
-    row += 1
+    sec, r = _section(frame, "Server", row)
+    row += 2
+    current_url_text = "Current: " + get_base_url()
     url_mode_var = tk.StringVar(value=app_config.get_base_url_mode())
     manual_url_var = tk.StringVar(value=app_config.get_manual_base_url())
-    current_url_label = ttk.Label(
-        frame,
-        text="Current: " + get_base_url(),
-        wraplength=400,
-        foreground="gray",
-    )
-    current_url_label.grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 6))
-    row += 1
+    current_url_label = ttk.Label(sec, text=current_url_text, style="Caption.TLabel", wraplength=420)
+    current_url_label.grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, PAD_ROW))
+    r += 1
 
     def _update_url_from_mode() -> None:
         if url_mode_var.get() == "manual":
@@ -135,26 +262,27 @@ def show_settings(
         _update_url_from_mode()
 
     ttk.Radiobutton(
-        frame,
+        sec,
         text="Automatic (detect local vs remote)",
         variable=url_mode_var,
         value="automatic",
         command=on_mode_change,
-    ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 2))
-    row += 1
+    ).grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, 2))
+    r += 1
     ttk.Radiobutton(
-        frame,
-        text="Manual base URL:",
+        sec,
+        text="Manual base URL",
         variable=url_mode_var,
         value="manual",
         command=on_mode_change,
-    ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 2))
-    row += 1
-    manual_entry = ttk.Entry(frame, textvariable=manual_url_var, width=50)
-    manual_entry.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+    ).grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, 2))
+    r += 1
+    manual_entry = ttk.Entry(sec, textvariable=manual_url_var, width=52)
+    manual_entry.grid(row=r, column=0, columnspan=2, sticky="ew", pady=(0, PAD_ROW))
     if url_mode_var.get() != "manual":
         manual_entry.config(state="disabled")
-    row += 1
+    r += 1
+    sec.columnconfigure(0, weight=1)
 
     def on_manual_url_change(*args: object) -> None:
         if url_mode_var.get() == "manual":
@@ -169,18 +297,15 @@ def show_settings(
             on_manual_url_change()
 
     manual_url_var.trace_add("write", _on_manual_url_trace)
-    ttk.Separator(frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=(12, 12))
-    row += 1
 
     # --- Sync folder ---
-    ttk.Label(frame, text="Sync folder", font=("", 10, "bold")).grid(
-        row=row, column=0, columnspan=2, sticky="w", pady=(0, 2))
-    row += 1
+    sec2, r2 = _section(frame, "Sync folder", row)
+    row += 2
     sync_path = app_config.get_sync_folder_path()
     path_var = tk.StringVar(value=str(sync_path))
-    path_label = ttk.Label(frame, textvariable=path_var, wraplength=400)
-    path_label.grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 8))
-    row += 1
+    path_label = ttk.Label(sec2, textvariable=path_var, style="Caption.TLabel", wraplength=420)
+    path_label.grid(row=r2, column=0, columnspan=2, sticky="w", pady=(0, PAD_ROW))
+    r2 += 1
 
     def _clear_folder_contents(path: Path) -> None:
         if not path.is_dir():
@@ -209,11 +334,14 @@ def show_settings(
         if on_choose_folder:
             on_choose_folder()
 
-    ttk.Button(frame, text="Choose folder…", command=choose_folder).grid(
-        row=row, column=0, columnspan=2, sticky="w", pady=(0, 16))
-    row += 1
+    ttk.Button(sec2, text="Choose folder…", command=choose_folder).grid(
+        row=r2, column=0, columnspan=2, sticky="w", pady=(0, 0)
+    )
+    sec2.columnconfigure(0, weight=1)
 
     # --- Autostart ---
+    sec3, r3 = _section(frame, "Startup", row)
+    row += 2
     autostart_var = tk.BooleanVar(value=app_config.get_autostart())
 
     def on_autostart_change() -> None:
@@ -222,20 +350,17 @@ def show_settings(
             on_toggle_autostart(autostart_var.get())
 
     ttk.Checkbutton(
-        frame,
+        sec3,
         text="Start Brandy Box when I log in",
         variable=autostart_var,
         command=on_autostart_change,
-    ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 12))
-    row += 1
+    ).grid(row=r3, column=0, columnspan=2, sticky="w", pady=(0, 0))
+    sec3.columnconfigure(0, weight=1)
 
     # --- Change password (any logged-in user) ---
     if api:
-        ttk.Separator(frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=(12, 12))
-        row += 1
-        ttk.Label(frame, text="Account", font=("", 10, "bold")).grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=(0, 4))
-        row += 1
+        sec4, r4 = _section(frame, "Account", row)
+        row += 2
 
         def change_password_dialog() -> None:
             win = tk.Toplevel(root)
@@ -243,20 +368,37 @@ def show_settings(
             win.transient(root)
             win.grab_set()
             win.resizable(False, False)
-            f = ttk.Frame(win, padding=16)
+            win.configure(bg=COLOR_SURFACE)
+            _apply_material_theme(win)
+            f = ttk.Frame(win, padding=PAD_WINDOW)
             f.grid(row=0, column=0, sticky="nsew")
-            ttk.Label(f, text="Current password").grid(row=0, column=0, sticky="w", pady=(0, 2))
+            win.columnconfigure(0, weight=1)
+            win.rowconfigure(0, weight=1)
+            r = 0
+            ttk.Label(f, text="Current password", style="Caption.TLabel").grid(
+                row=r, column=0, sticky="w", pady=(0, 2)
+            )
+            r += 1
             current_var = tk.StringVar()
-            current_entry = ttk.Entry(f, textvariable=current_var, show="*", width=36)
-            current_entry.grid(row=1, column=0, pady=(0, 8))
-            ttk.Label(f, text="New password").grid(row=2, column=0, sticky="w", pady=(0, 2))
+            current_entry = ttk.Entry(f, textvariable=current_var, show="*", width=38)
+            current_entry.grid(row=r, column=0, sticky="ew", pady=(0, PAD_ROW))
+            r += 1
+            ttk.Label(f, text="New password", style="Caption.TLabel").grid(
+                row=r, column=0, sticky="w", pady=(PAD_ROW, 2)
+            )
+            r += 1
             new_var = tk.StringVar()
-            new_entry = ttk.Entry(f, textvariable=new_var, show="*", width=36)
-            new_entry.grid(row=3, column=0, pady=(0, 8))
-            ttk.Label(f, text="Confirm new password").grid(row=4, column=0, sticky="w", pady=(0, 2))
+            new_entry = ttk.Entry(f, textvariable=new_var, show="*", width=38)
+            new_entry.grid(row=r, column=0, sticky="ew", pady=(0, PAD_ROW))
+            r += 1
+            ttk.Label(f, text="Confirm new password", style="Caption.TLabel").grid(
+                row=r, column=0, sticky="w", pady=(PAD_ROW, 2)
+            )
+            r += 1
             confirm_var = tk.StringVar()
-            confirm_entry = ttk.Entry(f, textvariable=confirm_var, show="*", width=36)
-            confirm_entry.grid(row=5, column=0, pady=(0, 12))
+            confirm_entry = ttk.Entry(f, textvariable=confirm_var, show="*", width=38)
+            confirm_entry.grid(row=r, column=0, sticky="ew", pady=(0, PAD_SECTION))
+            r += 1
 
             def do_change() -> None:
                 current = current_var.get()
@@ -269,10 +411,14 @@ def show_settings(
                     messagebox.showerror("Error", "Enter a new password.", parent=win)
                     return
                 if new != confirm:
-                    messagebox.showerror("Error", "New password and confirmation do not match.", parent=win)
+                    messagebox.showerror(
+                        "Error", "New password and confirmation do not match.", parent=win
+                    )
                     return
                 if len(new) < 8:
-                    messagebox.showerror("Error", "New password must be at least 8 characters.", parent=win)
+                    messagebox.showerror(
+                        "Error", "New password must be at least 8 characters.", parent=win
+                    )
                     return
                 try:
                     api.change_password(current, new)
@@ -292,13 +438,17 @@ def show_settings(
                     messagebox.showerror("Error", msg, parent=win)
 
             btn_f = ttk.Frame(f)
-            btn_f.grid(row=6, column=0, pady=(0, 4))
-            ttk.Button(btn_f, text="Change password", command=do_change).pack(side="left", padx=(0, 8))
+            btn_f.grid(row=r, column=0, sticky="w", pady=(PAD_ROW, 0))
+            ttk.Button(btn_f, text="Change password", style="Primary.TButton", command=do_change).pack(
+                side="left", padx=(0, PAD_ROW)
+            )
             ttk.Button(btn_f, text="Cancel", command=win.destroy).pack(side="left")
+            f.columnconfigure(0, weight=1)
 
-        ttk.Button(frame, text="Change password…", command=change_password_dialog).grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=(0, 12))
-        row += 1
+        ttk.Button(sec4, text="Change password…", command=change_password_dialog).grid(
+            row=r4, column=0, columnspan=2, sticky="w", pady=(0, 0)
+        )
+        sec4.columnconfigure(0, weight=1)
 
     # --- Admin: user management ---
     is_admin = False
@@ -310,15 +460,22 @@ def show_settings(
             pass
 
     if is_admin and api:
-        ttk.Separator(frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=(12, 12))
-        row += 1
-        ttk.Label(frame, text="User management (admin)", font=("", 10, "bold")).grid(
-            row=row, column=0, columnspan=2, sticky="w", pady=(0, 4))
-        row += 1
-        users_listbox_frame = ttk.Frame(frame)
-        users_listbox_frame.grid(row=row, column=0, columnspan=2, sticky="nsew", pady=(0, 8))
-        row += 1
-        users_listbox = tk.Listbox(users_listbox_frame, height=5, width=50)
+        sec5, r5 = _section(frame, "User management (admin)", row)
+        row += 2
+        users_listbox_frame = ttk.Frame(sec5)
+        users_listbox_frame.grid(row=r5, column=0, columnspan=2, sticky="nsew", pady=(0, PAD_ROW))
+        r5 += 1
+        users_listbox = tk.Listbox(
+            users_listbox_frame,
+            height=5,
+            width=52,
+            bg=COLOR_SURFACE,
+            fg=COLOR_ON_SURFACE,
+            selectbackground=COLOR_PRIMARY,
+            selectforeground=COLOR_SURFACE,
+            font=("", 10),
+            highlightthickness=0,
+        )
         users_listbox.pack(side="left", fill="both", expand=True)
         scroll = ttk.Scrollbar(users_listbox_frame, orient="vertical", command=users_listbox.yview)
         scroll.pack(side="right", fill="y")
@@ -333,7 +490,9 @@ def show_settings(
                 for u in users:
                     email = u.get("email", "")
                     user_data.append(u)
-                    users_listbox.insert(tk.END, f"{email}  ({u.get('first_name', '')} {u.get('last_name', '')})")
+                    users_listbox.insert(
+                        tk.END, f"{email}  ({u.get('first_name', '')} {u.get('last_name', '')})"
+                    )
             except Exception as e:
                 messagebox.showerror("Error", f"Could not load users: {e}", parent=root)
 
@@ -342,23 +501,34 @@ def show_settings(
             win.title("Create user")
             win.transient(root)
             win.grab_set()
-            f = ttk.Frame(win, padding=16)
+            win.resizable(False, False)
+            win.configure(bg=COLOR_SURFACE)
+            _apply_material_theme(win)
+            f = ttk.Frame(win, padding=PAD_WINDOW)
             f.grid(row=0, column=0, sticky="nsew")
-            ttk.Label(f, text="Email").grid(row=0, column=0, sticky="w", pady=(0, 2))
+            win.columnconfigure(0, weight=1)
+            win.rowconfigure(0, weight=1)
+            r = 0
+            ttk.Label(f, text="Email", style="Caption.TLabel").grid(row=r, column=0, sticky="w", pady=(0, 2))
+            r += 1
             email_var = tk.StringVar()
-            email_entry = ttk.Entry(f, textvariable=email_var, width=36)
-            email_entry.grid(row=1, column=0, pady=(0, 8))
-            ttk.Label(f, text="First name").grid(row=2, column=0, sticky="w", pady=(0, 2))
+            email_entry = ttk.Entry(f, textvariable=email_var, width=38)
+            email_entry.grid(row=r, column=0, sticky="ew", pady=(0, PAD_ROW))
+            r += 1
+            ttk.Label(f, text="First name", style="Caption.TLabel").grid(row=r, column=0, sticky="w", pady=(PAD_ROW, 2))
+            r += 1
             first_var = tk.StringVar()
-            first_entry = ttk.Entry(f, textvariable=first_var, width=36)
-            first_entry.grid(row=3, column=0, pady=(0, 8))
-            ttk.Label(f, text="Last name").grid(row=4, column=0, sticky="w", pady=(0, 2))
+            first_entry = ttk.Entry(f, textvariable=first_var, width=38)
+            first_entry.grid(row=r, column=0, sticky="ew", pady=(0, PAD_ROW))
+            r += 1
+            ttk.Label(f, text="Last name", style="Caption.TLabel").grid(row=r, column=0, sticky="w", pady=(PAD_ROW, 2))
+            r += 1
             last_var = tk.StringVar()
-            last_entry = ttk.Entry(f, textvariable=last_var, width=36)
-            last_entry.grid(row=5, column=0, pady=(0, 12))
+            last_entry = ttk.Entry(f, textvariable=last_var, width=38)
+            last_entry.grid(row=r, column=0, sticky="ew", pady=(0, PAD_SECTION))
+            r += 1
 
             def do_create() -> None:
-                # Read from Entry widgets; on some systems StringVar lags until focus leaves
                 email = email_entry.get().strip()
                 first = first_entry.get().strip()
                 last = last_entry.get().strip()
@@ -373,7 +543,9 @@ def show_settings(
                     return
                 try:
                     api.create_user(email, first, last)
-                    messagebox.showinfo("Created", "User created. Password will be sent by email.", parent=win)
+                    messagebox.showinfo(
+                        "Created", "User created. Password will be sent by email.", parent=win
+                    )
                     win.destroy()
                     refresh_users_list()
                 except Exception as e:
@@ -389,8 +561,13 @@ def show_settings(
                         pass
                     messagebox.showerror("Error", msg, parent=win)
 
-            ttk.Button(f, text="Create", command=do_create).grid(row=6, column=0, pady=(0, 4))
-            ttk.Button(f, text="Cancel", command=win.destroy).grid(row=7, column=0)
+            btn_f = ttk.Frame(f)
+            btn_f.grid(row=r, column=0, sticky="w", pady=(PAD_ROW, 0))
+            ttk.Button(btn_f, text="Create", style="Primary.TButton", command=do_create).pack(
+                side="left", padx=(0, PAD_ROW)
+            )
+            ttk.Button(btn_f, text="Cancel", command=win.destroy).pack(side="left")
+            f.columnconfigure(0, weight=1)
 
         def delete_selected_user() -> None:
             sel = users_listbox.curselection()
@@ -411,12 +588,16 @@ def show_settings(
             except Exception as e:
                 messagebox.showerror("Error", f"Could not delete user: {e}", parent=root)
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 8))
-        row += 1
-        ttk.Button(btn_frame, text="Refresh list", command=refresh_users_list).pack(side="left", padx=(0, 8))
-        ttk.Button(btn_frame, text="Create user…", command=create_user_dialog).pack(side="left", padx=(0, 8))
+        btn_frame = ttk.Frame(sec5)
+        btn_frame.grid(row=r5, column=0, columnspan=2, sticky="w", pady=(0, 0))
+        ttk.Button(btn_frame, text="Refresh list", command=refresh_users_list).pack(
+            side="left", padx=(0, PAD_ROW)
+        )
+        ttk.Button(btn_frame, text="Create user…", command=create_user_dialog).pack(
+            side="left", padx=(0, PAD_ROW)
+        )
         ttk.Button(btn_frame, text="Delete selected", command=delete_selected_user).pack(side="left")
+        sec5.columnconfigure(0, weight=1)
         refresh_users_list()
 
     def on_close() -> None:
@@ -427,12 +608,12 @@ def show_settings(
                 pass
         root.destroy()
 
-    ttk.Button(frame, text="Close", command=on_close).grid(row=row, column=0, sticky="w", pady=(12, 0))
-    row += 1
+    # Footer with close
+    close_frame = ttk.Frame(frame)
+    close_frame.grid(row=row, column=0, sticky="w", pady=(PAD_SECTION, 0))
+    ttk.Button(close_frame, text="Close", command=on_close).pack(side="left")
 
-    frame.rowconfigure(0, weight=0)
+    frame.columnconfigure(0, weight=1)
     root.update_idletasks()
     _center(root)
     root.mainloop()
-
-

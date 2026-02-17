@@ -11,11 +11,15 @@ Desktop app: system tray, sync, settings (server URL, folder, autostart, change 
 - `brandybox/sync/engine.py` – Sync order: propagate deletes both ways, download server→local, upload local→server
 - `brandybox/network.py` – Base URL: automatic (local vs remote) or manual. Local when WiFi SSID is "brandstaetter" or when on Ethernet and the Raspberry Pi at `http://192.168.0.150:8081` is reachable; otherwise remote (Cloudflare `https://brandybox.brandstaetter.rocks`).
 - `brandybox/config.py` – Sync folder, base URL mode and manual URL, autostart preference, platform startup entries, sync state, instance lock path
-- `brandybox/ui/` – Login window, settings (server URL automatic/manual, folder picker, autostart, change password, admin: create/delete users), dialogs; `ui/notify.py` – desktop notifications for errors (Linux: notify-send, macOS: osascript)
+- `brandybox/ui/` – Login window, settings (server URL automatic/manual, folder picker, autostart, change password, admin: create/delete users), dialogs; UI follows Google Material–inspired guidelines (clear hierarchy, spacing, primary actions); `ui/notify.py` – desktop notifications for errors (Linux: notify-send, macOS: osascript)
 
 ## Logging
 
 Logs are written to a file in the config directory (e.g. `~/.config/brandybox/brandybox.log` on Linux, `%APPDATA%\BrandyBox\brandybox.log` on Windows). INFO and above go to stderr when run from a terminal. Use the log file to see sync cycles, errors, folder selection, token refresh, and whether the app is using LAN or Cloudflare for the backend.
+
+## Linux display and tray
+
+On Linux the app prefers **Wayland** when the session is Wayland (`XDG_SESSION_TYPE=wayland` or `WAYLAND_DISPLAY` set) and falls back to **X11** otherwise; `GDK_BACKEND` is set accordingly before any GUI toolkit initializes (GTK-based components such as file dialogs use this; Tk windows use the display provided by the session).
 
 ## Linux / KDE system tray
 

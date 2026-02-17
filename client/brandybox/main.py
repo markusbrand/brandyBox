@@ -8,6 +8,13 @@ from tkinter import Tk, messagebox
 
 import httpx
 
+# Prefer Wayland on Linux when available; fall back to X11 (must be set before any GUI init).
+if sys.platform == "linux":
+    if os.environ.get("XDG_SESSION_TYPE") == "wayland" or os.environ.get("WAYLAND_DISPLAY"):
+        os.environ.setdefault("GDK_BACKEND", "wayland")
+    else:
+        os.environ.setdefault("GDK_BACKEND", "x11")
+
 from brandybox.api.client import BrandyBoxAPI
 from brandybox.auth.credentials import CredentialsStore
 from brandybox.config import get_config_path, get_instance_lock_path, user_has_set_sync_folder
