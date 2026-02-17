@@ -59,6 +59,19 @@ def resolve_user_path(email: str, relative_path: str) -> Path:
     return resolved
 
 
+def delete_file(email: str, relative_path: str) -> None:
+    """
+    Delete a file under the user's folder. Rejects traversal and unsafe names.
+    Raises ValueError for invalid path; raises FileNotFoundError if file does not exist.
+    """
+    target = resolve_user_path(email, relative_path)
+    if not target.exists():
+        raise FileNotFoundError(f"File not found: {relative_path}")
+    if not target.is_file():
+        raise ValueError(f"Not a file: {relative_path}")
+    target.unlink()
+
+
 def list_files_recursive(root: Path) -> List[dict]:
     """
     List all files under root with relative path and mtime.

@@ -1,5 +1,6 @@
 """User routes: login, refresh, me, admin create/delete."""
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -27,6 +28,7 @@ from app.limiter import limiter
 from app.users.service import create_user as do_create_user, get_user_by_email
 
 router = APIRouter(prefix="/api", tags=["users"])
+log = logging.getLogger(__name__)
 
 
 @router.post("/auth/login", response_model=TokenPair)
@@ -39,10 +41,12 @@ async def login(
     """Login with email and password; returns access and refresh tokens."""
     user = await get_user_by_email(session, body.email)
     if not user or not verify_password(body.password, user.password_hash):
+        log.warning("Login failed for email=%s", body.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+    log.info("Login successful for email=%s", user.email)
     settings = get_settings()
     access = create_access_token(user.email)
     refresh = create_refresh_token(user.email)
@@ -63,16 +67,19 @@ async def refresh(
     """Exchange refresh token for new access and refresh tokens."""
     email = get_subject_from_refresh(body.refresh_token)
     if not email:
+        log.warning("Refresh failed: invalid or expired token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired refresh token",
         )
     user = await get_user_by_email(session, email)
     if not user:
+        log.warning("Refresh failed: user not found email=%s", email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
+    log.info("Refresh successful for email=%s", user.email)
     settings = get_settings()
     access = create_access_token(user.email)
     new_refresh = create_refresh_token(user.email)
@@ -101,6 +108,7 @@ async def admin_create_user(
     try:
         user, _ = await do_create_user(session, payload, is_admin=False)
         await session.refresh(user)
+        log.info("Admin %s created user email=%s", current_user.email, user.email)
         return UserResponse.model_validate(user)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -119,6 +127,7 @@ async def admin_list_users(
     """List all users (admin only)."""
     result = await session.execute(select(User).order_by(User.email))
     users = result.scalars().all()
+    log.info("Admin %s listed users count=%d", current_user.email, len(users))
     return [UserResponse.model_validate(u) for u in users]
 
 
@@ -137,5 +146,6 @@ async def admin_delete_user(
     user = await get_user_by_email(session, email)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    log.info("Admin %s deleted user email=%s", current_user.email, email)
     await session.delete(user)
     return None

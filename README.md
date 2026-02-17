@@ -56,6 +56,10 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    - After **pulling updates**, rebuild so the new code and dependencies are used: `docker compose build --no-cache && docker compose up -d`. Then wait ~15 s before `curl …/health`.
    - If you get **"Empty reply from server"**, wait 10–15 seconds after `docker compose up` (startup runs DB init and admin bootstrap), then try `curl` again. If it still fails, run `docker compose logs` to see if the app is crashing on the first request.
 
+### Storage on the Pi
+
+User files are stored under `BRANDYBOX_STORAGE_BASE_PATH` (default `/mnt/shared_storage/brandyBox`). Each user gets a subfolder (e.g. `admin@example.com`). Ensure that path exists on the host and is writable by the container; `docker-compose.yml` mounts it into the container. If sync fails (red tray icon), check backend logs and ensure the mount is correct.
+
 ### First admin
 
 On first start, the backend creates an admin user from `BRANDYBOX_ADMIN_EMAIL` and `BRANDYBOX_ADMIN_INITIAL_PASSWORD`. Use that account in the desktop client; admins can create and delete users (passwords are sent by email).
@@ -81,8 +85,12 @@ python -m brandybox.main
 ### Usage
 
 - Run the app; log in with email and password (or use stored credentials).
-- In Settings, choose a local folder to sync (warning: contents will be synced/replaced).
-- Tray icon shows sync state: synced (green), syncing (amber), error (red). Menu: Open folder, Settings, Pause, Quit.
+- **Default sync folder** is `~/brandyBox` (e.g. `/home/markus/brandyBox`). If it already exists, that folder is used. Sync does not run until you have confirmed a folder (open Settings once and close, or choose another folder).
+- **404 on login**: If the client shows "404 Not Found" for `…/api/auth/login`, the backend URL may be wrong. Check that `curl https://brandybox.brandstaetter.rocks/health` returns `{"status":"ok"}`. If `/health` works but login still 404s, your Cloudflare Tunnel may be using a path prefix; set `BRANDYBOX_BASE_URL` (e.g. `https://brandybox.brandstaetter.rocks/backend`) and run the app again.
+- **Open Settings**: If you have never set a sync folder, the Settings window opens automatically (showing default ~/brandyBox); close it or choose another folder so sync can start. You can also run **"Brandy Box Settings"** from your app menu (Linux install adds this desktop entry) or run `BrandyBox --settings` to open Settings without the tray. Left-clicking the tray icon is supposed to open Settings too, but on some Linux setups the tray menu is broken (grey circle); use "Brandy Box Settings" instead.
+- **Quit the app**: Right-click tray icon → Quit (if the menu opens). If the tray menu is broken, run **"Quit Brandy Box"** from your app menu (Linux install adds this), or run `killall BrandyBox` in a terminal.
+- **Tray icon / menu on Linux**: On some setups the tray icon may look like a simple shape and clicking it shows a grey circle instead of a menu (known pystray/GTK issue). Use **Brandy Box Settings** and **Quit Brandy Box** from the app menu instead.
+- Tray icon shows sync state: synced (blue), syncing (amber), error (red). The icon is drawn as a rounded "B". If the icon turns **red**, hover over it to see the error in the tooltip (e.g. "401 Unauthorized" or "Upload test.txt: …"); fix the cause (token, network, or Pi storage) and the next sync will retry. Expired tokens are refreshed automatically.
 - Option “Start when I log in” in Settings (no admin required).
 
 ## Documentation

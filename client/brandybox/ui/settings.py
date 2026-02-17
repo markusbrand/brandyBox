@@ -1,5 +1,7 @@
 """Folder picker, login form, admin panel."""
 
+import logging
+import shutil
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk, filedialog, messagebox
@@ -7,6 +9,8 @@ from typing import Callable, Optional
 
 from brandybox import config as app_config
 from brandybox.ui.dialogs import confirm_folder_overwrite
+
+log = logging.getLogger(__name__)
 
 
 def _center(win: tk.Tk) -> None:
@@ -21,7 +25,7 @@ def _center(win: tk.Tk) -> None:
 
 def show_login(
     on_success: Callable[[str, str], None],
-    on_cancel: Optional[Callable[[], None]]] = None,
+    on_cancel: Optional[Callable[[], None]] = None,
 ) -> None:
     """
     Show login window: email, password, Login. on_success(email, password) called on OK.
@@ -71,8 +75,8 @@ def show_login(
 
 
 def show_settings(
-    on_choose_folder: Optional[Callable[[], None]]] = None,
-    on_toggle_autostart: Optional[Callable[[bool], None]]] = None,
+    on_choose_folder: Optional[Callable[[], None]] = None,
+    on_toggle_autostart: Optional[Callable[[bool], None]] = None,
 ) -> None:
     """
     Show settings window: current sync folder, button to choose folder,
@@ -85,22 +89,38 @@ def show_settings(
     frame = ttk.Frame(root, padding=20)
     frame.grid(row=0, column=0, sticky="nsew")
 
-    # Sync folder
+    # Sync folder (default ~/brandyBox when not set)
     ttk.Label(frame, text="Sync folder").grid(row=0, column=0, sticky="w", pady=(0, 2))
     sync_path = app_config.get_sync_folder_path()
-    path_var = tk.StringVar(value=str(sync_path) if sync_path else "Not set")
+    path_var = tk.StringVar(value=str(sync_path))
     path_label = ttk.Label(frame, textvariable=path_var, wraplength=400)
     path_label.grid(row=1, column=0, sticky="w", pady=(0, 8))
+
+    def _clear_folder_contents(path: Path) -> None:
+        """Remove all files and subdirectories inside path (leave path itself)."""
+        if not path.is_dir():
+            return
+        for child in list(path.iterdir()):
+            if child.is_file():
+                child.unlink(missing_ok=True)
+            elif child.is_dir():
+                shutil.rmtree(child)
 
     def choose_folder() -> None:
         folder = filedialog.askdirectory(parent=root, title="Select folder to sync")
         if not folder:
             return
         if not confirm_folder_overwrite(root):
+            log.info("User cancelled folder selection")
             return
-        p = Path(folder)
+        p = Path(folder).resolve()
+        log.info("Sync folder selected: %s; clearing sync state and folder contents", p)
+        app_config.clear_sync_state()
+        p.mkdir(parents=True, exist_ok=True)
+        _clear_folder_contents(p)
         app_config.set_sync_folder_path(p)
-        path_var.set(str(p.resolve()))
+        path_var.set(str(p))
+        log.info("Sync folder set to %s", p)
         if on_choose_folder:
             on_choose_folder()
 
@@ -121,7 +141,16 @@ def show_settings(
         command=on_autostart_change,
     ).grid(row=3, column=0, sticky="w", pady=(0, 12))
 
-    ttk.Button(frame, text="Close", command=root.destroy).grid(row=4, column=0, sticky="w", pady=(8, 0))
+    def on_close() -> None:
+        # Persist current path if user never set one (so sync can start after they close Settings)
+        if not app_config.user_has_set_sync_folder():
+            try:
+                app_config.set_sync_folder_path(Path(path_var.get()).resolve())
+            except (OSError, ValueError):
+                pass
+        root.destroy()
+
+    ttk.Button(frame, text="Close", command=on_close).grid(row=4, column=0, sticky="w", pady=(8, 0))
 
     root.update_idletasks()
     _center(root)

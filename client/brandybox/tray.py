@@ -1,32 +1,77 @@
 """System tray icon and menu (pystray)."""
 
+import logging
+import sys
 import threading
-import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import pystray
-from PIL import Image
-
-import sys
+from PIL import Image, ImageDraw, ImageFont
 
 from brandybox.api.client import BrandyBoxAPI
-from brandybox.config import get_sync_folder_path
+from brandybox.config import get_sync_folder_path, user_has_set_sync_folder
 from brandybox.sync.engine import SyncEngine
-from brandybox.ui.settings import show_login, show_settings
+from brandybox.ui.settings import show_settings
+
+log = logging.getLogger(__name__)
 
 
-def _load_icon(path: Path, size: int = 64) -> Image.Image:
-    """Load PNG and resize to size. Fallback to a simple colored square."""
+def _draw_fallback_icon(size: int, color: Tuple[int, int, int]) -> Image.Image:
+    """Draw a proper tray icon in memory (rounded box + B) so we never show a plain square."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    margin = max(1, size // 6)
+    r = max(1, size // 5)
+    outline_w = max(1, size // 16)  # thicker so it stays visible when tray scales down
+    d.rounded_rectangle(
+        [margin, margin, size - margin, size - margin],
+        radius=r,
+        fill=color + (255,),
+        outline=(255, 255, 255, 220),
+        width=outline_w,
+    )
+    # "B" so it's recognizable (large so it survives scaling to ~22px)
+    font = None
+    try:
+        font_size = max(8, int(size * 0.55))
+        for path in (
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ):
+            try:
+                font = ImageFont.truetype(path, font_size)
+                break
+            except (OSError, TypeError):
+                continue
+        else:
+            font = ImageFont.load_default()
+    except Exception:
+        font = None
+    if font:
+        text = "B"
+        if hasattr(d, "textbbox"):
+            bbox = d.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        else:
+            tw, th = (size // 2, size // 3) if not hasattr(d, "textsize") else d.textsize(text, font=font)
+        x = (size - tw) // 2
+        y = (size - th) // 2 - (size // 20)
+        d.text((x, y), text, fill=(255, 255, 255, 255), font=font)
+    return img
+
+
+def _load_icon(path: Path, size: int = 64, fallback_color: Tuple[int, int, int] = (70, 130, 180)) -> Image.Image:
+    """Load PNG and resize, or draw a proper fallback icon (rounded B)."""
     if path.exists():
         try:
             img = Image.open(path).convert("RGBA")
-            return img.resize((size, size), Image.Resampling.LANCZOS)
+            out = img.resize((size, size), Image.Resampling.LANCZOS)
+            if out.size == (size, size):
+                return out
         except OSError:
             pass
-    # Fallback: simple square
-    img = Image.new("RGBA", (size, size), (70, 130, 180, 255))
-    return img
+    return _draw_fallback_icon(size, fallback_color)
 
 
 def _icon_path(name: str) -> Path:
@@ -48,58 +93,89 @@ class TrayApp:
         api: BrandyBoxAPI,
         access_token: str,
         on_quit: Optional[Callable[[], None]] = None,
+        schedule_ui: Optional[Callable[[Callable[[], None]], None]] = None,
+        refresh_token_callback: Optional[Callable[[], Optional[str]]] = None,
     ) -> None:
         self._api = api
         self._api.set_access_token(access_token)
         self._on_quit = on_quit
+        self._schedule_ui = schedule_ui
+        self._refresh_token = refresh_token_callback
         self._paused = False
         self._status = "synced"  # synced | syncing | error
+        self._last_error: Optional[str] = None  # so user can see why sync failed (tooltip)
         self._icon: Optional[pystray.Icon] = None
         self._sync_thread: Optional[threading.Thread] = None
         self._stop_sync = threading.Event()
 
     def _get_icon_image(self) -> Image.Image:
+        # Always use programmatic icon so tray never shows a flat square (file may be missing or wrong)
+        size = 64
         if self._status == "syncing":
-            return _load_icon(_icon_path("icon_syncing.png"))
+            return _draw_fallback_icon(size, (255, 180, 80))
         if self._status == "error":
-            return _load_icon(_icon_path("icon_error.png"))
-        return _load_icon(_icon_path("icon_synced.png"))
+            return _draw_fallback_icon(size, (220, 80, 80))
+        return _draw_fallback_icon(size, (70, 130, 180))
 
     def _update_icon(self) -> None:
         if self._icon:
             self._icon.icon = self._get_icon_image()
+            # Show error in tooltip when red (X11 WM_NAME is Latin-1 only)
+            if self._status == "error" and self._last_error:
+                msg = (self._last_error[:80]).encode("ascii", errors="replace").decode("ascii")
+                self._icon.title = f"Brandy Box - error: {msg}"
+            else:
+                self._icon.title = "Brandy Box"
 
     def _set_status(self, status: str) -> None:
         self._status = status
         self._update_icon()
 
     def _sync_loop(self) -> None:
+        log.info("Sync loop started")
         while not self._stop_sync.is_set():
             if self._paused:
                 self._stop_sync.wait(timeout=1)
                 continue
-            sync_path = get_sync_folder_path()
-            if not sync_path or not sync_path.exists():
+            # Don't sync until the user has set a folder (e.g. closed Settings with default ~/brandyBox)
+            if not user_has_set_sync_folder():
+                log.debug("Waiting for sync folder to be set")
                 self._stop_sync.wait(timeout=30)
                 continue
+            sync_path = get_sync_folder_path()
+            if not sync_path.exists():
+                sync_path.mkdir(parents=True, exist_ok=True)
+                log.info("Created sync folder %s", sync_path)
+            log.info("Starting sync cycle (folder=%s)", sync_path)
             self._set_status("syncing")
+            self._last_error = None
             engine = SyncEngine(
                 self._api,
                 sync_path,
                 on_status=lambda _: None,
             )
             err = engine.run()
+            # If 401, try refreshing the access token and sync once more
+            if err and "401" in err and self._refresh_token:
+                log.warning("Sync got 401, attempting token refresh")
+                new_token = self._refresh_token()
+                if new_token:
+                    self._api.set_access_token(new_token)
+                    err = engine.run()
             if err:
+                self._last_error = err
                 self._set_status("error")
+                log.error("Sync failed: %s", err)
             else:
                 self._set_status("synced")
+                log.info("Sync cycle completed successfully")
+            log.debug("Pausing 60s until next sync cycle")
             self._stop_sync.wait(timeout=60)
 
     def _open_folder(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         import subprocess
-        import sys
         path = get_sync_folder_path()
-        if path and path.exists():
+        if path.exists():
             if sys.platform == "darwin":
                 subprocess.run(["open", str(path)], check=False)
             elif sys.platform == "win32":
@@ -108,13 +184,19 @@ class TrayApp:
                 subprocess.run(["xdg-open", str(path)], check=False)
 
     def _open_settings(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
-        show_settings()
+        """Open Settings on the main (UI) thread to avoid Linux tray/menu glitches."""
+        if self._schedule_ui:
+            self._schedule_ui(show_settings)
+        else:
+            show_settings()
 
     def _toggle_pause(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         self._paused = not self._paused
         item.checked = self._paused
+        log.info("Sync paused=%s", self._paused)
 
     def _quit(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        log.info("Quit requested")
         self._stop_sync.set()
         if self._icon:
             self._icon.visible = False
@@ -122,12 +204,18 @@ class TrayApp:
         if self._on_quit:
             self._on_quit()
 
+    def _run_icon(self) -> None:
+        """Entry for the tray thread (blocks)."""
+        self._icon.run()
+
     def run(self) -> None:
-        """Build menu, start sync thread, run tray (blocking)."""
+        """Build menu, start sync thread, run tray (blocking unless schedule_ui set)."""
+        log.info("Tray starting (sync thread + icon)")
+        # default=True: left-click on icon runs this (Dropbox-style: one click opens Settings)
         menu = pystray.Menu(
-            pystray.MenuItem("Open folder", self._open_folder, default=True),
+            pystray.MenuItem("Settings", self._open_settings, default=True),
+            pystray.MenuItem("Open folder", self._open_folder),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Settings", self._open_settings),
             pystray.MenuItem("Pause sync", self._toggle_pause, checked=lambda item: self._paused),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", self._quit),
@@ -140,10 +228,25 @@ class TrayApp:
         )
         self._sync_thread = threading.Thread(target=self._sync_loop, daemon=True)
         self._sync_thread.start()
+        if self._schedule_ui is not None:
+            thread = threading.Thread(target=self._run_icon, daemon=True)
+            thread.start()
+            return
         self._icon.run()
 
 
-def run_tray(api: BrandyBoxAPI, access_token: str, on_quit: Optional[Callable[[], None]] = None) -> None:
-    """Create and run tray app (blocking)."""
-    app = TrayApp(api, access_token, on_quit)
+def run_tray(
+    api: BrandyBoxAPI,
+    access_token: str,
+    on_quit: Optional[Callable[[], None]] = None,
+    schedule_ui: Optional[Callable[[Callable[[], None]], None]] = None,
+    refresh_token_callback: Optional[Callable[[], Optional[str]]] = None,
+) -> None:
+    """
+    Create and run tray app. If schedule_ui is provided, the tray runs in a
+    background thread and schedule_ui(fn) is used to run UI (e.g. Settings)
+    on the main thread; callers must run a mainloop and process scheduled calls.
+    refresh_token_callback() can return a new access token on 401 so sync retries.
+    """
+    app = TrayApp(api, access_token, on_quit, schedule_ui, refresh_token_callback)
     app.run()

@@ -1,5 +1,6 @@
 """FastAPI dependencies for auth."""
 
+import logging
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, status
@@ -12,6 +13,7 @@ from app.db.session import get_db
 from app.users.models import User
 
 security = HTTPBearer(auto_error=False)
+log = logging.getLogger(__name__)
 
 
 async def get_current_user(
@@ -20,6 +22,7 @@ async def get_current_user(
 ) -> User:
     """Resolve Bearer token to current user; raise 401 if invalid or missing."""
     if not credentials:
+        log.debug("Request missing Bearer token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -27,6 +30,7 @@ async def get_current_user(
         )
     email = get_subject_from_access(credentials.credentials)
     if not email:
+        log.debug("Invalid or expired access token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -35,6 +39,7 @@ async def get_current_user(
     result = await session.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if not user:
+        log.warning("Token valid but user not found: email=%s", email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
@@ -48,6 +53,7 @@ async def get_current_admin(
 ) -> User:
     """Require current user to be admin."""
     if not current_user.is_admin:
+        log.warning("Non-admin user attempted admin action: email=%s", current_user.email)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin required",

@@ -1,10 +1,13 @@
 """HTTP client for Brandy Box backend API."""
 
+import logging
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from brandybox.network import get_base_url
+
+log = logging.getLogger(__name__)
 
 
 class BrandyBoxAPI:
@@ -20,6 +23,7 @@ class BrandyBoxAPI:
     ) -> None:
         self._base_url = (base_url or get_base_url()).rstrip("/")
         self._access_token = access_token
+        log.debug("API client base_url=%s", self._base_url)
 
     def _headers(self) -> Dict[str, str]:
         out = {"Accept": "application/json"}
@@ -69,16 +73,20 @@ class BrandyBoxAPI:
 
     def list_files(self) -> List[Dict[str, Any]]:
         """GET /api/files/list. Returns [{path, mtime}, ...]."""
+        log.debug("GET /api/files/list")
         with httpx.Client(timeout=60.0) as client:
             r = client.get(
                 f"{self._base_url}/api/files/list",
                 headers=self._headers(),
             )
             r.raise_for_status()
-            return r.json()
+            data = r.json()
+            log.debug("list_files returned %d items", len(data))
+            return data
 
     def upload_file(self, relative_path: str, body: bytes) -> None:
         """POST /api/files/upload?path=... with body."""
+        log.debug("upload_file path=%s size=%d", relative_path, len(body))
         with httpx.Client(timeout=60.0) as client:
             r = client.post(
                 f"{self._base_url}/api/files/upload",
@@ -90,6 +98,7 @@ class BrandyBoxAPI:
 
     def download_file(self, relative_path: str) -> bytes:
         """GET /api/files/download?path=... Returns file bytes."""
+        log.debug("download_file path=%s", relative_path)
         with httpx.Client(timeout=60.0) as client:
             r = client.get(
                 f"{self._base_url}/api/files/download",
@@ -98,3 +107,14 @@ class BrandyBoxAPI:
             )
             r.raise_for_status()
             return r.content
+
+    def delete_file(self, relative_path: str) -> None:
+        """DELETE /api/files/delete?path=... Remove file from remote (Raspberry Pi)."""
+        log.debug("delete_file path=%s", relative_path)
+        with httpx.Client(timeout=30.0) as client:
+            r = client.delete(
+                f"{self._base_url}/api/files/delete",
+                params={"path": relative_path},
+                headers=self._headers(),
+            )
+            r.raise_for_status()

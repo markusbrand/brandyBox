@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # Server
     port: int = 8080
 
+    # Logging (empty log_file = stderr only; level DEBUG|INFO|WARNING|ERROR)
+    log_level: str = "INFO"
+    log_file: str = ""
+
 
 def get_settings() -> Settings:
     """Return application settings."""

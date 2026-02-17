@@ -1,10 +1,15 @@
 """Resolve backend base URL: LAN (brandstaetter) vs Cloudflare."""
 
+import logging
+import os
 import platform
 import re
 import subprocess
 from typing import Optional
 
+log = logging.getLogger(__name__)
+
+# Override with BRANDYBOX_BASE_URL if your tunnel uses a path prefix (e.g. https://host/backend)
 # Defaults from plan
 LAN_HOST = "192.168.0.150"
 LAN_NETWORK_NAME = "brandstaetter"
@@ -58,9 +63,17 @@ def _on_lan_brandstaetter() -> bool:
 
 def get_base_url() -> str:
     """
-    Return backend base URL: http://192.168.0.150:8081 on LAN brandstaetter,
+    Return backend base URL. Prefer env BRANDYBOX_BASE_URL if set.
+    Else: http://192.168.0.150:8081 on LAN brandstaetter,
     else https://brandybox.brandstaetter.rocks (no port in URL for HTTPS).
     """
+    override = os.environ.get("BRANDYBOX_BASE_URL", "").strip()
+    if override:
+        log.info("Using base URL from BRANDYBOX_BASE_URL: %s", override.rstrip("/"))
+        return override.rstrip("/")
     if _on_lan_brandstaetter():
-        return f"http://{LAN_HOST}:{BACKEND_PORT}"
+        url = f"http://{LAN_HOST}:{BACKEND_PORT}"
+        log.info("On LAN brandstaetter, using base URL: %s", url)
+        return url
+    log.info("Using Cloudflare base URL: %s", CLOUDFLARE_URL)
     return CLOUDFLARE_URL

@@ -7,15 +7,15 @@ from typing import Optional
 
 def confirm_folder_overwrite(parent: Optional[tk.Tk] = None) -> bool:
     """
-    Show warning that the chosen folder may be cleared/replaced for sync.
+    Show warning that the chosen folder will be cleared and then synced from the server.
     Returns True if user confirms, False otherwise.
     """
     root = parent or tk.Tk()
     root.withdraw()
     result = messagebox.askyesno(
         "Confirm sync folder",
-        "Everything in the selected folder will be synchronized with Brandy Box. "
-        "Existing files may be replaced or removed to match the server. Continue?",
+        "All files and folders in the selected directory will be deleted. "
+        "Then the folder will be filled with the contents from the server. Continue?",
         icon=messagebox.WARNING,
         parent=root,
     )

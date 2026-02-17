@@ -23,18 +23,48 @@ def get_config_path() -> Path:
     return d / "config.json"
 
 
-def get_sync_folder_path() -> Optional[Path]:
-    """Return configured sync folder or None."""
+def get_sync_state_path() -> Path:
+    """Path to file storing last-synced paths for bidirectional delete propagation."""
+    d = _config_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d / "sync_state.json"
+
+
+def clear_sync_state() -> None:
+    """Clear persisted sync state so next sync treats server as source of truth (e.g. after folder change)."""
+    get_sync_state_path().write_text('{"paths": []}', encoding="utf-8")
+
+
+def get_default_sync_folder() -> Path:
+    """Default sync folder: ~/brandyBox (e.g. /home/markus/brandyBox)."""
+    return Path.home() / "brandyBox"
+
+
+def user_has_set_sync_folder() -> bool:
+    """True if the user has ever saved a sync folder (config exists and has sync_folder key)."""
     path = get_config_path()
     if not path.exists():
-        return None
+        return False
+    try:
+        import json
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return bool(data.get("sync_folder"))
+    except (json.JSONDecodeError, OSError):
+        return False
+
+
+def get_sync_folder_path() -> Path:
+    """Return configured sync folder, or default ~/brandyBox if none set."""
+    path = get_config_path()
+    if not path.exists():
+        return get_default_sync_folder()
     try:
         import json
         data = json.loads(path.read_text(encoding="utf-8"))
         raw = data.get("sync_folder")
-        return Path(raw) if raw else None
+        return Path(raw).resolve() if raw else get_default_sync_folder()
     except (json.JSONDecodeError, OSError):
-        return None
+        return get_default_sync_folder()
 
 
 def set_sync_folder_path(folder: Path) -> None:

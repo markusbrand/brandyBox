@@ -1,17 +1,21 @@
 # Client overview
 
-Desktop app: system tray, sync, settings (folder, autostart), login with keyring.
+Desktop app: system tray, sync, settings (folder, autostart), login with keyring. When you choose a sync folder and confirm the warning, all contents of that folder are deleted and sync state is reset; the next sync downloads everything from the server (server is source of truth), then uploads local additions and propagates local deletions to the server.
 
 ## Layout
 
 - `brandybox/main.py` – Entry: try stored credentials → tray, else login
 - `brandybox/tray.py` – Pystray icon (synced/syncing/error), menu, background sync loop
-- `brandybox/api/client.py` – HTTP client (login, refresh, list, upload, download)
+- `brandybox/api/client.py` – HTTP client (login, refresh, list, upload, download, delete)
 - `brandybox/auth/credentials.py` – Keyring store for email + refresh token
-- `brandybox/sync/engine.py` – List local/remote, diff, upload/download (newer wins)
+- `brandybox/sync/engine.py` – Sync order: propagate deletes both ways, download server→local, upload local→server
 - `brandybox/network.py` – Base URL: LAN (brandstaetter) vs Cloudflare
-- `brandybox/config.py` – Sync folder, autostart preference, platform startup entries
+- `brandybox/config.py` – Sync folder, autostart preference, platform startup entries, sync state
 - `brandybox/ui/` – Login window, settings (folder picker, autostart), dialogs
+
+## Logging
+
+Logs are written to a file in the config directory (e.g. `~/.config/brandybox/brandybox.log` on Linux, `%APPDATA%\BrandyBox\brandybox.log` on Windows). INFO and above go to stderr when run from a terminal. Use the log file to see sync cycles, errors, folder selection, token refresh, and whether the app is using LAN or Cloudflare for the backend.
 
 ## Build
 

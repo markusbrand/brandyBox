@@ -33,10 +33,32 @@ Categories=Utility;
 StartupNotify=false
 EOF
 
+cat > "$APPS/brandybox-settings.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=Brandy Box Settings
+Comment=Configure sync folder and options
+Exec=$EXEC --settings
+Icon=brandybox
+Categories=Utility;Settings;
+StartupNotify=false
+EOF
+
+cat > "$APPS/brandybox-quit.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=Quit Brandy Box
+Comment=Stop the Brandy Box tray app (use when the tray menu does not open)
+Exec=killall BrandyBox 2>/dev/null || true
+Icon=brandybox
+Categories=Utility;
+StartupNotify=false
+EOF
+
 mkdir -p "$AUTOSTART"
 # Optional: copy to autostart if user has enabled it in settings
 # cp "$APPS/brandybox.desktop" "$AUTOSTART/" 
 
 echo "Installed to $INSTALL_DIR"
-echo "Run: $EXEC"
-echo "Desktop entry: $APPS/brandybox.desktop"
+echo "Run: $EXEC  (or 'Brandy Box Settings' to open Settings only)"
+echo "Desktop entries: $APPS/brandybox.desktop, $APPS/brandybox-settings.desktop, $APPS/brandybox-quit.desktop"

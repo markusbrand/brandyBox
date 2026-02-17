@@ -1,10 +1,13 @@
 """Keyring-backed credential storage and token refresh."""
 
+import logging
 from typing import Optional, Tuple
 
 import keyring
 
 from brandybox.api.client import BrandyBoxAPI
+
+log = logging.getLogger(__name__)
 
 SERVICE_NAME = "BrandyBox"
 KEY_EMAIL = "email"
@@ -53,11 +56,14 @@ class CredentialsStore:
         """
         stored = self.get_stored()
         if not stored:
+            log.debug("No stored credentials")
             return None
         email, refresh_token = stored
         try:
             data = api.refresh(refresh_token)
             self.set_stored(email, data["refresh_token"])
+            log.debug("Token refresh successful for %s", email)
             return data["access_token"]
-        except Exception:
+        except Exception as e:
+            log.warning("Token refresh failed: %s", e)
             return None

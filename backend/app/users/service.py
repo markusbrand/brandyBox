@@ -1,5 +1,6 @@
 """User service: create user, send password email."""
 
+import logging
 import secrets
 from email.message import EmailMessage
 from typing import Optional
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import hash_password
 from app.config import get_settings
 from app.users.models import User, UserCreate
+
+log = logging.getLogger(__name__)
 
 
 async def send_password_email(
@@ -76,7 +79,11 @@ async def create_user(
     )
     session.add(user)
     await session.flush()
-    await send_password_email(payload.email, temp_password, payload.first_name)
+    try:
+        await send_password_email(payload.email, temp_password, payload.first_name)
+    except Exception as e:
+        log.warning("Failed to send password email to %s: %s", payload.email, e)
+        raise
     return user, temp_password
 
 
@@ -91,6 +98,7 @@ async def ensure_admin_exists(session: AsyncSession) -> None:
     existing = await get_user_by_email(session, settings.admin_email)
     if existing:
         return
+    log.info("Creating bootstrap admin user email=%s", settings.admin_email)
     from app.users.models import UserCreate as UC
     payload = UC(
         email=settings.admin_email,

@@ -17,7 +17,7 @@ chmod +x assets/installers/linux_install.sh
 # Or pass the build folder: ./assets/installers/linux_install.sh dist/BrandyBox
 ```
 
-Installs to `~/.local/share/brandybox` and adds `~/.local/share/applications/brandybox.desktop`. No sudo.
+Installs to `~/.local/share/brandybox` and adds desktop entries: **Brandy Box**, **Brandy Box Settings**, **Quit Brandy Box** (use the last to stop the app when the tray menu does not open). No sudo.
 
 ## Windows
 
