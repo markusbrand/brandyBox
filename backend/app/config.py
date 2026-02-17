@@ -1,0 +1,53 @@
+"""Configuration from environment (no hardcoded secrets)."""
+
+from pathlib import Path
+from typing import List
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Backend settings from env."""
+
+    model_config = SettingsConfigDict(env_prefix="BRANDYBOX_", extra="ignore")
+
+    # Storage
+    storage_base_path: Path = Path("/mnt/shared_storage/brandyBox")
+    db_path: Path = Path("/data/brandybox.db")
+
+    # JWT
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+
+    # SMTP (for sending passwords to new users)
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+
+    # First admin (bootstrap)
+    admin_email: str = ""
+    admin_initial_password: str = ""
+
+    # CORS (comma-separated origins, or default)
+    cors_origins: List[str] = ["https://brandybox.brandstaetter.rocks"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: object) -> List[str]:
+        """Parse CORS_ORIGINS from comma-separated env string."""
+        if isinstance(v, str):
+            return [o.strip() for o in v.split(",") if o.strip()]
+        return v if isinstance(v, list) else ["https://brandybox.brandstaetter.rocks"]
+
+    # Server
+    port: int = 8080
+
+
+def get_settings() -> Settings:
+    """Return application settings."""
+    return Settings()

@@ -1,0 +1,33 @@
+# Brandy Box backend - run on Raspberry Pi
+# Usage:
+#   Set env vars (see below), then: docker compose up -d
+#   Storage and DB are in named volumes; override with bind mounts if needed.
+
+services:
+  brandybox:
+    build: .
+    container_name: brandybox-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - BRANDYBOX_STORAGE_BASE_PATH=/mnt/shared_storage/brandyBox
+      - BRANDYBOX_DB_PATH=/data/brandybox.db
+      # Set in .env or export: JWT_SECRET, SMTP_*, ADMIN_*
+      - BRANDYBOX_JWT_SECRET=${BRANDYBOX_JWT_SECRET}
+      - BRANDYBOX_SMTP_HOST=${BRANDYBOX_SMTP_HOST}
+      - BRANDYBOX_SMTP_PORT=${BRANDYBOX_SMTP_PORT:-587}
+      - BRANDYBOX_SMTP_USER=${BRANDYBOX_SMTP_USER}
+      - BRANDYBOX_SMTP_PASSWORD=${BRANDYBOX_SMTP_PASSWORD}
+      - BRANDYBOX_SMTP_FROM=${BRANDYBOX_SMTP_FROM}
+      - BRANDYBOX_ADMIN_EMAIL=${BRANDYBOX_ADMIN_EMAIL}
+      - BRANDYBOX_ADMIN_INITIAL_PASSWORD=${BRANDYBOX_ADMIN_INITIAL_PASSWORD}
+      - BRANDYBOX_CORS_ORIGINS=${BRANDYBOX_CORS_ORIGINS:-https://brandybox.brandstaetter.rocks}
+    volumes:
+      # Persist SQLite DB
+      - brandybox_data:/data
+      # Mount Pi storage so backend can read/write user folders
+      - /mnt/shared_storage/brandyBox:/mnt/shared_storage/brandyBox
+    restart: unless-stopped
+
+volumes:
+  brandybox_data:

@@ -1,0 +1,11 @@
+---
+description: Brandy Box structure, OOP, packages, and doc regeneration
+globs: client/**/*.py, backend/**/*.py
+alwaysApply: true
+---
+
+# Brandy Box Conventions
+
+- **Layout**: Client code lives under `client/brandybox/` in packages (api, auth, sync, ui). Backend code lives under `backend/app/` (auth, users, files, db). No global mutable state.
+- **OOP**: Prefer classes for cohesive behavior (e.g. SyncEngine, BrandyBoxAPI, CredentialsStore). Use type hints and docstrings (Google or NumPy style) for public modules, classes, and key functions.
+- **Docs**: When changing client or backend code, update or regenerate the project documentation. From repo root run `mkdocs build` (output in `site/`) or `mkdocs serve` for live preview.

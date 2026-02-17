@@ -1,0 +1,8 @@
+site_name: Brandy Box
+site_description: Development documentation
+theme:
+  name: readthedocs
+nav:
+  - Home: index.md
+  - Backend: backend/overview.md
+  - Client: client/overview.md
