@@ -1,0 +1,9 @@
+create a desktop application running on windows, linux und mac.
+from the features and functionality it should be similar to dropbox.com desktop application. The name of the application should be 'Brandy Box'.
+
+I want to use that app to access my raspberry pi storage from everywhere and synchronize the content of a local folder to this remote raspberry pi folder. Similar to dropbox it should synch a local folder to my raspberry pi HDD storage. the HDD storage on raspberry pi is mounted to /mnt/shared_storage and for the data synchronization in this app I would like to use this folder: /mnt/shared_storage/brandyBox
+
+
+it should show a logo in the notification bar and start automatically on system boot. Also this logo should indicate whether the local folder has been synched successfully, is in synchronization state (synching), or failed to synchronize.
+
+If you open the application settings it offers the user to choose a local folder which is used for synching.
