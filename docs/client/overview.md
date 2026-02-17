@@ -17,6 +17,10 @@ Desktop app: system tray, sync, settings (folder, autostart), login with keyring
 
 Logs are written to a file in the config directory (e.g. `~/.config/brandybox/brandybox.log` on Linux, `%APPDATA%\BrandyBox\brandybox.log` on Windows). INFO and above go to stderr when run from a terminal. Use the log file to see sync cycles, errors, folder selection, token refresh, and whether the app is using LAN or Cloudflare for the backend.
 
+## Linux / KDE system tray
+
+On Linux the tray icon is drawn at 32 px so it stays crisp when the panel uses ~22–24 px (e.g. KDE Plasma). If the icon appears as a plain blue square or a click-indicator circle jumps on the tray, the default backend (XOrg/AppIndicator) is still the one that shows the icon on KDE. Do **not** set `PYSTRAY_BACKEND=gtk` on KDE: the GTK backend uses Gtk.StatusIcon, which Plasma often does not display, so you may see no icon at all.
+
 ## Build
 
 From repo root: `pyinstaller client/brandybox.spec`. Icons in `assets/logo/` (generate with `python scripts/generate_logos.py`).

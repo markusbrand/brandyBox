@@ -1,4 +1,11 @@
-"""System tray icon and menu (pystray)."""
+"""System tray icon and menu (pystray).
+
+On Linux (e.g. KDE Plasma), the tray often displays icons at ~22–24 px. Using a
+larger icon (e.g. 64 px) can cause scaling artifacts and the rounded shape to
+appear as a plain square. We use a smaller nominal size on Linux so the icon
+stays crisp. On KDE, do not set PYSTRAY_BACKEND=gtk—Plasma often does not show
+Gtk.StatusIcon, so the icon can disappear entirely. Use the default backend.
+"""
 
 import logging
 import sys
@@ -16,13 +23,20 @@ from brandybox.ui.settings import show_settings
 
 log = logging.getLogger(__name__)
 
+# Tray icon size: Linux trays (KDE, etc.) often use ~22–24 px; a 64 px icon
+# scales badly and can show as a solid square. Use 32 px on Linux so the shape
+# and "B" stay visible.
+TRAY_ICON_SIZE_DEFAULT = 64
+TRAY_ICON_SIZE_LINUX = 32
+
 
 def _draw_fallback_icon(size: int, color: Tuple[int, int, int]) -> Image.Image:
     """Draw a proper tray icon in memory (rounded box + B) so we never show a plain square."""
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     margin = max(1, size // 6)
-    r = max(1, size // 5)
+    # Keep radius visible at small sizes (e.g. 32 px on Linux) so it doesn't look like a square
+    r = max(2, size // 5)
     outline_w = max(1, size // 16)  # thicker so it stays visible when tray scales down
     d.rounded_rectangle(
         [margin, margin, size - margin, size - margin],
@@ -109,12 +123,21 @@ class TrayApp:
         self._stop_sync = threading.Event()
 
     def _get_icon_image(self) -> Image.Image:
-        # Always use programmatic icon so tray never shows a flat square (file may be missing or wrong)
-        size = 64
+        # On Linux use a smaller size so the tray (often 22–24 px) doesn't scale down and lose shape
+        size = TRAY_ICON_SIZE_LINUX if sys.platform == "linux" else TRAY_ICON_SIZE_DEFAULT
         if self._status == "syncing":
+            path = _icon_path("icon_syncing.png")
+            if sys.platform == "linux" and path.exists():
+                return _load_icon(path, size, (255, 180, 80))
             return _draw_fallback_icon(size, (255, 180, 80))
         if self._status == "error":
+            path = _icon_path("icon_error.png")
+            if sys.platform == "linux" and path.exists():
+                return _load_icon(path, size, (220, 80, 80))
             return _draw_fallback_icon(size, (220, 80, 80))
+        path = _icon_path("icon_synced.png")
+        if sys.platform == "linux" and path.exists():
+            return _load_icon(path, size, (70, 130, 180))
         return _draw_fallback_icon(size, (70, 130, 180))
 
     def _update_icon(self) -> None:

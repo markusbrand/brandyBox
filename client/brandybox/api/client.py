@@ -109,7 +109,9 @@ class BrandyBoxAPI:
             return r.content
 
     def delete_file(self, relative_path: str) -> None:
-        """DELETE /api/files/delete?path=... Remove file from remote (Raspberry Pi)."""
+        """DELETE /api/files/delete?path=... Remove file from remote (Raspberry Pi).
+        Treats 404 as success (file already gone).
+        """
         log.debug("delete_file path=%s", relative_path)
         with httpx.Client(timeout=30.0) as client:
             r = client.delete(
@@ -117,4 +119,7 @@ class BrandyBoxAPI:
                 params={"path": relative_path},
                 headers=self._headers(),
             )
+            if r.status_code == 404:
+                log.debug("delete_file path=%s: already gone (404)", relative_path)
+                return
             r.raise_for_status()
