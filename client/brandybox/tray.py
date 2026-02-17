@@ -10,6 +10,7 @@ Gtk.StatusIcon, so the icon can disappear entirely. Use the default backend.
 import logging
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
@@ -20,6 +21,7 @@ from brandybox.api.client import BrandyBoxAPI
 from brandybox.config import get_base_url_mode, get_sync_folder_path, user_has_set_sync_folder
 from brandybox.network import get_base_url
 from brandybox.sync.engine import SyncEngine
+from brandybox.ui.notify import notify_error
 from brandybox.ui.settings import show_settings
 
 log = logging.getLogger(__name__)
@@ -136,6 +138,8 @@ class TrayApp:
         self._paused = False
         self._status = "synced"  # synced | syncing | error
         self._last_error: Optional[str] = None  # so user can see why sync failed (tooltip)
+        self._last_notified_error: Optional[str] = None
+        self._last_notified_time: float = 0
         self._icon: Optional[pystray.Icon] = None
         self._sync_thread: Optional[threading.Thread] = None
         self._stop_sync = threading.Event()
@@ -207,6 +211,12 @@ class TrayApp:
                 self._last_error = err
                 self._set_status("error")
                 log.error("Sync failed: %s", err)
+                # Desktop notification, throttled to at most once per 2 min per error
+                now = time.monotonic()
+                if err != self._last_notified_error or (now - self._last_notified_time) >= 120:
+                    notify_error("Brandy Box – Sync error", err)
+                    self._last_notified_error = err
+                    self._last_notified_time = now
                 # When backend is temporarily unreachable, retry sooner and (in automatic mode) re-resolve base URL
                 if _is_connection_error(err):
                     if get_base_url_mode() == "automatic":
@@ -220,6 +230,7 @@ class TrayApp:
                     log.debug("Pausing %ds until next sync cycle", retry_interval)
             else:
                 self._set_status("synced")
+                self._last_notified_error = None  # allow notification for next error
                 log.info("Sync cycle completed successfully")
                 retry_interval = 60
                 log.debug("Pausing %ds until next sync cycle", retry_interval)
