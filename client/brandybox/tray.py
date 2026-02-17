@@ -17,7 +17,8 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 
 from brandybox.api.client import BrandyBoxAPI
-from brandybox.config import get_sync_folder_path, user_has_set_sync_folder
+from brandybox.config import get_base_url_mode, get_sync_folder_path, user_has_set_sync_folder
+from brandybox.network import get_base_url
 from brandybox.sync.engine import SyncEngine
 from brandybox.ui.settings import show_settings
 
@@ -86,6 +87,23 @@ def _load_icon(path: Path, size: int = 64, fallback_color: Tuple[int, int, int] 
         except OSError:
             pass
     return _draw_fallback_icon(size, fallback_color)
+
+
+def _is_connection_error(err: Optional[str]) -> bool:
+    """True if the error indicates the backend was unreachable (transient)."""
+    if not err:
+        return False
+    lower = err.lower()
+    return (
+        "connect" in lower
+        or "timeout" in lower
+        or "refused" in lower
+        or "unreachable" in lower
+        or "connection refused" in lower
+        or "timed out" in lower
+        or "name or service not known" in lower
+        or "network is unreachable" in lower
+    )
 
 
 def _icon_path(name: str) -> Path:
@@ -189,11 +207,23 @@ class TrayApp:
                 self._last_error = err
                 self._set_status("error")
                 log.error("Sync failed: %s", err)
+                # When backend is temporarily unreachable, retry sooner and (in automatic mode) re-resolve base URL
+                if _is_connection_error(err):
+                    if get_base_url_mode() == "automatic":
+                        new_url = get_base_url()
+                        self._api.set_base_url(new_url)
+                        log.info("Backend unreachable; refreshed base URL for next retry: %s", new_url)
+                    retry_interval = 15
+                    log.debug("Pausing %ds until next retry (connection error)", retry_interval)
+                else:
+                    retry_interval = 60
+                    log.debug("Pausing %ds until next sync cycle", retry_interval)
             else:
                 self._set_status("synced")
                 log.info("Sync cycle completed successfully")
-            log.debug("Pausing 60s until next sync cycle")
-            self._stop_sync.wait(timeout=60)
+                retry_interval = 60
+                log.debug("Pausing %ds until next sync cycle", retry_interval)
+            self._stop_sync.wait(timeout=retry_interval)
 
     def _open_folder(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         import subprocess
