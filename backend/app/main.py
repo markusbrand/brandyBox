@@ -64,6 +64,7 @@ app.include_router(files_router)
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    """Health check for Docker and tunnel."""
-    return {"status": "ok"}
+@limiter.exempt
+def health() -> JSONResponse:
+    """Health check for Docker and tunnel. Exempt from rate limiting."""
+    return JSONResponse(content={"status": "ok"})
