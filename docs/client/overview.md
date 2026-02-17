@@ -1,6 +1,6 @@
 # Client overview
 
-Desktop app: system tray, sync, settings (folder, autostart), login with keyring. When you choose a sync folder and confirm the warning, all contents of that folder are deleted and sync state is reset; the next sync downloads everything from the server (server is source of truth), then uploads local additions and propagates local deletions to the server.
+Desktop app: system tray, sync, settings (folder, autostart), login with keyring. When you choose a sync folder and confirm the warning, all contents of that folder are deleted and sync state is reset; the next sync downloads everything from the server (server is source of truth), then uploads local additions and propagates local deletions to the server. Deleting a folder locally removes all its files on the server on the next sync and the server removes now-empty parent directories; the same applies when the server has fewer files (e.g. deleted elsewhere)—local files are removed and empty directories cleaned up. Sync state (last-synced paths) must have been saved by at least one successful full sync for deletion propagation to work.
 
 ## Layout
 

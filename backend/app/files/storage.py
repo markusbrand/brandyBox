@@ -63,14 +63,28 @@ def resolve_user_path(email: str, relative_path: str) -> Path:
 def delete_file(email: str, relative_path: str) -> None:
     """
     Delete a file under the user's folder. Rejects traversal and unsafe names.
+    After deleting the file, removes any now-empty parent directories up to (but not
+    including) the user base path so folder deletions stay in sync.
     Raises ValueError for invalid path; raises FileNotFoundError if file does not exist.
     """
+    base = user_base_path(email)
     target = resolve_user_path(email, relative_path)
     if not target.exists():
         raise FileNotFoundError(f"File not found: {relative_path}")
     if not target.is_file():
         raise ValueError(f"Not a file: {relative_path}")
     target.unlink()
+    # Remove empty parent directories so folder deletions propagate
+    parent = target.parent
+    while parent != base and parent.exists():
+        try:
+            if not any(parent.iterdir()):
+                parent.rmdir()
+                parent = parent.parent
+            else:
+                break
+        except OSError:
+            break
 
 
 def list_files_recursive(root: Path) -> List[dict]:

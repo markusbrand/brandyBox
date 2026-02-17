@@ -96,7 +96,8 @@ def sync_run(
     to_delete_local = last_synced - current_remote_paths  # gone from remote (e.g. other client)
     log.debug("Deletions: %d from server, %d from local", len(to_delete_remote), len(to_delete_local))
 
-    for path in to_delete_remote:
+    # Delete on server deepest paths first so backend can remove empty parent dirs
+    for path in sorted(to_delete_remote, key=lambda p: -p.count("/")):
         try:
             status(f"Deleting on server {path}…")
             api.delete_file(path)
@@ -104,13 +105,25 @@ def sync_run(
             log.error("Delete on server %s: %s", path, e)
             return f"Delete on server {path}: {e}"
 
-    for path in to_delete_local:
+    # Delete locally deepest first, then remove empty parent dirs
+    for path in sorted(to_delete_local, key=lambda p: -p.count("/")):
         try:
             parts = path.replace("\\", "/").split("/")
             local_path = local_root.joinpath(*parts)
             if local_path.exists() and local_path.is_file():
                 status(f"Deleting locally {path}…")
                 local_path.unlink(missing_ok=True)
+                # Remove empty parent directories
+                parent = local_path.parent
+                while parent != local_root and parent.exists():
+                    try:
+                        if not any(parent.iterdir()):
+                            parent.rmdir()
+                            parent = parent.parent
+                        else:
+                            break
+                    except OSError:
+                        break
         except Exception as e:
             log.error("Delete locally %s: %s", path, e)
             return f"Delete locally {path}: {e}"

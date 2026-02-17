@@ -20,7 +20,7 @@ Python FastAPI service in Docker on Raspberry Pi.
 - `GET /api/files/list` – list files for user
 - `POST /api/files/upload?path=...` – upload body
 - `GET /api/files/download?path=...` – download file
-- `DELETE /api/files/delete?path=...` – delete file (for bidirectional sync)
+- `DELETE /api/files/delete?path=...` – delete file; after removing the file, empty parent directories are removed so folder deletions stay in sync
 
 ## Logging
 
