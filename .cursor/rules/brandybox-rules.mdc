@@ -9,3 +9,4 @@ alwaysApply: true
 - **Layout**: Client code lives under `client/brandybox/` in packages (api, auth, sync, ui). Backend code lives under `backend/app/` (auth, users, files, db). No global mutable state.
 - **OOP**: Prefer classes for cohesive behavior (e.g. SyncEngine, BrandyBoxAPI, CredentialsStore). Use type hints and docstrings (Google or NumPy style) for public modules, classes, and key functions.
 - **Docs**: When changing client or backend code, update or regenerate the project documentation. From repo root run `mkdocs build` (output in `site/`) or `mkdocs serve` for live preview.
+- **Git commits in Cursor**: To avoid the Source Control commit button hanging, always type the commit message in the "Message" field before clicking Commit. If you need to amend or the UI still hangs, use the terminal: `git commit -m "Your message"` or `git commit --amend`.
