@@ -21,7 +21,7 @@ async def send_password_email(
     temp_password: str,
     first_name: str,
 ) -> None:
-    """Send the temporary password to the user's email. Raises on SMTP failure."""
+    """Send the temporary password to the user's email. Raises RuntimeError on failure."""
     settings = get_settings()
     if not settings.smtp_host or not settings.smtp_from:
         raise RuntimeError("SMTP not configured (BRANDYBOX_SMTP_HOST / SMTP_FROM)")
@@ -40,14 +40,22 @@ Log in at the Brandy Box desktop app with your email and this password.
 Best regards,
 Brandy Box
 """)
-    await aiosmtplib.send(
-        msg,
-        hostname=settings.smtp_host,
-        port=settings.smtp_port,
-        username=settings.smtp_user or None,
-        password=settings.smtp_password or None,
-        use_tls=settings.smtp_port == 587,
-    )
+    # Port 587 = STARTTLS (connect plain then upgrade). Port 465 = direct TLS.
+    use_tls = settings.smtp_port == 465
+    start_tls = settings.smtp_port == 587
+    try:
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.smtp_host,
+            port=settings.smtp_port,
+            username=settings.smtp_user or None,
+            password=settings.smtp_password or None,
+            use_tls=use_tls,
+            start_tls=start_tls,
+        )
+    except Exception as e:
+        log.warning("SMTP send failed to %s: %s", to_email, e)
+        raise RuntimeError("Email could not be sent. Check SMTP configuration.") from e
 
 
 async def get_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
@@ -79,11 +87,21 @@ async def create_user(
     )
     session.add(user)
     await session.flush()
-    try:
-        await send_password_email(payload.email, temp_password, payload.first_name)
-    except Exception as e:
-        log.warning("Failed to send password email to %s: %s", payload.email, e)
-        raise
+    settings = get_settings()
+    if settings.smtp_host and settings.smtp_from:
+        try:
+            await send_password_email(payload.email, temp_password, payload.first_name)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            log.warning("Failed to send password email to %s: %s", payload.email, e)
+            raise RuntimeError("Email could not be sent. Check SMTP configuration.") from e
+    else:
+        log.info(
+            "User %s created; SMTP not configured. Temporary password: %s",
+            payload.email,
+            temp_password,
+        )
     return user, temp_password
 
 

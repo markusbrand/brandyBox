@@ -275,18 +275,22 @@ def show_settings(
             f.grid(row=0, column=0, sticky="nsew")
             ttk.Label(f, text="Email").grid(row=0, column=0, sticky="w", pady=(0, 2))
             email_var = tk.StringVar()
-            ttk.Entry(f, textvariable=email_var, width=36).grid(row=1, column=0, pady=(0, 8))
+            email_entry = ttk.Entry(f, textvariable=email_var, width=36)
+            email_entry.grid(row=1, column=0, pady=(0, 8))
             ttk.Label(f, text="First name").grid(row=2, column=0, sticky="w", pady=(0, 2))
             first_var = tk.StringVar()
-            ttk.Entry(f, textvariable=first_var, width=36).grid(row=3, column=0, pady=(0, 8))
+            first_entry = ttk.Entry(f, textvariable=first_var, width=36)
+            first_entry.grid(row=3, column=0, pady=(0, 8))
             ttk.Label(f, text="Last name").grid(row=4, column=0, sticky="w", pady=(0, 2))
             last_var = tk.StringVar()
-            ttk.Entry(f, textvariable=last_var, width=36).grid(row=5, column=0, pady=(0, 12))
+            last_entry = ttk.Entry(f, textvariable=last_var, width=36)
+            last_entry.grid(row=5, column=0, pady=(0, 12))
 
             def do_create() -> None:
-                email = email_var.get().strip()
-                first = first_var.get().strip()
-                last = last_var.get().strip()
+                # Read from Entry widgets; on some systems StringVar lags until focus leaves
+                email = email_entry.get().strip()
+                first = first_entry.get().strip()
+                last = last_entry.get().strip()
                 if not email:
                     messagebox.showerror("Error", "Enter email.", parent=win)
                     return
