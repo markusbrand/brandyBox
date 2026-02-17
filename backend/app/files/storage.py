@@ -6,9 +6,9 @@ from typing import List, Optional
 
 from app.config import get_settings
 
-# Safe path segment for file/dir names (no @ to avoid ambiguity; space allowed)
+# Safe path segment for file/dir names (no @ to avoid ambiguity; space, parens for "File (1).txt" etc.)
 # Hyphen escaped so it's literal, not a range
-_SAFE_SEGMENT = re.compile(r"^[a-zA-Z0-9_. \-]+$")
+_SAFE_SEGMENT = re.compile(r"^[a-zA-Z0-9_. \-()]+$")
 # Email used as folder name: allow @ and dots
 _SAFE_EMAIL = re.compile(r"^[a-zA-Z0-9_.@-]+$")
 
