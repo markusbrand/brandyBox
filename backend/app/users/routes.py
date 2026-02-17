@@ -12,11 +12,13 @@ from app.auth.jwt import (
     create_access_token,
     create_refresh_token,
     get_subject_from_refresh,
+    hash_password,
     verify_password,
 )
 from app.config import get_settings
 from app.db.session import get_db
 from app.users.models import (
+    ChangePassword,
     RefreshRequest,
     TokenPair,
     User,
@@ -96,6 +98,32 @@ async def me(
 ) -> UserResponse:
     """Return current authenticated user."""
     return UserResponse.model_validate(current_user)
+
+
+@router.post("/auth/change-password")
+@limiter.limit("10/minute")
+async def change_password(
+    request: Request,
+    body: ChangePassword,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """Change the current user's password. Requires current password."""
+    if not verify_password(body.current_password, current_user.password_hash):
+        log.warning("Change password failed for email=%s: wrong current password", current_user.email)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect",
+        )
+    if not body.new_password or len(body.new_password.strip()) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 8 characters",
+        )
+    current_user.password_hash = hash_password(body.new_password)
+    await session.commit()
+    log.info("Password changed for email=%s", current_user.email)
+    return {"detail": "Password updated"}
 
 
 @router.post("/users", response_model=UserResponse)

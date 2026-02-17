@@ -1,6 +1,6 @@
 # Client overview
 
-Desktop app: system tray, sync, settings (server URL, folder, autostart, admin user management), login with keyring. Only one instance runs per user; a second start shows a message and exits (standalone Settings via `--settings` is allowed). When you choose a sync folder and confirm the warning, all contents of that folder are deleted and sync state is reset; the next sync downloads everything from the server (server is source of truth), then uploads local additions and propagates local deletions to the server. Deleting a folder locally removes all its files on the server on the next sync and the server removes now-empty parent directories; the same applies when the server has fewer files (e.g. deleted elsewhere)—local files are removed and empty directories cleaned up. Sync state (last-synced paths) must have been saved by at least one successful full sync for deletion propagation to work.
+Desktop app: system tray, sync, settings (server URL, folder, autostart, change password, admin user management), login with keyring. Only one instance runs per user; a second start shows a message and exits (standalone Settings via `--settings` is allowed). When you choose a sync folder and confirm the warning, all contents of that folder are deleted and sync state is reset; the next sync downloads everything from the server (server is source of truth), then uploads local additions and propagates local deletions to the server. Deleting a folder locally removes all its files on the server on the next sync and the server removes now-empty parent directories; the same applies when the server has fewer files (e.g. deleted elsewhere)—local files are removed and empty directories cleaned up. Sync state (last-synced paths) must have been saved by at least one successful full sync for deletion propagation to work.
 
 ## Layout
 
@@ -11,7 +11,7 @@ Desktop app: system tray, sync, settings (server URL, folder, autostart, admin u
 - `brandybox/sync/engine.py` – Sync order: propagate deletes both ways, download server→local, upload local→server
 - `brandybox/network.py` – Base URL: automatic (local vs remote) or manual. Local when WiFi SSID is "brandstaetter" or when on Ethernet and the Raspberry Pi at `http://192.168.0.150:8081` is reachable; otherwise remote (Cloudflare `https://brandybox.brandstaetter.rocks`).
 - `brandybox/config.py` – Sync folder, base URL mode and manual URL, autostart preference, platform startup entries, sync state, instance lock path
-- `brandybox/ui/` – Login window, settings (server URL automatic/manual, folder picker, autostart, admin: create/delete users), dialogs
+- `brandybox/ui/` – Login window, settings (server URL automatic/manual, folder picker, autostart, change password, admin: create/delete users), dialogs
 
 ## Logging
 

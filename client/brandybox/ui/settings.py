@@ -229,6 +229,77 @@ def show_settings(
     ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 12))
     row += 1
 
+    # --- Change password (any logged-in user) ---
+    if api:
+        ttk.Separator(frame, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=(12, 12))
+        row += 1
+        ttk.Label(frame, text="Account", font=("", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        row += 1
+
+        def change_password_dialog() -> None:
+            win = tk.Toplevel(root)
+            win.title("Change password")
+            win.transient(root)
+            win.grab_set()
+            win.resizable(False, False)
+            f = ttk.Frame(win, padding=16)
+            f.grid(row=0, column=0, sticky="nsew")
+            ttk.Label(f, text="Current password").grid(row=0, column=0, sticky="w", pady=(0, 2))
+            current_var = tk.StringVar()
+            current_entry = ttk.Entry(f, textvariable=current_var, show="*", width=36)
+            current_entry.grid(row=1, column=0, pady=(0, 8))
+            ttk.Label(f, text="New password").grid(row=2, column=0, sticky="w", pady=(0, 2))
+            new_var = tk.StringVar()
+            new_entry = ttk.Entry(f, textvariable=new_var, show="*", width=36)
+            new_entry.grid(row=3, column=0, pady=(0, 8))
+            ttk.Label(f, text="Confirm new password").grid(row=4, column=0, sticky="w", pady=(0, 2))
+            confirm_var = tk.StringVar()
+            confirm_entry = ttk.Entry(f, textvariable=confirm_var, show="*", width=36)
+            confirm_entry.grid(row=5, column=0, pady=(0, 12))
+
+            def do_change() -> None:
+                current = current_var.get()
+                new = new_entry.get()
+                confirm = confirm_entry.get()
+                if not current:
+                    messagebox.showerror("Error", "Enter your current password.", parent=win)
+                    return
+                if not new:
+                    messagebox.showerror("Error", "Enter a new password.", parent=win)
+                    return
+                if new != confirm:
+                    messagebox.showerror("Error", "New password and confirmation do not match.", parent=win)
+                    return
+                if len(new) < 8:
+                    messagebox.showerror("Error", "New password must be at least 8 characters.", parent=win)
+                    return
+                try:
+                    api.change_password(current, new)
+                    messagebox.showinfo("Done", "Password updated successfully.", parent=win)
+                    win.destroy()
+                except Exception as e:
+                    msg = str(e)
+                    try:
+                        from httpx import HTTPStatusError
+                        if isinstance(e, HTTPStatusError) and e.response is not None:
+                            try:
+                                msg = e.response.json().get("detail", msg)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    messagebox.showerror("Error", msg, parent=win)
+
+            btn_f = ttk.Frame(f)
+            btn_f.grid(row=6, column=0, pady=(0, 4))
+            ttk.Button(btn_f, text="Change password", command=do_change).pack(side="left", padx=(0, 8))
+            ttk.Button(btn_f, text="Cancel", command=win.destroy).pack(side="left")
+
+        ttk.Button(frame, text="Change password…", command=change_password_dialog).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        row += 1
+
     # --- Admin: user management ---
     is_admin = False
     if api:

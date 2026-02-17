@@ -77,6 +77,19 @@ class BrandyBoxAPI:
             r.raise_for_status()
             return r.json()
 
+    def change_password(self, current_password: str, new_password: str) -> None:
+        """POST /api/auth/change-password. Change own password (requires auth)."""
+        with httpx.Client(timeout=30.0) as client:
+            r = client.post(
+                f"{self._base_url}/api/auth/change-password",
+                json={
+                    "current_password": current_password,
+                    "new_password": new_password,
+                },
+                headers={**self._headers(), "Content-Type": "application/json"},
+            )
+            r.raise_for_status()
+
     def list_files(self) -> List[Dict[str, Any]]:
         """GET /api/files/list. Returns [{path, mtime}, ...]."""
         log.debug("GET /api/files/list")

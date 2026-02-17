@@ -7,7 +7,7 @@ Python FastAPI service in Docker on Raspberry Pi.
 - `app/main.py` – FastAPI app, CORS, lifespan (DB init, admin bootstrap)
 - `app/config.py` – Settings from env (`BRANDYBOX_*`)
 - `app/auth/` – JWT create/decode, dependencies (get_current_user, get_current_admin)
-- `app/users/` – User model, routes (login, refresh, me, admin create/delete), service (email)
+- `app/users/` – User model, routes (login, refresh, me, change-password, admin create/delete), service (email)
 - `app/files/` – Storage (safe path resolution), routes (list, upload, download, delete)
 - `app/db/` – SQLite async session, `init_db`
 
@@ -15,6 +15,7 @@ Python FastAPI service in Docker on Raspberry Pi.
 
 - `POST /api/auth/login` – email, password → access + refresh token
 - `POST /api/auth/refresh` – refresh token → new token pair
+- `POST /api/auth/change-password` – current_password, new_password (Bearer); change own password
 - `GET /api/users/me` – current user (Bearer)
 - `GET/POST/DELETE /api/users` – admin list, create, delete
 - `GET /api/files/list` – list files for user

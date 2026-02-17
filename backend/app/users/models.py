@@ -69,3 +69,10 @@ class RefreshRequest(BaseModel):
     """Refresh token request body."""
 
     refresh_token: str
+
+
+class ChangePassword(BaseModel):
+    """Request body for changing own password."""
+
+    current_password: str
+    new_password: str
