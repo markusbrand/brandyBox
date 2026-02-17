@@ -9,40 +9,50 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 
 ## Backend (Raspberry Pi)
 
-### Prerequisites
+### Install the service on the Pi
 
-- Docker and Docker Compose on the Pi
-- Cloudflare tunnel already pointing at the Pi (e.g. to port 8080)
-- Host path `/mnt/shared_storage/brandyBox` for user data
+1. **Prerequisites on the Pi**
+   - Docker and Docker Compose installed (e.g. `curl -fsSL https://get.docker.com | sh` then `sudo usermod -aG docker $USER`; log out and back in).
+   - Your HDD/storage mounted so that `/mnt/shared_storage/brandyBox` exists (create it if needed: `sudo mkdir -p /mnt/shared_storage/brandyBox && sudo chown pi:pi /mnt/shared_storage/brandyBox` or your Pi user).
+   - Cloudflare tunnel (or another way) pointing at the Pi, e.g. to port 8080.
 
-### Environment
+2. **Get the code on the Pi**
+   ```bash
+   cd ~
+   git clone https://github.com/markusbrand/brandyBox.git
+   cd brandyBox/backend
+   ```
 
-Create a `.env` in `backend/` (or export):
+3. **Create a `.env` file** in `backend/` with your secrets (no quotes needed for values):
+   ```bash
+   BRANDYBOX_JWT_SECRET=<generate-a-long-random-string>
+   BRANDYBOX_SMTP_HOST=smtp.example.com
+   BRANDYBOX_SMTP_PORT=587
+   BRANDYBOX_SMTP_USER=your-smtp-user
+   BRANDYBOX_SMTP_PASSWORD=your-smtp-password
+   BRANDYBOX_SMTP_FROM=brandybox@yourdomain.com
+   BRANDYBOX_ADMIN_EMAIL=admin@yourdomain.com
+   BRANDYBOX_ADMIN_INITIAL_PASSWORD=<choose-initial-admin-password>
+   BRANDYBOX_CORS_ORIGINS=https://brandybox.brandstaetter.rocks
+   ```
+   Generate a secret with e.g. `openssl rand -hex 32`.
 
-```bash
-BRANDYBOX_JWT_SECRET=<long-random-secret>
-BRANDYBOX_SMTP_HOST=smtp.example.com
-BRANDYBOX_SMTP_PORT=587
-BRANDYBOX_SMTP_USER=
-BRANDYBOX_SMTP_PASSWORD=
-BRANDYBOX_SMTP_FROM=brandybox@example.com
-BRANDYBOX_ADMIN_EMAIL=admin@example.com
-BRANDYBOX_ADMIN_INITIAL_PASSWORD=<initial-admin-password>
-BRANDYBOX_CORS_ORIGINS=https://brandybox.brandstaetter.rocks
-```
+4. **Build and start the container**
+   ```bash
+   docker compose up -d --build
+   ```
+   The first run builds the image; later runs start the existing image. The service listens on port 8080 and restarts automatically after a reboot.
 
-### Run
-
-```bash
-cd backend
-docker compose up -d
-```
-
-API: `http://<pi-ip>:8080` (LAN) or via tunnel at `https://brandybox.brandstaetter.rocks`. Health: `GET /health`.
+5. **Check it’s running**
+   ```bash
+   docker compose ps
+   curl http://localhost:8080/health
+   ```
+   You should see `{"status":"ok"}`. From another machine on the LAN use `http://<pi-ip>:8080/health`. Via the tunnel, use `https://brandybox.brandstaetter.rocks/health`.
 
 ### First admin
 
-Set `BRANDYBOX_ADMIN_EMAIL` and `BRANDYBOX_ADMIN_INITIAL_PASSWORD`; on first start the backend creates that user as admin. Admins can create/delete users (password is sent by email).
+On first start, the backend creates an admin user from `BRANDYBOX_ADMIN_EMAIL` and `BRANDYBOX_ADMIN_INITIAL_PASSWORD`. Use that account in the desktop client; admins can create and delete users (passwords are sent by email).
 
 ## Client (Desktop)
 
