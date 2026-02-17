@@ -35,6 +35,7 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    BRANDYBOX_ADMIN_INITIAL_PASSWORD=<choose-initial-admin-password>
    BRANDYBOX_CORS_ORIGINS=https://brandybox.brandstaetter.rocks
    ```
+   Bcrypt limits passwords to 72 bytes; longer values are truncated when hashed.
    Generate a secret with e.g. `openssl rand -hex 32`.
 
 4. **Build and start the container** (run from `backend/` so Docker finds `docker-compose.yml` and `.env`)

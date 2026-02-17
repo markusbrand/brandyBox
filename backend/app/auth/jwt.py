@@ -10,15 +10,24 @@ from app.config import get_settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# Bcrypt limits input to 72 bytes; truncate to avoid ValueError
+_BCRYPT_MAX_BYTES = 72
+
+
+def _truncate_for_bcrypt(s: str) -> str:
+    """Truncate string to 72 bytes (UTF-8) for bcrypt."""
+    b = s.encode("utf-8")[: _BCRYPT_MAX_BYTES]
+    return b.decode("utf-8", errors="ignore")
+
 
 def hash_password(password: str) -> str:
-    """Hash a password for storage."""
-    return pwd_context.hash(password)
+    """Hash a password for storage. Passwords longer than 72 bytes are truncated."""
+    return pwd_context.hash(_truncate_for_bcrypt(password))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a plain password against a hash."""
-    return pwd_context.verify(plain, hashed)
+    return pwd_context.verify(_truncate_for_bcrypt(plain), hashed)
 
 
 def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
