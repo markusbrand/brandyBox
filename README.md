@@ -96,6 +96,7 @@ python -m brandybox.main
 ## Documentation
 
 - [Installers](assets/installers/README_installers.md)
+- [E2E autonomous sync test](tests/e2e/README.md) – run `python -m tests.e2e.run_autonomous_sync` (requires test credentials and backend).
 - Development docs: `pip install mkdocs && mkdocs serve` then open http://127.0.0.1:8000, or `mkdocs build` for `site/`
 
 ## Security
