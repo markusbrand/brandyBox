@@ -1,6 +1,7 @@
 """Entry point: auth, login or tray, sync loop."""
 
 import logging
+import os
 import queue
 import sys
 from tkinter import Tk, messagebox
@@ -9,9 +10,35 @@ import httpx
 
 from brandybox.api.client import BrandyBoxAPI
 from brandybox.auth.credentials import CredentialsStore
-from brandybox.config import get_config_path, user_has_set_sync_folder
+from brandybox.config import get_config_path, get_instance_lock_path, user_has_set_sync_folder
 from brandybox.tray import run_tray
 from brandybox.ui.settings import show_login, show_settings
+
+# Hold the lock file open for the process lifetime so the lock stays acquired.
+_instance_lock_file = None
+
+
+def _try_acquire_single_instance_lock() -> bool:
+    """Acquire an exclusive lock so only one app instance runs per user. Returns True if acquired."""
+    global _instance_lock_file
+    path = get_instance_lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _instance_lock_file = open(path, "w", encoding="utf-8")
+    except OSError:
+        return False
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(_instance_lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(_instance_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, BlockingIOError):
+        _instance_lock_file.close()
+        _instance_lock_file = None
+        return False
+    return True
 
 
 def _setup_logging() -> None:
@@ -80,6 +107,17 @@ def main() -> None:
         root = Tk()
         root.withdraw()
         show_settings()
+        sys.exit(0)
+
+    # Single instance per user: only one tray/sync process
+    if not _try_acquire_single_instance_lock():
+        log.warning("Another instance is already running; exiting.")
+        root = Tk()
+        root.withdraw()
+        messagebox.showinfo(
+            "Brandy Box",
+            "Brandy Box is already running. Use the system tray icon to open Settings or quit.",
+        )
         sys.exit(0)
 
     api = BrandyBoxAPI()

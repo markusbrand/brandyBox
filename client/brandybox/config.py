@@ -27,6 +27,11 @@ def get_config_path() -> Path:
     return d / "config.json"
 
 
+def get_instance_lock_path() -> Path:
+    """Path to the single-instance lock file (per user)."""
+    return _config_dir() / "instance.lock"
+
+
 def get_sync_state_path() -> Path:
     """Path to file storing last-synced paths for bidirectional delete propagation."""
     d = _config_dir()
