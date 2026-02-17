@@ -1,7 +1,7 @@
 """File API routes: list, upload, download, delete."""
 
 import logging
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
@@ -15,6 +15,13 @@ from app.users.models import User
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 log = logging.getLogger(__name__)
+
+
+def _normalize_path_param(path: Optional[str]) -> str:
+    """Normalize path from query string: + means space in application/x-www-form-urlencoded."""
+    if not path:
+        return path or ""
+    return path.replace("+", " ")
 
 
 @router.get("/list", response_model=List[dict])
@@ -40,7 +47,7 @@ async def upload_file(
     """
     Upload a file. Query param: path (relative path). Body: raw file bytes.
     """
-    path_param = request.query_params.get("path")
+    path_param = _normalize_path_param(request.query_params.get("path"))
     if not path_param or not path_param.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -49,6 +56,7 @@ async def upload_file(
     try:
         target = resolve_user_path(current_user.email, path_param)
     except ValueError as e:
+        log.warning("upload_file rejected path=%r: %s", path_param, e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
@@ -69,7 +77,7 @@ async def download_file(
     """
     Download a file. Query param: path (relative path).
     """
-    path_param = request.query_params.get("path")
+    path_param = _normalize_path_param(request.query_params.get("path"))
     if not path_param or not path_param.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -78,6 +86,7 @@ async def download_file(
     try:
         target = resolve_user_path(current_user.email, path_param)
     except ValueError as e:
+        log.warning("download_file rejected path=%r: %s", path_param, e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
@@ -105,7 +114,7 @@ async def delete_file(
     Delete a file. Query param: path (relative path).
     Propagates deletion so other clients will remove the file on next sync.
     """
-    path_param = request.query_params.get("path")
+    path_param = _normalize_path_param(request.query_params.get("path"))
     if not path_param or not path_param.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -114,6 +123,7 @@ async def delete_file(
     try:
         storage_delete_file(current_user.email, path_param)
     except ValueError as e:
+        log.warning("delete_file rejected path=%r: %s", path_param, e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
