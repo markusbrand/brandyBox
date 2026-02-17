@@ -1,14 +1,15 @@
 # Brandy Box backend - run on Raspberry Pi
 # Usage:
 #   Set env vars (see below), then: docker compose up -d
-#   Storage and DB are in named volumes; override with bind mounts if needed.
+#   Host port defaults to 8081 to avoid conflict with other services on 8080.
+#   To use 8080 instead, add HOST_PORT=8080 to .env
 
 services:
   brandybox:
     build: .
     container_name: brandybox-backend
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8081}:8080"
     environment:
       - BRANDYBOX_STORAGE_BASE_PATH=/mnt/shared_storage/brandyBox
       - BRANDYBOX_DB_PATH=/home/pi/brandybox/brandybox.db

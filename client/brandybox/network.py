@@ -8,7 +8,7 @@ from typing import Optional
 # Defaults from plan
 LAN_HOST = "192.168.0.150"
 LAN_NETWORK_NAME = "brandstaetter"
-BACKEND_PORT = "8080"
+BACKEND_PORT = "8081"
 CLOUDFLARE_URL = "https://brandybox.brandstaetter.rocks"
 
 
@@ -58,7 +58,7 @@ def _on_lan_brandstaetter() -> bool:
 
 def get_base_url() -> str:
     """
-    Return backend base URL: http://192.168.0.150:8080 on LAN brandstaetter,
+    Return backend base URL: http://192.168.0.150:8081 on LAN brandstaetter,
     else https://brandybox.brandstaetter.rocks (no port in URL for HTTPS).
     """
     if _on_lan_brandstaetter():

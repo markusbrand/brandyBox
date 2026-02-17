@@ -5,7 +5,7 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 ## Architecture
 
 - **Backend**: Python (FastAPI) in Docker on Raspberry Pi. Storage under `/mnt/shared_storage/brandyBox/<email>/`. JWT auth, user CRUD (admin), file list/upload/download.
-- **Client**: Python desktop app (Windows, Linux, Mac) with system tray, sync engine, and keyring-backed login. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8080` when on LAN **brandstaetter**.
+- **Client**: Python desktop app (Windows, Linux, Mac) with system tray, sync engine, and keyring-backed login. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8081` when on LAN **brandstaetter**.
 
 ## Backend (Raspberry Pi)
 
@@ -14,7 +14,7 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 1. **Prerequisites on the Pi**
    - Docker and Docker Compose installed (e.g. `curl -fsSL https://get.docker.com | sh` then `sudo usermod -aG docker $USER`; log out and back in).
    - Your HDD/storage mounted so that `/mnt/shared_storage/brandyBox` exists (create it if needed: `sudo mkdir -p /mnt/shared_storage/brandyBox && sudo chown pi:pi /mnt/shared_storage/brandyBox` or your Pi user).
-   - Cloudflare tunnel (or another way) pointing at the Pi, e.g. to port 8080.
+   - Cloudflare tunnel (or another way) pointing at the Pi, e.g. to port 8081.
 
 2. **Get the code on the Pi**
    ```bash
@@ -41,14 +41,15 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    ```bash
    docker compose up -d --build
    ```
-   The first run builds the image; later runs start the existing image. The service listens on port 8080 and restarts automatically after a reboot.
+   The first run builds the image; later runs start the existing image. The service listens on **port 8081** by default (to avoid conflicts with other apps on 8080) and restarts automatically after a reboot. To use 8080 instead, add `HOST_PORT=8080` to `backend/.env`.
+   - If you see **“address already in use”**, add `HOST_PORT=8082` (or another free port) to `backend/.env`, run `docker compose down`, then `docker compose up -d` again. Point your Cloudflare tunnel and client at that port.
 
 5. **Check it’s running**
    ```bash
    docker compose ps
-   curl http://localhost:8080/health
+   curl http://localhost:8081/health
    ```
-   You should see `{"status":"ok"}`. From another machine on the LAN use `http://<pi-ip>:8080/health`. Via the tunnel, use `https://brandybox.brandstaetter.rocks/health`.
+   You should see `{"status":"ok"}`. From another machine on the LAN use `http://<pi-ip>:8081/health`. Via the tunnel, use `https://brandybox.brandstaetter.rocks/health`.
 
 ### First admin
 
