@@ -53,6 +53,7 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    ```
    You should see `{"status":"ok"}`. From another machine on the LAN use `http://<pi-ip>:8081/health`. Via the tunnel, use `https://brandybox.brandstaetter.rocks/health`.
    - If the container is **Exited** or curl fails, check logs: `docker compose logs` or `docker logs brandybox-backend`. Common causes: missing `BRANDYBOX_JWT_SECRET` in `.env`, or (on older compose) wrong `BRANDYBOX_DB_PATH`. The DB must use the `/data` volume (default `/data/brandybox.db`); do not set `BRANDYBOX_DB_PATH` to a path outside the container.
+   - After **pulling updates**, rebuild so the new code and dependencies are used: `docker compose build --no-cache && docker compose up -d`. Then wait ~15 s before `curl …/health`.
    - If you get **"Empty reply from server"**, wait 10–15 seconds after `docker compose up` (startup runs DB init and admin bootstrap), then try `curl` again. If it still fails, run `docker compose logs` to see if the app is crashing on the first request.
 
 ### First admin
