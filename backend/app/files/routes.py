@@ -64,7 +64,10 @@ async def upload_file(
     target.parent.mkdir(parents=True, exist_ok=True)
     body = await request.body()
     target.write_bytes(body)
-    log.info("upload_file user=%s path=%s size=%d", current_user.email, path_param, len(body))
+    if not target.exists():
+        log.error("upload_file wrote but file missing: %s", target)
+    else:
+        log.info("upload_file user=%s path=%s size=%d resolved=%s", current_user.email, path_param, len(body), target)
     return {"path": path_param, "size": len(body)}
 
 
