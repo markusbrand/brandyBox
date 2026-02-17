@@ -129,6 +129,7 @@ class SyncE2EScenario(BaseScenario):
         self._test_file_path = self._sync_folder / AUTOTEST_FILE
         self._test_folder_path = self._sync_folder / AUTOTEST_FOLDER
         self._test_folder_file_path = self._sync_folder / AUTOTEST_FOLDER_FILE
+        self._had_successful_login = False
 
     @property
     def name(self) -> str:
@@ -150,9 +151,10 @@ class SyncE2EScenario(BaseScenario):
         return StepResult("create_artifacts", True)
 
     def _step3_wait_sync_after_create(self) -> StepResult:
-        err, _ = _login_and_list(self._api)
+        err, files = _login_and_list(self._api)
         if err:
             return StepResult("wait_sync_create", False, err)
+        self._had_successful_login = True
         deadline = time.monotonic() + SYNC_WAIT_TIMEOUT
         last_paths = set()
         while time.monotonic() < deadline:
@@ -240,7 +242,10 @@ class SyncE2EScenario(BaseScenario):
             log.warning("Cleanup local artifacts: %s", e)
 
     def _cleanup_remote_artifacts(self) -> None:
-        """Delete test files on server via API (so next run starts clean)."""
+        """Delete test files on server via API (so next run starts clean). Skip if we never logged in (avoids extra login attempts on 401)."""
+        if not self._had_successful_login:
+            log.debug("Skipping remote cleanup (no successful login this run)")
+            return
         err, _ = _login_and_list(self._api)
         if err:
             return
