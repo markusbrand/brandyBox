@@ -1,9 +1,13 @@
-"""Client configuration: sync folder path, base URL, autostart."""
+"""Client configuration: sync folder path, base URL mode, autostart."""
 
+import json
 import os
 import sys
 from pathlib import Path
 from typing import Optional
+
+# Default remote base URL (Cloudflare); avoid importing network here to prevent circular import
+DEFAULT_REMOTE_BASE_URL = "https://brandybox.brandstaetter.rocks"
 
 
 def _config_dir() -> Path:
@@ -107,6 +111,56 @@ def set_autostart(enabled: bool) -> None:
     data["autostart"] = enabled
     path.write_text(__import__("json").dumps(data, indent=2), encoding="utf-8")
     _apply_autostart_platform(enabled)
+
+
+def get_base_url_mode() -> str:
+    """Return 'automatic' or 'manual'. Default is 'automatic'."""
+    path = get_config_path()
+    if not path.exists():
+        return "automatic"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("base_url_mode", "automatic") or "automatic"
+    except (json.JSONDecodeError, OSError):
+        return "automatic"
+
+
+def set_base_url_mode(mode: str) -> None:
+    """Persist base URL mode: 'automatic' or 'manual'."""
+    path = get_config_path()
+    data = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    data["base_url_mode"] = mode
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def get_manual_base_url() -> str:
+    """Return the manually configured base URL when mode is 'manual'. Default is Cloudflare URL."""
+    path = get_config_path()
+    if not path.exists():
+        return DEFAULT_REMOTE_BASE_URL
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return (data.get("manual_base_url") or "").strip() or DEFAULT_REMOTE_BASE_URL
+    except (json.JSONDecodeError, OSError):
+        return DEFAULT_REMOTE_BASE_URL
+
+
+def set_manual_base_url(url: str) -> None:
+    """Persist manual base URL (used when base_url_mode is 'manual')."""
+    path = get_config_path()
+    data = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    data["manual_base_url"] = (url or "").strip()
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _executable_command() -> list:

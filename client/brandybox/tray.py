@@ -208,10 +208,12 @@ class TrayApp:
 
     def _open_settings(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         """Open Settings on the main (UI) thread to avoid Linux tray/menu glitches."""
+        def open_() -> None:
+            show_settings(api=self._api)
         if self._schedule_ui:
-            self._schedule_ui(show_settings)
+            self._schedule_ui(open_)
         else:
-            show_settings()
+            open_()
 
     def _toggle_pause(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         self._paused = not self._paused

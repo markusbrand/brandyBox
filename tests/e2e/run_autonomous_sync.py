@@ -3,8 +3,8 @@
 Autonomous E2E sync test: run the sync scenario, on failure run cleanup and retry until success.
 
 Usage (from repo root):
-  export BRANDYBOX_TEST_EMAIL=mbrandstaetter48@gmail.com
-  export BRANDYBOX_TEST_PASSWORD=aSuras66
+  export BRANDYBOX_TEST_EMAIL=user@example.com
+  export BRANDYBOX_TEST_PASSWORD=<your-test-password>
   # optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER
   python -m tests.e2e.run_autonomous_sync
 

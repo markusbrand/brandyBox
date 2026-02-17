@@ -64,7 +64,7 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
     root.after(0, process_queue)  # start processing immediately so left-click → Settings works
     # If user has never set a sync folder, open Settings once so they see default ~/brandyBox (avoids broken tray menu on Linux)
     if not user_has_set_sync_folder():
-        root.after(200, lambda: schedule_ui(show_settings))
+        root.after(200, lambda: schedule_ui(lambda: show_settings(api=api)))
     root.mainloop()
 
 

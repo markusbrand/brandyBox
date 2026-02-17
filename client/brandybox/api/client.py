@@ -2,6 +2,7 @@
 
 import logging
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -34,6 +35,11 @@ class BrandyBoxAPI:
     def set_access_token(self, token: Optional[str]) -> None:
         """Set or clear the access token."""
         self._access_token = token
+
+    def set_base_url(self, base_url: str) -> None:
+        """Update the base URL (e.g. after user changes settings)."""
+        self._base_url = (base_url or "").rstrip("/")
+        log.debug("API client base_url updated to %s", self._base_url)
 
     def login(self, email: str, password: str) -> Dict[str, Any]:
         """POST /api/auth/login. Returns {access_token, refresh_token, expires_in}."""
@@ -122,4 +128,40 @@ class BrandyBoxAPI:
             if r.status_code == 404:
                 log.debug("delete_file path=%s: already gone (404)", relative_path)
                 return
+            r.raise_for_status()
+
+    # --- Admin: user management (admin only) ---
+
+    def list_users(self) -> List[Dict[str, Any]]:
+        """GET /api/users. List all users (admin only)."""
+        log.debug("GET /api/users")
+        with httpx.Client(timeout=30.0) as client:
+            r = client.get(
+                f"{self._base_url}/api/users",
+                headers=self._headers(),
+            )
+            r.raise_for_status()
+            return r.json()
+
+    def create_user(self, email: str, first_name: str, last_name: str) -> Dict[str, Any]:
+        """POST /api/users. Create a new user (admin only). Password is sent by email."""
+        log.debug("create_user email=%s", email)
+        with httpx.Client(timeout=30.0) as client:
+            r = client.post(
+                f"{self._base_url}/api/users",
+                json={"email": email, "first_name": first_name, "last_name": last_name},
+                headers={**self._headers(), "Content-Type": "application/json"},
+            )
+            r.raise_for_status()
+            return r.json()
+
+    def delete_user(self, email: str) -> None:
+        """DELETE /api/users/{email}. Delete a user (admin only)."""
+        log.debug("delete_user email=%s", email)
+        encoded = quote(email, safe="")
+        with httpx.Client(timeout=30.0) as client:
+            r = client.delete(
+                f"{self._base_url}/api/users/{encoded}",
+                headers=self._headers(),
+            )
             r.raise_for_status()
