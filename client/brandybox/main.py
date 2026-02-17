@@ -8,12 +8,20 @@ from tkinter import Tk, messagebox
 
 import httpx
 
-# Prefer Wayland on Linux when available; fall back to X11 (must be set before any GUI init).
+# Prefer Wayland on Linux when available (must be set before any GUI/toolkit init).
+# Qt (e.g. file dialogs, some tray backends) uses QT_QPA_PLATFORM; GTK uses GDK_BACKEND.
+# Tk windows still run via XWayland when the session is Wayland (Tk has no native Wayland support).
 if sys.platform == "linux":
-    if os.environ.get("XDG_SESSION_TYPE") == "wayland" or os.environ.get("WAYLAND_DISPLAY"):
+    on_wayland = (
+        os.environ.get("XDG_SESSION_TYPE") == "wayland"
+        or os.environ.get("WAYLAND_DISPLAY")
+    )
+    if on_wayland:
         os.environ.setdefault("GDK_BACKEND", "wayland")
+        os.environ.setdefault("QT_QPA_PLATFORM", "wayland")
     else:
         os.environ.setdefault("GDK_BACKEND", "x11")
+        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
 from brandybox.api.client import BrandyBoxAPI
 from brandybox.auth.credentials import CredentialsStore
@@ -77,6 +85,8 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
     schedule_ui = ui_queue.put
 
     root = Tk()
+    # Keep root off-screen and minimal so Toplevel(Settings) can map on Linux when we deiconify briefly
+    root.geometry("1x1+-10000+-10000")
     root.withdraw()
 
     def process_queue() -> None:
@@ -94,11 +104,12 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
         on_quit=root.quit,
         schedule_ui=schedule_ui,
         refresh_token_callback=lambda: creds.get_valid_access_token(api),
+        settings_parent=root,
     )
     root.after(0, process_queue)  # start processing immediately so left-click → Settings works
     # If user has never set a sync folder, open Settings once so they see default ~/brandyBox (avoids broken tray menu on Linux)
     if not user_has_set_sync_folder():
-        root.after(200, lambda: schedule_ui(lambda: show_settings(api=api)))
+        root.after(200, lambda: schedule_ui(lambda: show_settings(api=api, parent=root)))
     root.mainloop()
 
 

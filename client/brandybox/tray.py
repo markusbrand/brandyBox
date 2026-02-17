@@ -12,7 +12,10 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import tkinter as tk
 
 import pystray
 from PIL import Image, ImageDraw, ImageFont
@@ -129,12 +132,14 @@ class TrayApp:
         on_quit: Optional[Callable[[], None]] = None,
         schedule_ui: Optional[Callable[[Callable[[], None]], None]] = None,
         refresh_token_callback: Optional[Callable[[], Optional[str]]] = None,
+        settings_parent: Optional["tk.Tk"] = None,
     ) -> None:
         self._api = api
         self._api.set_access_token(access_token)
         self._on_quit = on_quit
         self._schedule_ui = schedule_ui
         self._refresh_token = refresh_token_callback
+        self._settings_parent = settings_parent
         self._paused = False
         self._status = "synced"  # synced | syncing | error
         self._last_error: Optional[str] = None  # so user can see why sync failed (tooltip)
@@ -250,7 +255,12 @@ class TrayApp:
     def _open_settings(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         """Open Settings on the main (UI) thread to avoid Linux tray/menu glitches."""
         def open_() -> None:
-            show_settings(api=self._api)
+            try:
+                log.info("Opening Settings window")
+                show_settings(api=self._api, parent=self._settings_parent)
+                log.info("show_settings returned")
+            except Exception:
+                log.exception("Failed to open Settings window")
         if self._schedule_ui:
             self._schedule_ui(open_)
         else:
@@ -307,12 +317,16 @@ def run_tray(
     on_quit: Optional[Callable[[], None]] = None,
     schedule_ui: Optional[Callable[[Callable[[], None]], None]] = None,
     refresh_token_callback: Optional[Callable[[], Optional[str]]] = None,
+    settings_parent: Optional["tk.Tk"] = None,
 ) -> None:
     """
     Create and run tray app. If schedule_ui is provided, the tray runs in a
     background thread and schedule_ui(fn) is used to run UI (e.g. Settings)
     on the main thread; callers must run a mainloop and process scheduled calls.
     refresh_token_callback() can return a new access token on 401 so sync retries.
+    settings_parent: when set, Settings opens as a Toplevel so it can be reopened.
     """
-    app = TrayApp(api, access_token, on_quit, schedule_ui, refresh_token_callback)
+    app = TrayApp(
+        api, access_token, on_quit, schedule_ui, refresh_token_callback, settings_parent
+    )
     app.run()

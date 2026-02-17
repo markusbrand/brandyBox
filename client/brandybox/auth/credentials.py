@@ -26,9 +26,15 @@ class CredentialsStore:
     def get_stored(self) -> Optional[Tuple[str, str]]:
         """
         Return (email, refresh_token) if stored, else None.
+        On keyring read error (e.g. UnicodeDecodeError from corrupted entry), returns None
+        so the app can show login and overwrite the entry.
         """
-        email = keyring.get_password(SERVICE_NAME, KEY_EMAIL)
-        token = keyring.get_password(SERVICE_NAME, KEY_REFRESH_TOKEN)
+        try:
+            email = keyring.get_password(SERVICE_NAME, KEY_EMAIL)
+            token = keyring.get_password(SERVICE_NAME, KEY_REFRESH_TOKEN)
+        except Exception as e:
+            log.warning("Could not read stored credentials: %s", e)
+            return None
         if email and token:
             return (email, token)
         return None

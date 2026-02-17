@@ -19,7 +19,7 @@ Logs are written to a file in the config directory (e.g. `~/.config/brandybox/br
 
 ## Linux display and tray
 
-On Linux the app prefers **Wayland** when the session is Wayland (`XDG_SESSION_TYPE=wayland` or `WAYLAND_DISPLAY` set) and falls back to **X11** otherwise; `GDK_BACKEND` is set accordingly before any GUI toolkit initializes (GTK-based components such as file dialogs use this; Tk windows use the display provided by the session).
+On Linux the app prefers **Wayland** when the session is Wayland (`XDG_SESSION_TYPE=wayland` or `WAYLAND_DISPLAY` set) and falls back to **X11** otherwise. Before any GUI init we set `QT_QPA_PLATFORM=wayland` (or `xcb` on X11) and `GDK_BACKEND=wayland` (or `x11`) so Qt and GTK components (e.g. file dialogs, some tray backends) use the native display. **Tk** (settings and login windows) has no native Wayland support and will run under XWayland when the session is Wayland; only a switch to another GUI toolkit (e.g. Qt) would allow those windows to be native Wayland.
 
 ## Linux / KDE system tray
 

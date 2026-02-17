@@ -168,6 +168,31 @@ def set_manual_base_url(url: str) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+def get_settings_window_geometry() -> Optional[str]:
+    """Last saved settings window geometry (e.g. '500x560+100+200') or None."""
+    path = get_config_path()
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("settings_window_geometry")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def set_settings_window_geometry(geometry: str) -> None:
+    """Save settings window geometry for next time."""
+    path = get_config_path()
+    data = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+    data["settings_window_geometry"] = geometry
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
 def _executable_command() -> list:
     """Command to run Brandy Box (for startup entry)."""
     if getattr(sys, "frozen", False):

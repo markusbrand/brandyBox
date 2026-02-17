@@ -1,14 +1,15 @@
 """Folder picker, login form, admin panel.
 
-UI follows Google Material Design–inspired guidelines: clear hierarchy,
-consistent spacing, primary/secondary actions, and a light, clean theme.
+Modern flat UI: clear hierarchy, consistent spacing, primary/secondary actions.
+Uses a clean sans-serif font and flat buttons (no scrollbar, no legacy 3D look).
 """
 
 import logging
 import shutil
+import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk, filedialog, messagebox
+from tkinter import font as tkfont, ttk, filedialog, messagebox
 from typing import TYPE_CHECKING, Callable, List, Optional
 
 from brandybox import config as app_config
@@ -20,30 +21,60 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Material-inspired spacing (logical pixels)
+# Spacing (logical pixels)
 PAD_WINDOW = 24
 PAD_SECTION = 20
 PAD_ROW = 8
-PAD_CONTROL = 6
 
-# Colors (Material-style)
+# Modern sans-serif (widely available per platform)
+def _font_family() -> str:
+    if sys.platform == "win32":
+        return "Segoe UI"
+    if sys.platform == "darwin":
+        return "SF Pro Text"
+    # Linux: Liberation Sans is in most distros; DejaVu Sans and Ubuntu are common
+    return "Liberation Sans"
+
+FONT_FAMILY = _font_family()
+FONT_SIZE = 11
+FONT_SIZE_TITLE = 13
+FONT_SIZE_CAPTION = 10
+
+# Colors
 COLOR_PRIMARY = "#1a73e8"
 COLOR_PRIMARY_HOVER = "#1557b0"
 COLOR_SURFACE = "#ffffff"
-COLOR_BACKGROUND = "#f8f9fa"
+COLOR_BACKGROUND = "#f5f5f5"
 COLOR_ON_SURFACE = "#202124"
 COLOR_ON_SURFACE_VARIANT = "#5f6368"
-COLOR_OUTLINE = "#dadce0"
+COLOR_OUTLINE = "#e0e0e0"
+COLOR_BTN_SECONDARY_BG = "#e8eaed"
+COLOR_BTN_SECONDARY_FG = "#202124"
+BTN_RADIUS = 8  # rounded corner radius (pixels)
 
 
-def _apply_material_theme(root: tk.Tk | tk.Toplevel) -> None:
-    """Apply a clean, Material-inspired ttk theme (clam for consistent styling)."""
+def _rounded_rect(canvas: tk.Canvas, x0: int, y0: int, x1: int, y1: int, r: int, **kw: object) -> None:
+    """Draw a rounded rectangle on canvas (Google/Apple style)."""
+    if r <= 0:
+        canvas.create_rectangle(x0, y0, x1, y1, **kw)
+        return
+    # Corners (arcs), then edges (rectangles)
+    canvas.create_arc(x0, y0, x0 + 2 * r, y0 + 2 * r, start=90, extent=90, style=tk.PIESLICE, **kw)
+    canvas.create_arc(x1 - 2 * r, y0, x1, y0 + 2 * r, start=0, extent=90, style=tk.PIESLICE, **kw)
+    canvas.create_arc(x1 - 2 * r, y1 - 2 * r, x1, y1, start=270, extent=90, style=tk.PIESLICE, **kw)
+    canvas.create_arc(x0, y1 - 2 * r, x0 + 2 * r, y1, start=180, extent=90, style=tk.PIESLICE, **kw)
+    canvas.create_rectangle(x0 + r, y0, x1 - r, y1, **kw)
+    canvas.create_rectangle(x0, y0 + r, x0 + r, y1 - r, **kw)
+    canvas.create_rectangle(x1 - r, y0 + r, x1, y1 - r, **kw)
+
+
+def _apply_theme(root: tk.Tk | tk.Toplevel) -> None:
+    """Apply flat, modern ttk theme and fonts."""
     style = ttk.Style(root)
     try:
         style.theme_use("clam")
     except tk.TclError:
         pass
-    # Base
     style.configure(
         "TFrame",
         background=COLOR_SURFACE,
@@ -52,60 +83,147 @@ def _apply_material_theme(root: tk.Tk | tk.Toplevel) -> None:
         "TLabel",
         background=COLOR_SURFACE,
         foreground=COLOR_ON_SURFACE,
-        font=("", 10),
+        font=(FONT_FAMILY, FONT_SIZE),
     )
     style.configure(
         "Title.TLabel",
         background=COLOR_SURFACE,
         foreground=COLOR_ON_SURFACE,
-        font=("", 12, "bold"),
+        font=(FONT_FAMILY, FONT_SIZE_TITLE, "bold"),
     )
     style.configure(
         "Caption.TLabel",
         background=COLOR_SURFACE,
         foreground=COLOR_ON_SURFACE_VARIANT,
-        font=("", 9),
+        font=(FONT_FAMILY, FONT_SIZE_CAPTION),
     )
     style.configure(
         "TEntry",
         fieldbackground=COLOR_SURFACE,
         foreground=COLOR_ON_SURFACE,
-        padding=8,
-    )
-    style.configure(
-        "TButton",
-        padding=(20, 10),
-        font=("", 10),
-    )
-    style.configure(
-        "Primary.TButton",
-        background=COLOR_PRIMARY,
-        foreground=COLOR_SURFACE,
-        padding=(24, 12),
-        font=("", 10, "bold"),
-    )
-    style.map(
-        "Primary.TButton",
-        background=[("active", COLOR_PRIMARY_HOVER), ("pressed", COLOR_PRIMARY_HOVER)],
+        font=(FONT_FAMILY, FONT_SIZE),
+        padding=10,
     )
     style.configure(
         "TRadiobutton",
         background=COLOR_SURFACE,
         foreground=COLOR_ON_SURFACE,
-        font=("", 10),
+        font=(FONT_FAMILY, FONT_SIZE),
     )
     style.configure(
         "TCheckbutton",
         background=COLOR_SURFACE,
         foreground=COLOR_ON_SURFACE,
-        font=("", 10),
+        font=(FONT_FAMILY, FONT_SIZE),
     )
-    style.configure(
-        "Horizontal.TSeparator",
-        background=COLOR_OUTLINE,
-    )
+    # Modern thin scrollbar (Apple/Google style)
+    try:
+        style.configure(
+            "Vertical.TScrollbar",
+            background=COLOR_OUTLINE,
+            troughcolor=COLOR_BACKGROUND,
+            darkcolor=COLOR_OUTLINE,
+            lightcolor=COLOR_OUTLINE,
+            bordercolor=COLOR_SURFACE,
+            arrowcolor=COLOR_ON_SURFACE_VARIANT,
+        )
+        style.configure(
+            "Horizontal.TScrollbar",
+            background=COLOR_OUTLINE,
+            troughcolor=COLOR_BACKGROUND,
+            darkcolor=COLOR_OUTLINE,
+            lightcolor=COLOR_OUTLINE,
+            bordercolor=COLOR_SURFACE,
+            arrowcolor=COLOR_ON_SURFACE_VARIANT,
+        )
+    except tk.TclError:
+        pass
     if hasattr(root, "configure"):
         root.configure(bg=COLOR_SURFACE)
+
+
+def _rounded_btn(
+    parent: tk.Widget,
+    text: str,
+    command: Callable[[], None],
+    primary: bool,
+    **pack_kw: object,
+) -> tk.Frame:
+    """Rounded button (Google/Apple style). Returns the frame for pack/grid."""
+    bg = COLOR_PRIMARY if primary else COLOR_BTN_SECONDARY_BG
+    fg = COLOR_SURFACE if primary else COLOR_BTN_SECONDARY_FG
+    hover_bg = COLOR_PRIMARY_HOVER if primary else COLOR_OUTLINE
+    font_tuple = (FONT_FAMILY, FONT_SIZE, "bold") if primary else (FONT_FAMILY, FONT_SIZE)
+    padx, pady = (24, 12) if primary else (20, 10)
+
+    frame = tk.Frame(parent, bg=COLOR_SURFACE)
+
+    # Width from text so label is never cut; minimum for short labels
+    try:
+        font_obj = tkfont.Font(font=font_tuple)
+        text_w = font_obj.measure(text) + (padx * 2)
+    except (tk.TclError, TypeError):
+        text_w = 0
+    min_w = 140 if primary else 120
+    w = max(min_w, text_w)
+    h = 42 if primary else 38
+    canvas = tk.Canvas(
+        frame,
+        width=w,
+        height=h,
+        highlightthickness=0,
+        bg=frame.cget("bg"),
+    )
+    canvas.pack(fill=tk.BOTH, expand=True)
+
+    def draw(highlight: bool = False) -> None:
+        canvas.delete("all")
+        fill = hover_bg if highlight else bg
+        _rounded_rect(canvas, 0, 0, w, h, BTN_RADIUS, fill=fill, outline=fill)
+        canvas.create_text(
+            w // 2, h // 2,
+            text=text,
+            fill=fg,
+            font=font_tuple,
+        )
+
+    def on_enter(_e: tk.Event) -> None:
+        draw(highlight=True)
+
+    def on_leave(_e: tk.Event) -> None:
+        draw(highlight=False)
+
+    def on_click(_e: tk.Event) -> None:
+        command()
+
+    draw()
+    canvas.bind("<Enter>", on_enter)
+    canvas.bind("<Leave>", on_leave)
+    canvas.bind("<Button-1>", on_click)
+    canvas.configure(cursor="hand2")
+    if pack_kw:
+        frame.pack(**pack_kw)
+    return frame
+
+
+def _primary_btn(
+    parent: tk.Widget,
+    text: str,
+    command: Callable[[], None],
+    **pack_kw: object,
+) -> tk.Frame:
+    """Rounded primary (filled) button."""
+    return _rounded_btn(parent, text, command, primary=True, **pack_kw)
+
+
+def _secondary_btn(
+    parent: tk.Widget,
+    text: str,
+    command: Callable[[], None],
+    **pack_kw: object,
+) -> tk.Frame:
+    """Rounded secondary button."""
+    return _rounded_btn(parent, text, command, primary=False, **pack_kw)
 
 
 def _section(parent: tk.Widget, title: str, row: int) -> tuple[ttk.Frame, int]:
@@ -131,6 +249,138 @@ def _center(win: tk.Tk | tk.Toplevel) -> None:
     win.geometry(f"+{x}+{y}")
 
 
+def ask_directory(
+    parent: tk.Tk | tk.Toplevel,
+    title: str = "Select folder",
+    initialdir: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Custom folder picker: hidden files are hidden by default; checkbox to show them.
+    Returns the selected directory path or None if cancelled.
+    """
+    result: List[Optional[str]] = [None]
+    current = Path(initialdir or ".").resolve()
+    if not current.is_dir():
+        current = Path.home()
+
+    dlg = tk.Toplevel(parent)
+    dlg.title(title)
+    dlg.transient(parent)
+    dlg.resizable(True, True)
+    dlg.configure(bg=COLOR_SURFACE)
+    _apply_theme(dlg)
+    dlg.minsize(420, 380)
+
+    main = ttk.Frame(dlg, padding=PAD_WINDOW)
+    main.grid(row=0, column=0, sticky="nsew")
+    dlg.columnconfigure(0, weight=1)
+    dlg.rowconfigure(0, weight=1)
+    main.columnconfigure(0, weight=1)
+    main.rowconfigure(2, weight=1)
+
+    path_var = tk.StringVar(value=str(current))
+    show_hidden_var = tk.BooleanVar(value=False)
+
+    def list_entries() -> List[str]:
+        try:
+            entries = sorted(current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+        except OSError:
+            return []
+        out: List[str] = []
+        for p in entries:
+            if p.name.startswith(".") and not show_hidden_var.get():
+                continue
+            out.append(p.name + ("/" if p.is_dir() else ""))
+        return out
+
+    def refresh_list() -> None:
+        lb.delete(0, tk.END)
+        if current.parent != current:
+            lb.insert(tk.END, "../")
+        for name in list_entries():
+            lb.insert(tk.END, name)
+        path_var.set(str(current))
+
+    def go_up() -> None:
+        nonlocal current
+        if current.parent != current:
+            current = current.parent
+            refresh_list()
+
+    def on_double_click(event: tk.Event) -> None:
+        nonlocal current
+        sel = lb.curselection()
+        if not sel:
+            return
+        name = lb.get(sel[0]).rstrip("/")
+        if name == "..":
+            go_up()
+            return
+        child = current / name
+        if child.is_dir():
+            current = child
+            refresh_list()
+        else:
+            # could select folder and click "Select folder" – we only allow selecting dirs
+            pass
+
+    def on_show_hidden_change() -> None:
+        refresh_list()
+
+    def select_here() -> None:
+        result[0] = str(current)
+        dlg.destroy()
+
+    def cancel() -> None:
+        dlg.destroy()
+
+    ttk.Label(main, text="Current folder:", style="Caption.TLabel").grid(
+        row=0, column=0, sticky="w", pady=(0, 2)
+    )
+    path_label = ttk.Label(main, textvariable=path_var, wraplength=400)
+    path_label.grid(row=1, column=0, sticky="w", pady=(0, PAD_ROW))
+    main.columnconfigure(0, weight=1)
+
+    lb_frame = ttk.Frame(main)
+    lb_frame.grid(row=2, column=0, sticky="nsew", pady=(0, PAD_ROW))
+    lb_frame.columnconfigure(0, weight=1)
+    lb_frame.rowconfigure(0, weight=1)
+    lb = tk.Listbox(
+        lb_frame,
+        height=12,
+        font=(FONT_FAMILY, FONT_SIZE),
+        bg=COLOR_SURFACE,
+        fg=COLOR_ON_SURFACE,
+        selectbackground=COLOR_PRIMARY,
+        selectforeground=COLOR_SURFACE,
+        highlightthickness=0,
+    )
+    lb.grid(row=0, column=0, sticky="nsew")
+    lb.bind("<Double-Button-1>", on_double_click)
+    scroll = ttk.Scrollbar(lb_frame, orient="vertical", command=lb.yview)
+    scroll.grid(row=0, column=1, sticky="ns")
+    lb.configure(yscrollcommand=scroll.set)
+
+    cb = ttk.Checkbutton(
+        main,
+        text="Show hidden files",
+        variable=show_hidden_var,
+        command=on_show_hidden_change,
+    )
+    cb.grid(row=3, column=0, sticky="w", pady=(PAD_ROW, PAD_SECTION))
+
+    btn_f = ttk.Frame(main)
+    btn_f.grid(row=4, column=0, sticky="w")
+    _primary_btn(btn_f, "Select folder", select_here, side="left", padx=(0, PAD_ROW))
+    _secondary_btn(btn_f, "Cancel", cancel, side="left")
+
+    refresh_list()
+    dlg.grab_set()
+    _center(dlg)
+    dlg.wait_window()
+    return result[0]
+
+
 def show_login(
     on_success: Callable[[str, str], None],
     on_cancel: Optional[Callable[[], None]] = None,
@@ -142,7 +392,7 @@ def show_login(
     root.title("Brandy Box – Login")
     root.resizable(False, False)
     root.configure(bg=COLOR_SURFACE)
-    _apply_material_theme(root)
+    _apply_theme(root)
 
     main = ttk.Frame(root, padding=PAD_WINDOW)
     main.grid(row=0, column=0, sticky="nsew")
@@ -182,10 +432,8 @@ def show_login(
 
     btn_frame = ttk.Frame(main)
     btn_frame.grid(row=4, column=0, sticky="w", pady=(0, 0))
-    ttk.Button(btn_frame, text="Login", style="Primary.TButton", command=do_login).pack(
-        side="left", padx=(0, PAD_ROW)
-    )
-    ttk.Button(btn_frame, text="Cancel", command=do_cancel).pack(side="left")
+    _primary_btn(btn_frame, "Login", do_login, side="left", padx=(0, PAD_ROW))
+    _secondary_btn(btn_frame, "Cancel", do_cancel, side="left")
 
     main.columnconfigure(0, weight=1)
     root.update_idletasks()
@@ -197,40 +445,48 @@ def show_settings(
     on_choose_folder: Optional[Callable[[], None]] = None,
     on_toggle_autostart: Optional[Callable[[bool], None]] = None,
     api: Optional["BrandyBoxAPI"] = None,
+    parent: Optional[tk.Tk] = None,
 ) -> None:
     """
     Show settings window: server URL (automatic/manual), sync folder,
     autostart, and optionally admin user management.
     If api is provided and current user is admin, show create/delete users.
+    When parent is given (e.g. from tray), settings opens as a Toplevel so
+    it can be closed and reopened; otherwise a standalone Tk and mainloop().
     """
-    root = tk.Tk()
-    root.title("Brandy Box – Settings")
-    root.resizable(True, True)
-    root.minsize(460, 380)
-    root.configure(bg=COLOR_BACKGROUND)
-    _apply_material_theme(root)
+    log.info("show_settings: start parent=%s", parent is not None)
+    if parent is not None:
+        # On Linux, a Toplevel of a withdrawn parent may never map. Deiconify parent
+        # briefly so the Toplevel can be created and shown, then hide parent again.
+        parent.deiconify()
+        parent.update_idletasks()
+        log.info("show_settings: creating Toplevel")
+        win = tk.Toplevel(parent)
+        # Do not use transient(parent): when parent is later withdrawn, some WMs hide transient children
+        parent.withdraw()
+        win.deiconify()
+        win.lift()
+        log.info("show_settings: Toplevel created and raised")
+    else:
+        win = tk.Tk()
+        log.info("show_settings: Tk() created")
+    win.title("Brandy Box – Settings")
+    win.resizable(True, True)
+    win.minsize(500, 560)
+    saved_geom = app_config.get_settings_window_geometry()
+    if saved_geom:
+        try:
+            win.geometry(saved_geom)
+        except tk.TclError:
+            pass
+    win.configure(bg=COLOR_BACKGROUND)
+    _apply_theme(win)
+    log.info("show_settings: theme applied")
 
-    # Scrollable content
-    canvas = tk.Canvas(root, bg=COLOR_BACKGROUND, highlightthickness=0)
-    scrollbar = ttk.Scrollbar(root)
-    frame = ttk.Frame(canvas, padding=PAD_WINDOW)
-
-    def _on_frame_configure(_event: object) -> None:
-        canvas.configure(scrollregion=canvas.bbox("all"))
-
-    def _on_canvas_configure(event: tk.Event) -> None:
-        canvas.itemconfig(canvas_window_id, width=event.width)
-
-    frame.bind("<Configure>", _on_frame_configure)
-    canvas_window_id = canvas.create_window((0, 0), window=frame, anchor="nw")
-    canvas.bind("<Configure>", _on_canvas_configure)
-    canvas.configure(yscrollcommand=scrollbar.set)
-    scrollbar.configure(command=canvas.yview)
-
-    canvas.grid(row=0, column=0, sticky="nsew")
-    scrollbar.grid(row=0, column=1, sticky="ns")
-    root.columnconfigure(0, weight=1)
-    root.rowconfigure(0, weight=1)
+    frame = ttk.Frame(win, padding=PAD_WINDOW)
+    frame.grid(row=0, column=0, sticky="nsew")
+    win.columnconfigure(0, weight=1)
+    win.rowconfigure(0, weight=1)
 
     row = 0
 
@@ -317,10 +573,14 @@ def show_settings(
                 shutil.rmtree(child)
 
     def choose_folder() -> None:
-        folder = filedialog.askdirectory(parent=root, title="Select folder to sync")
+        folder = ask_directory(
+            win,
+            title="Select folder to sync",
+            initialdir=str(Path.home()),
+        )
         if not folder:
             return
-        if not confirm_folder_overwrite(root):
+        if not confirm_folder_overwrite(win):
             log.info("User cancelled folder selection")
             return
         p = Path(folder).resolve()
@@ -334,10 +594,10 @@ def show_settings(
         if on_choose_folder:
             on_choose_folder()
 
-    ttk.Button(sec2, text="Choose folder…", command=choose_folder).grid(
-        row=r2, column=0, columnspan=2, sticky="w", pady=(0, 0)
-    )
+    choose_btn = _secondary_btn(sec2, "Choose folder…", choose_folder)
+    choose_btn.grid(row=r2, column=0, columnspan=2, sticky="w", pady=(0, 0))
     sec2.columnconfigure(0, weight=1)
+    log.info("show_settings: sync folder section done")
 
     # --- Autostart ---
     sec3, r3 = _section(frame, "Startup", row)
@@ -363,17 +623,18 @@ def show_settings(
         row += 2
 
         def change_password_dialog() -> None:
-            win = tk.Toplevel(root)
-            win.title("Change password")
-            win.transient(root)
-            win.grab_set()
-            win.resizable(False, False)
-            win.configure(bg=COLOR_SURFACE)
-            _apply_material_theme(win)
-            f = ttk.Frame(win, padding=PAD_WINDOW)
+            dlg = tk.Toplevel(win)
+            dlg.title("Change password")
+            dlg.transient(win)
+            dlg.resizable(False, False)
+            dlg.minsize(400, 380)
+            dlg.geometry("400x380")
+            dlg.configure(bg=COLOR_SURFACE)
+            _apply_theme(dlg)
+            f = ttk.Frame(dlg, padding=PAD_WINDOW)
             f.grid(row=0, column=0, sticky="nsew")
-            win.columnconfigure(0, weight=1)
-            win.rowconfigure(0, weight=1)
+            dlg.columnconfigure(0, weight=1)
+            dlg.rowconfigure(0, weight=1)
             r = 0
             ttk.Label(f, text="Current password", style="Caption.TLabel").grid(
                 row=r, column=0, sticky="w", pady=(0, 2)
@@ -405,25 +666,25 @@ def show_settings(
                 new = new_entry.get()
                 confirm = confirm_entry.get()
                 if not current:
-                    messagebox.showerror("Error", "Enter your current password.", parent=win)
+                    messagebox.showerror("Error", "Enter your current password.", parent=dlg)
                     return
                 if not new:
-                    messagebox.showerror("Error", "Enter a new password.", parent=win)
+                    messagebox.showerror("Error", "Enter a new password.", parent=dlg)
                     return
                 if new != confirm:
                     messagebox.showerror(
-                        "Error", "New password and confirmation do not match.", parent=win
+                        "Error", "New password and confirmation do not match.", parent=dlg
                     )
                     return
                 if len(new) < 8:
                     messagebox.showerror(
-                        "Error", "New password must be at least 8 characters.", parent=win
+                        "Error", "New password must be at least 8 characters.", parent=dlg
                     )
                     return
                 try:
                     api.change_password(current, new)
-                    messagebox.showinfo("Done", "Password updated successfully.", parent=win)
-                    win.destroy()
+                    messagebox.showinfo("Done", "Password updated successfully.", parent=dlg)
+                    dlg.destroy()
                 except Exception as e:
                     msg = str(e)
                     try:
@@ -435,19 +696,19 @@ def show_settings(
                                 pass
                     except Exception:
                         pass
-                    messagebox.showerror("Error", msg, parent=win)
+                    messagebox.showerror("Error", msg, parent=dlg)
 
             btn_f = ttk.Frame(f)
             btn_f.grid(row=r, column=0, sticky="w", pady=(PAD_ROW, 0))
-            ttk.Button(btn_f, text="Change password", style="Primary.TButton", command=do_change).pack(
-                side="left", padx=(0, PAD_ROW)
-            )
-            ttk.Button(btn_f, text="Cancel", command=win.destroy).pack(side="left")
+            _primary_btn(btn_f, "Change password", do_change, side="left", padx=(0, PAD_ROW))
+            _secondary_btn(btn_f, "Cancel", dlg.destroy, side="left")
             f.columnconfigure(0, weight=1)
+            dlg.update_idletasks()
+            _center(dlg)
+            dlg.grab_set()
 
-        ttk.Button(sec4, text="Change password…", command=change_password_dialog).grid(
-            row=r4, column=0, columnspan=2, sticky="w", pady=(0, 0)
-        )
+        chpwd_btn = _secondary_btn(sec4, "Change password…", change_password_dialog)
+        chpwd_btn.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, 0))
         sec4.columnconfigure(0, weight=1)
 
     # --- Admin: user management ---
@@ -473,7 +734,7 @@ def show_settings(
             fg=COLOR_ON_SURFACE,
             selectbackground=COLOR_PRIMARY,
             selectforeground=COLOR_SURFACE,
-            font=("", 10),
+            font=(FONT_FAMILY, FONT_SIZE),
             highlightthickness=0,
         )
         users_listbox.pack(side="left", fill="both", expand=True)
@@ -494,20 +755,21 @@ def show_settings(
                         tk.END, f"{email}  ({u.get('first_name', '')} {u.get('last_name', '')})"
                     )
             except Exception as e:
-                messagebox.showerror("Error", f"Could not load users: {e}", parent=root)
+                messagebox.showerror("Error", f"Could not load users: {e}", parent=win)
 
         def create_user_dialog() -> None:
-            win = tk.Toplevel(root)
-            win.title("Create user")
-            win.transient(root)
-            win.grab_set()
-            win.resizable(False, False)
-            win.configure(bg=COLOR_SURFACE)
-            _apply_material_theme(win)
-            f = ttk.Frame(win, padding=PAD_WINDOW)
+            dlg = tk.Toplevel(win)
+            dlg.title("Create user")
+            dlg.transient(win)
+            dlg.resizable(False, False)
+            dlg.minsize(380, 320)
+            dlg.geometry("380x320")
+            dlg.configure(bg=COLOR_SURFACE)
+            _apply_theme(dlg)
+            f = ttk.Frame(dlg, padding=PAD_WINDOW)
             f.grid(row=0, column=0, sticky="nsew")
-            win.columnconfigure(0, weight=1)
-            win.rowconfigure(0, weight=1)
+            dlg.columnconfigure(0, weight=1)
+            dlg.rowconfigure(0, weight=1)
             r = 0
             ttk.Label(f, text="Email", style="Caption.TLabel").grid(row=r, column=0, sticky="w", pady=(0, 2))
             r += 1
@@ -533,20 +795,20 @@ def show_settings(
                 first = first_entry.get().strip()
                 last = last_entry.get().strip()
                 if not email:
-                    messagebox.showerror("Error", "Enter email.", parent=win)
+                    messagebox.showerror("Error", "Enter email.", parent=dlg)
                     return
                 if not first:
-                    messagebox.showerror("Error", "Enter first name.", parent=win)
+                    messagebox.showerror("Error", "Enter first name.", parent=dlg)
                     return
                 if not last:
-                    messagebox.showerror("Error", "Enter last name.", parent=win)
+                    messagebox.showerror("Error", "Enter last name.", parent=dlg)
                     return
                 try:
                     api.create_user(email, first, last)
                     messagebox.showinfo(
-                        "Created", "User created. Password will be sent by email.", parent=win
+                        "Created", "User created. Password will be sent by email.", parent=dlg
                     )
-                    win.destroy()
+                    dlg.destroy()
                     refresh_users_list()
                 except Exception as e:
                     msg = str(e)
@@ -559,44 +821,41 @@ def show_settings(
                                 pass
                     except Exception:
                         pass
-                    messagebox.showerror("Error", msg, parent=win)
+                    messagebox.showerror("Error", msg, parent=dlg)
 
             btn_f = ttk.Frame(f)
             btn_f.grid(row=r, column=0, sticky="w", pady=(PAD_ROW, 0))
-            ttk.Button(btn_f, text="Create", style="Primary.TButton", command=do_create).pack(
-                side="left", padx=(0, PAD_ROW)
-            )
-            ttk.Button(btn_f, text="Cancel", command=win.destroy).pack(side="left")
+            _primary_btn(btn_f, "Create", do_create, side="left", padx=(0, PAD_ROW))
+            _secondary_btn(btn_f, "Cancel", dlg.destroy, side="left")
             f.columnconfigure(0, weight=1)
+            dlg.update_idletasks()
+            _center(dlg)
+            dlg.grab_set()
 
         def delete_selected_user() -> None:
             sel = users_listbox.curselection()
             if not sel:
-                messagebox.showinfo("Info", "Select a user to delete.", parent=root)
+                messagebox.showinfo("Info", "Select a user to delete.", parent=win)
                 return
             idx = int(sel[0])
             if idx >= len(user_data):
                 return
             u = user_data[idx]
             email = u.get("email", "")
-            if not messagebox.askyesno("Confirm", f"Delete user {email}?", parent=root, icon="warning"):
+            if not messagebox.askyesno("Confirm", f"Delete user {email}?", parent=win, icon="warning"):
                 return
             try:
                 api.delete_user(email)
-                messagebox.showinfo("Done", "User deleted.", parent=root)
+                messagebox.showinfo("Done", "User deleted.", parent=win)
                 refresh_users_list()
             except Exception as e:
-                messagebox.showerror("Error", f"Could not delete user: {e}", parent=root)
+                messagebox.showerror("Error", f"Could not delete user: {e}", parent=win)
 
         btn_frame = ttk.Frame(sec5)
         btn_frame.grid(row=r5, column=0, columnspan=2, sticky="w", pady=(0, 0))
-        ttk.Button(btn_frame, text="Refresh list", command=refresh_users_list).pack(
-            side="left", padx=(0, PAD_ROW)
-        )
-        ttk.Button(btn_frame, text="Create user…", command=create_user_dialog).pack(
-            side="left", padx=(0, PAD_ROW)
-        )
-        ttk.Button(btn_frame, text="Delete selected", command=delete_selected_user).pack(side="left")
+        _secondary_btn(btn_frame, "Refresh list", refresh_users_list, side="left", padx=(0, PAD_ROW))
+        _primary_btn(btn_frame, "Create user…", create_user_dialog, side="left", padx=(0, PAD_ROW))
+        _secondary_btn(btn_frame, "Delete selected", delete_selected_user, side="left")
         sec5.columnconfigure(0, weight=1)
         refresh_users_list()
 
@@ -606,14 +865,34 @@ def show_settings(
                 app_config.set_sync_folder_path(Path(path_var.get()).resolve())
             except (OSError, ValueError):
                 pass
-        root.destroy()
+        try:
+            app_config.set_settings_window_geometry(win.geometry())
+        except Exception:
+            pass
+        win.destroy()
 
     # Footer with close
     close_frame = ttk.Frame(frame)
     close_frame.grid(row=row, column=0, sticky="w", pady=(PAD_SECTION, 0))
-    ttk.Button(close_frame, text="Close", command=on_close).pack(side="left")
+    _secondary_btn(close_frame, "Close", on_close, side="left")
+
+    win.protocol("WM_DELETE_WINDOW", on_close)
 
     frame.columnconfigure(0, weight=1)
-    root.update_idletasks()
-    _center(root)
-    root.mainloop()
+    log.info("show_settings: layout complete, centering")
+    win.update_idletasks()
+    if not saved_geom:
+        _center(win)
+    if parent is not None:
+        win.lift()
+        win.focus_force()
+        win.update()  # force map and draw so window is visible
+        log.info(
+            "show_settings: done (toplevel) viewable=%s mapped=%s",
+            win.winfo_viewable(),
+            win.winfo_ismapped(),
+        )
+    else:
+        log.info("show_settings: entering mainloop")
+    if parent is None:
+        win.mainloop()
