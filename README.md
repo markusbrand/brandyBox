@@ -37,8 +37,9 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    ```
    Generate a secret with e.g. `openssl rand -hex 32`.
 
-4. **Build and start the container**
+4. **Build and start the container** (run from `backend/` so Docker finds `docker-compose.yml` and `.env`)
    ```bash
+   cd ~/brandyBox/backend
    docker compose up -d --build
    ```
    The first run builds the image; later runs start the existing image. The service listens on **port 8081** by default (to avoid conflicts with other apps on 8080) and restarts automatically after a reboot. To use 8080 instead, add `HOST_PORT=8080` to `backend/.env`.
