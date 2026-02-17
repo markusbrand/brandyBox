@@ -7,14 +7,14 @@ pip install pyinstaller
 pyinstaller client/brandybox.spec
 ```
 
-Output: `client/dist/BrandyBox/` with the executable and assets.
+Output: `dist/BrandyBox/` with the executable and assets.
 
 ## Linux
 
 ```bash
 chmod +x assets/installers/linux_install.sh
 ./assets/installers/linux_install.sh
-# Or pass the build folder: ./assets/installers/linux_install.sh client/dist/BrandyBox
+# Or pass the build folder: ./assets/installers/linux_install.sh dist/BrandyBox
 ```
 
 Installs to `~/.local/share/brandybox` and adds `~/.local/share/applications/brandybox.desktop`. No sudo.
@@ -27,7 +27,7 @@ Installs to `~/.local/share/brandybox` and adds `~/.local/share/applications/bra
    ```cmd
    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" assets\installers\brandybox.iss
    ```
-4. Installer is created at `client/dist/BrandyBox-Setup.exe`. Run it for per-user install (no admin).
+4. Installer is created at `dist/BrandyBox-Setup.exe`. Run it for per-user install (no admin).
 
 ## macOS
 

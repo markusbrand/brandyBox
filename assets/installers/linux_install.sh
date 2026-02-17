@@ -1,12 +1,12 @@
 #!/bin/bash
 # Install Brandy Box for current user (no sudo). Run after building with PyInstaller.
 # Usage: ./linux_install.sh [path-to-BrandyBox-folder]
-# Default: ../dist/BrandyBox relative to this script.
+# Default: repo root dist/BrandyBox (pyinstaller client/brandybox.spec output).
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DIST="${1:-$REPO_ROOT/client/dist/BrandyBox}"
+DIST="${1:-$REPO_ROOT/dist/BrandyBox}"
 INSTALL_DIR="$HOME/.local/share/brandybox"
 APPS="$HOME/.local/share/applications"
 AUTOSTART="$HOME/.config/autostart"

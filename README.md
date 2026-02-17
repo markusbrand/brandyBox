@@ -74,9 +74,9 @@ python -m brandybox.main
 
 ### Build (installers)
 
-1. Generate logos (optional): `python scripts/generate_logos.py`
+1. Generate logos (optional, from repo root): `python scripts/generate_logos.py`
 2. Build: `pip install pyinstaller && pyinstaller client/brandybox.spec`
-3. Output: `client/dist/BrandyBox/`. See [assets/installers/README_installers.md](assets/installers/README_installers.md) for Linux/Windows/macOS installer steps.
+3. Output: `dist/BrandyBox/` (run the app with `dist/BrandyBox/BrandyBox`). See [assets/installers/README_installers.md](assets/installers/README_installers.md) for Linux/Windows/macOS installer steps.
 
 ### Usage
 

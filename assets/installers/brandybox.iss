@@ -5,7 +5,7 @@
 #define MyAppName "Brandy Box"
 #define MyAppExe "BrandyBox.exe"
 ; Default path - override on command line or set below to your dist path
-#define SourceDir "..\..\client\dist\BrandyBox"
+#define SourceDir "..\..\dist\BrandyBox"
 #define InstallDir "{localappdata}\BrandyBox"
 
 [Setup]
@@ -14,7 +14,7 @@ AppName={#MyAppName}
 AppVersion=0.1.0
 DefaultDirName={#InstallDir}
 DefaultGroupName={#MyAppName}
-OutputDir=..\..\client\dist
+OutputDir=..\..\dist
 OutputBaseFilename=BrandyBox-Setup
 Compression=lzma2
 SolidCompression=yes
