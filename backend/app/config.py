@@ -33,16 +33,16 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_initial_password: str = ""
 
-    # CORS (comma-separated origins, or default)
-    cors_origins: List[str] = ["https://brandybox.brandstaetter.rocks"]
+    # CORS: set as comma-separated string in env (e.g. https://brandybox.example.com)
+    # so pydantic-settings does not try to JSON-decode it
+    cors_origins: str = "https://brandybox.brandstaetter.rocks"
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v: object) -> List[str]:
-        """Parse CORS_ORIGINS from comma-separated env string."""
-        if isinstance(v, str):
-            return [o.strip() for o in v.split(",") if o.strip()]
-        return v if isinstance(v, list) else ["https://brandybox.brandstaetter.rocks"]
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """CORS origins as a list (split on comma)."""
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()] or [
+            "https://brandybox.brandstaetter.rocks"
+        ]
 
     # Server
     port: int = 8080

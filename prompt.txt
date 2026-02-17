@@ -1,5 +1,5 @@
 create a desktop application running on windows, linux und mac. It should be possible to install this application without admin permissions on the client.
-Provide an installer for all 3 operating systems (linux, windows and mac).
+Provide an installer for all 3 operating systems (linux, windows and mac). I prefer to use python as programming language.
 
 From the features and functionality it should be similar to dropbox.com desktop application. The name of the application should be 'Brandy Box'. Also automatically create logos for this application.
 
@@ -9,6 +9,13 @@ To ensure access to the raspberry pi we use a cloudflare tunnel, which I map to 
 The cloudflare service is already running on a docker container on the raspberry pi.
 If the client PC is connected to the local network with name 'brandstaetter'. It should automatically switch from the cloudflare tunnel to the direct host address of the raspberry pi which is 192.168.0.150.
 
-it should show a logo in the notification bar and start automatically on system boot. Also this logo should indicate whether the local folder has been synched successfully, is in synchronization state (synching), or failed to synchronize.
+the backend service for brandybox to be installed on the raspberry pi should run in a docker container and also implemented in python.
 
-If you open the application settings it offers the user to choose a local folder which is used for synching.
+the application 'brandybox' should show a logo in the notification bar and start automatically on system boot. Also this logo should indicate whether the local folder has been synched successfully, is in synchronization state (synching), or failed to synchronize.
+
+If you open the application settings it offers the user to choose a local folder which is used for synching (everything in this folder will be deleted and warning should be displayed to the user). For every user a subfolder is created on the raspberry pi below the main folder. the main folder is /mnt/shared_storage/brandyBox. The subfolder is then defined by the username. The username is always the email address. e.g. for user markus it should be "/mnt/shared_storage/brandyBox/markus@brandstaetter.rocks".
+the admin user has additionally the possbiliy to create new users or delete them. New users have a firstname, lastname and an email address which is also the unique identifier. the password will be sent to this email address and it is used for logging in into brandybox app.
+the login credentials should be stored on the client in a safe space to not always force the user to manually login.
+
+the whole application (backend on raspberry pi and frontend for the PC clients) should be implemented to the latest security standards, please use a skill to ensure that. Also use a skill for checking the use of proposed patterns, object oriented code organisation, structure everything in packages. the goal of the code should be that it is easy readable and maintainable for human developers. Seperate the frontend and backend code in different folders. create simple installers for all mentioned operating systems and also create a readme providing installation details. the code should be also documented within certain code sections and a full development documentation should be created automatically. once the code gets updated and potentially new features added the documentation should be updated automatically by the skill/agent.
+
