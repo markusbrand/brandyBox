@@ -1,10 +1,8 @@
 """System tray icon and menu (pystray).
 
-On Linux (e.g. KDE Plasma), the tray often displays icons at ~22–24 px. Using a
-larger icon (e.g. 64 px) can cause scaling artifacts and the rounded shape to
-appear as a plain square. We use a smaller nominal size on Linux so the icon
-stays crisp. On KDE, do not set PYSTRAY_BACKEND=gtk—Plasma often does not show
-Gtk.StatusIcon, so the icon can disappear entirely. Use the default backend.
+Linux (Wayland + KDE Plasma / Garuda): We draw a small RGB icon (22 px, circle + "B")
+with no transparency so AppIndicator displays it correctly. PNGs and RGBA often
+render as a solid block. XOrg backend (PYSTRAY_BACKEND=xorg) does not work on Wayland.
 """
 
 import logging
@@ -20,6 +18,24 @@ if TYPE_CHECKING:
 import pystray
 from PIL import Image, ImageDraw, ImageFont
 
+# On Linux with xorg backend: (1) the tray window can be 1x1 initially, producing a
+# single-pixel icon; force a minimum 24x24 draw size. (2) xorg has no context menu;
+# left-click runs the default action (Settings). We add a quick-access window on Linux.
+if getattr(pystray.Icon, "__module__", "").endswith("_xorg"):
+    try:
+        _xorg = __import__(pystray.Icon.__module__, fromlist=["Icon"])
+        _orig_assert = _xorg.Icon._assert_icon_data
+
+        def _patched_assert_icon_data(self, width, height):
+            # Force minimum 24x24 so we never draw a 1x1 (single-pixel) icon
+            width = max(width, 24)
+            height = max(height, 24)
+            return _orig_assert(self, width, height)
+
+        _xorg.Icon._assert_icon_data = _patched_assert_icon_data
+    except Exception:
+        pass
+
 from brandybox.api.client import BrandyBoxAPI
 from brandybox.config import get_base_url_mode, get_sync_folder_path, user_has_set_sync_folder
 from brandybox.network import get_base_url
@@ -29,28 +45,37 @@ from brandybox.ui.settings import show_settings
 
 log = logging.getLogger(__name__)
 
-# Tray icon size: Linux trays (KDE, etc.) often use ~22–24 px; a 64 px icon
-# scales badly and can show as a solid square. Use 32 px on Linux so the shape
-# and "B" stay visible.
+# Tray icon size: Linux trays (KDE Plasma on Wayland, etc.) often use ~22–24 px.
+# Use 32 px so the xorg backend has enough detail when the tray resizes the window.
 TRAY_ICON_SIZE_DEFAULT = 64
 TRAY_ICON_SIZE_LINUX = 32
 
 
 def _draw_fallback_icon(size: int, color: Tuple[int, int, int]) -> Image.Image:
-    """Draw a proper tray icon in memory (rounded box + B) so we never show a plain square."""
+    """Draw a proper tray icon in memory (rounded shape + B) so we never show a plain square.
+    On Linux use a circle so the tray can't render it as a square; otherwise rounded rect.
+    """
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    margin = max(1, size // 6)
-    # Keep radius visible at small sizes (e.g. 32 px on Linux) so it doesn't look like a square
-    r = max(2, size // 5)
-    outline_w = max(1, size // 16)  # thicker so it stays visible when tray scales down
-    d.rounded_rectangle(
-        [margin, margin, size - margin, size - margin],
-        radius=r,
-        fill=color + (255,),
-        outline=(255, 255, 255, 220),
-        width=outline_w,
-    )
+    margin = max(1, size // 8)
+    outline_w = max(1, size // 12)
+    if sys.platform == "linux":
+        # Circle: impossible for the tray to show as a square
+        d.ellipse(
+            [margin, margin, size - margin, size - margin],
+            fill=color + (255,),
+            outline=(255, 255, 255, 220),
+            width=outline_w,
+        )
+    else:
+        r = max(4, size // 3)  # very rounded so it doesn't look square when scaled
+        d.rounded_rectangle(
+            [margin, margin, size - margin, size - margin],
+            radius=r,
+            fill=color + (255,),
+            outline=(255, 255, 255, 220),
+            width=outline_w,
+        )
     # "B" so it's recognizable (large so it survives scaling to ~22px)
     font = None
     try:
@@ -78,19 +103,37 @@ def _draw_fallback_icon(size: int, color: Tuple[int, int, int]) -> Image.Image:
         x = (size - tw) // 2
         y = (size - th) // 2 - (size // 20)
         d.text((x, y), text, fill=(255, 255, 255, 255), font=font)
+    # On Linux pystray saves the icon as PNG; AppIndicator often shows RGBA as a solid block.
+    # Return RGB (no alpha) so the saved PNG is opaque and the shape is preserved.
+    if sys.platform == "linux":
+        bg = Image.new("RGB", (size, size), (38, 38, 38))  # dark grey, works on most trays
+        bg.paste(img, (0, 0), img)
+        return bg
     return img
 
 
 def _load_icon(path: Path, size: int = 64, fallback_color: Tuple[int, int, int] = (70, 130, 180)) -> Image.Image:
-    """Load PNG and resize, or draw a proper fallback icon (rounded B)."""
+    """Load PNG and resize, or draw a proper fallback icon (rounded B).
+    On Linux, composite onto an opaque background so AppIndicator (and similar
+    backends) don't render transparent PNGs as a solid square.
+    """
     if path.exists():
         try:
             img = Image.open(path).convert("RGBA")
             out = img.resize((size, size), Image.Resampling.LANCZOS)
-            if out.size == (size, size):
-                return out
-        except OSError:
-            pass
+            if out.size != (size, size):
+                return _draw_fallback_icon(size, fallback_color)
+            if sys.platform == "linux":
+                # AppIndicator often shows transparent PNGs as a solid square.
+                # Composite onto opaque background so the shape is preserved.
+                bg = Image.new("RGBA", (size, size), fallback_color + (255,))
+                bg.paste(out, (0, 0), out)
+                return bg
+            return out
+        except Exception as e:
+            log.info("Tray icon load failed for %s: %s, using fallback", path, e)
+    else:
+        log.debug("Tray icon missing at %s, using fallback", path)
     return _draw_fallback_icon(size, fallback_color)
 
 
@@ -111,13 +154,31 @@ def _is_connection_error(err: Optional[str]) -> bool:
     )
 
 
-def _icon_path(name: str) -> Path:
-    """Resolve icon path: PyInstaller bundle (sys._MEIPASS) or repo root."""
+def _repo_assets_logo_dir() -> Path:
+    """Return directory containing tray icons. Prefer package-bundled assets so
+    icons work when run from venv or any cwd; then PyInstaller bundle; then repo root.
+    """
     if getattr(sys, "frozen", False) and getattr(sys, "_MEIPASS", None):
-        base = Path(sys._MEIPASS)
-    else:
-        base = Path(__file__).resolve().parent.parent.parent
-    return base / "assets" / "logo" / name
+        return Path(sys._MEIPASS) / "assets" / "logo"
+    # 1) Package dir: brandybox/assets/logo (works for pip install -e and normal install)
+    pkg_assets = Path(__file__).resolve().parent / "assets" / "logo"
+    if pkg_assets.is_dir() and (pkg_assets / "icon_synced.png").exists():
+        return pkg_assets
+    # 2) Walk up from .../client/brandybox/tray.py to find repo root (has assets/logo)
+    start = Path(__file__).resolve()
+    for parent in start.parents:
+        assets_logo = parent / "assets" / "logo"
+        if assets_logo.is_dir():
+            return assets_logo
+    return start.parent.parent.parent / "assets" / "logo"
+
+
+def _icon_path(name: str) -> Path:
+    """Resolve path to a single icon file."""
+    assets_logo = _repo_assets_logo_dir()
+    path = assets_logo / name
+    log.debug("Icon path %s -> %s (exists=%s)", name, path, path.exists())
+    return path
 
 
 class TrayApp:
@@ -150,21 +211,27 @@ class TrayApp:
         self._stop_sync = threading.Event()
 
     def _get_icon_image(self) -> Image.Image:
-        # On Linux use a smaller size so the tray (often 22–24 px) doesn't scale down and lose shape
+        # On Linux use a smaller size so the tray (often 22–24 px) doesn't scale down and lose shape.
+        # On Linux we always use the drawn icon (circle + B): PNGs often render as a solid square
+        # with AppIndicator/Plasma, and compositing didn't help, so skip PNG there entirely.
         size = TRAY_ICON_SIZE_LINUX if sys.platform == "linux" else TRAY_ICON_SIZE_DEFAULT
         if self._status == "syncing":
-            path = _icon_path("icon_syncing.png")
-            if sys.platform == "linux" and path.exists():
-                return _load_icon(path, size, (255, 180, 80))
+            if sys.platform != "linux":
+                path = _icon_path("icon_syncing.png")
+                if path.exists():
+                    return _load_icon(path, size, (255, 180, 80))
             return _draw_fallback_icon(size, (255, 180, 80))
         if self._status == "error":
-            path = _icon_path("icon_error.png")
-            if sys.platform == "linux" and path.exists():
-                return _load_icon(path, size, (220, 80, 80))
+            if sys.platform != "linux":
+                path = _icon_path("icon_error.png")
+                if path.exists():
+                    return _load_icon(path, size, (220, 80, 80))
             return _draw_fallback_icon(size, (220, 80, 80))
-        path = _icon_path("icon_synced.png")
-        if sys.platform == "linux" and path.exists():
-            return _load_icon(path, size, (70, 130, 180))
+        # synced
+        if sys.platform != "linux":
+            path = _icon_path("icon_synced.png")
+            if path.exists():
+                return _load_icon(path, size, (70, 130, 180))
         return _draw_fallback_icon(size, (70, 130, 180))
 
     def _update_icon(self) -> None:
@@ -262,6 +329,7 @@ class TrayApp:
             except Exception:
                 log.exception("Failed to open Settings window")
         if self._schedule_ui:
+            log.info("Tray: scheduling Settings open (main thread will run it)")
             self._schedule_ui(open_)
         else:
             open_()
@@ -286,7 +354,8 @@ class TrayApp:
 
     def run(self) -> None:
         """Build menu, start sync thread, run tray (blocking unless schedule_ui set)."""
-        log.info("Tray starting (sync thread + icon)")
+        backend_name = pystray.Icon.__module__.split(".")[-1] if pystray.Icon.__module__ else "?"
+        log.info("Tray starting (backend=%s)", backend_name)
         # default=True: left-click on icon runs this (Dropbox-style: one click opens Settings)
         menu = pystray.Menu(
             pystray.MenuItem("Settings", self._open_settings, default=True),

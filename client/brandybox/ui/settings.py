@@ -375,8 +375,16 @@ def ask_directory(
     _secondary_btn(btn_f, "Cancel", cancel, side="left")
 
     refresh_list()
-    dlg.grab_set()
     _center(dlg)
+    dlg.update_idletasks()
+    # Defer grab until window is viewable (fixes "grab failed: window not viewable" on some WMs)
+    def set_grab() -> None:
+        try:
+            dlg.grab_set()
+        except tk.TclError:
+            pass
+
+    dlg.after(50, set_grab)
     dlg.wait_window()
     return result[0]
 
@@ -590,6 +598,7 @@ def show_settings(
         _clear_folder_contents(p)
         app_config.set_sync_folder_path(p)
         path_var.set(str(p))
+        win.update_idletasks()  # ensure path label refreshes
         log.info("Sync folder set to %s", p)
         if on_choose_folder:
             on_choose_folder()
@@ -705,7 +714,14 @@ def show_settings(
             f.columnconfigure(0, weight=1)
             dlg.update_idletasks()
             _center(dlg)
-            dlg.grab_set()
+
+            def set_grab_chpwd() -> None:
+                try:
+                    dlg.grab_set()
+                except tk.TclError:
+                    pass
+
+            dlg.after(50, set_grab_chpwd)
 
         chpwd_btn = _secondary_btn(sec4, "Change password…", change_password_dialog)
         chpwd_btn.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, 0))
@@ -716,9 +732,11 @@ def show_settings(
     if api:
         try:
             me = api.me()
-            is_admin = me.get("is_admin", False)
-        except Exception:
-            pass
+            # Backend may return is_admin or isAdmin
+            is_admin = me.get("is_admin", me.get("isAdmin", False))
+            log.info("show_settings: me is_admin=%s", is_admin)
+        except Exception as e:
+            log.warning("show_settings: could not fetch /me for admin check: %s", e)
 
     if is_admin and api:
         sec5, r5 = _section(frame, "User management (admin)", row)
@@ -830,7 +848,14 @@ def show_settings(
             f.columnconfigure(0, weight=1)
             dlg.update_idletasks()
             _center(dlg)
-            dlg.grab_set()
+
+            def set_grab_create() -> None:
+                try:
+                    dlg.grab_set()
+                except tk.TclError:
+                    pass
+
+            dlg.after(50, set_grab_create)
 
         def delete_selected_user() -> None:
             sel = users_listbox.curselection()

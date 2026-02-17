@@ -4,14 +4,31 @@ import logging
 import os
 import queue
 import sys
-from tkinter import Tk, messagebox
+from tkinter import Tk, Button, Frame, Toplevel, messagebox
 
 import httpx
+
+# Set when we fall back to xorg tray (no menu) because PyGObject is missing
+_tray_fallback_xorg = False
 
 # Prefer Wayland on Linux when available (must be set before any GUI/toolkit init).
 # Qt (e.g. file dialogs, some tray backends) uses QT_QPA_PLATFORM; GTK uses GDK_BACKEND.
 # Tk windows still run via XWayland when the session is Wayland (Tk has no native Wayland support).
 if sys.platform == "linux":
+    # Tray backend: if PyGObject (gi) is available, let pystray use AppIndicator (icon + menu).
+    # If gi is missing (e.g. venv without system gobject), force xorg so the app still runs
+    # (xorg has no context menu; we show a quick-access window instead).
+    _have_gi = False
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        import gi.repository.Gtk  # noqa: F401
+        _have_gi = True
+    except (ImportError, ValueError, OSError):
+        pass
+    if not _have_gi and os.environ.get("DISPLAY"):
+        os.environ.setdefault("PYSTRAY_BACKEND", "xorg")
+        globals()["_tray_fallback_xorg"] = True
     on_wayland = (
         os.environ.get("XDG_SESSION_TYPE") == "wayland"
         or os.environ.get("WAYLAND_DISPLAY")
@@ -79,10 +96,28 @@ def _setup_logging() -> None:
     root.info("Logging to %s", log_file)
 
 
+def _show_quick_access_window(root: Tk, api: BrandyBoxAPI, schedule_ui) -> None:
+    """Show a small window with Settings and Quit on Linux (xorg tray has no context menu)."""
+    win = Toplevel(root)
+    win.title("Brandy Box")
+    win.resizable(False, False)
+    win.attributes("-type", "dialog")
+    f = Frame(win, padx=12, pady=12)
+    f.pack(fill="both", expand=True)
+    Button(f, text="Open Settings", width=14, command=lambda: schedule_ui(lambda: show_settings(api=api, parent=root))).pack(side="left", padx=(0, 8))
+    Button(f, text="Quit", width=8, command=root.quit).pack(side="left")
+    win.update_idletasks()
+    # Position near top-right of screen
+    w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+    sw = root.winfo_screenwidth()
+    win.geometry(f"+{sw - w - 24}+24")
+    win.lift()
+
+
 def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsStore) -> None:
     """Run tray in a background thread and tk mainloop on main thread so Settings works on Linux."""
     ui_queue: queue.Queue = queue.Queue()
-    schedule_ui = ui_queue.put
+    main_log = logging.getLogger("brandybox.main")
 
     root = Tk()
     # Keep root off-screen and minimal so Toplevel(Settings) can map on Linux when we deiconify briefly
@@ -93,10 +128,16 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
         try:
             while True:
                 fn = ui_queue.get_nowait()
-                fn()
+                main_log.info("Main: running scheduled UI task")
+                try:
+                    fn()
+                except Exception:
+                    main_log.exception("Error running UI task (e.g. opening Settings)")
         except queue.Empty:
             pass
-        root.after(100, process_queue)
+        root.after(30, process_queue)  # poll every 30 ms so Settings opens quickly when tray is clicked
+
+    schedule_ui = ui_queue.put
 
     run_tray(
         api,
@@ -110,7 +151,23 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
     # If user has never set a sync folder, open Settings once so they see default ~/brandyBox (avoids broken tray menu on Linux)
     if not user_has_set_sync_folder():
         root.after(200, lambda: schedule_ui(lambda: show_settings(api=api, parent=root)))
+    # Only when using xorg backend (no context menu): show quick-access window
+    import pystray
+    if getattr(pystray.Icon, "__module__", "").endswith("_xorg"):
+        root.after(300, lambda: _show_quick_access_window(root, api, schedule_ui))
     root.mainloop()
+
+
+def _ensure_cwd_repo_root() -> None:
+    """Change process cwd to repo root so assets and file dialogs work when started from venv or desktop."""
+    try:
+        from brandybox.tray import _repo_assets_logo_dir
+        assets_logo = _repo_assets_logo_dir()
+        repo_root = assets_logo.parent.parent  # assets/logo -> assets -> repo root
+        if repo_root.is_dir():
+            os.chdir(repo_root)
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -118,6 +175,12 @@ def main() -> None:
     _setup_logging()
     log = logging.getLogger("brandybox.main")
     log.info("Brandy Box starting")
+    if _tray_fallback_xorg:
+        log.info(
+            "Tray: using xorg backend (no context menu). "
+            "For full tray icon + menu, install PyGObject: sudo pacman -S python-gobject"
+        )
+    _ensure_cwd_repo_root()
 
     # Standalone Settings window (e.g. "Brandy Box Settings" from app menu) – no tray, no login
     if "--settings" in sys.argv:

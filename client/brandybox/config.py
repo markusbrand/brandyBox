@@ -260,16 +260,34 @@ def _autostart_macos(enabled: bool, cmd: list) -> None:
             plist.unlink(missing_ok=True)
 
 
+def _repo_root() -> Optional[Path]:
+    """Repo root (parent of client/). None if frozen or not in a repo."""
+    if getattr(sys, "frozen", False):
+        return None
+    try:
+        # config.py is in client/brandybox/
+        p = Path(__file__).resolve().parent.parent.parent
+        if (p / "client" / "brandybox").is_dir():
+            return p
+    except Exception:
+        pass
+    return None
+
+
 def _autostart_linux(enabled: bool, cmd: list) -> None:
     autostart_dir = Path.home() / ".config" / "autostart"
     autostart_dir.mkdir(parents=True, exist_ok=True)
     desktop = autostart_dir / "brandybox.desktop"
     if enabled:
+        path_line = ""
+        root = _repo_root()
+        if root is not None:
+            path_line = f"Path={root}\n"
         desktop.write_text(f"""[Desktop Entry]
 Type=Application
 Name=Brandy Box
 Exec={" ".join(cmd)}
-X-GNOME-Autostart-enabled=true
+{path_line}X-GNOME-Autostart-enabled=true
 """, encoding="utf-8")
     else:
         if desktop.exists():

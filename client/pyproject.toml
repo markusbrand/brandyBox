@@ -24,6 +24,9 @@ dev = ["pytest>=7.0", "pytest-cov>=4.0"]
 where = ["."]
 include = ["brandybox*"]
 
+[tool.setuptools.package-data]
+brandybox = ["assets/logo/*.png"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
