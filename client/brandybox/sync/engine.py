@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 from typing import Callable, List, Optional, Set, Tuple
 
+import httpx
+
 from brandybox.api.client import BrandyBoxAPI
 from brandybox.config import get_sync_state_path
 
@@ -138,6 +140,17 @@ def sync_run(
             target = local_root.joinpath(*parts)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(body)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                # File was removed on server (e.g. by us in this cycle or another client); skip and remove locally if present
+                log.debug("Download %s: 404, file no longer on server", path)
+                parts = path.replace("\\", "/").split("/")
+                local_path = local_root.joinpath(*parts)
+                if local_path.exists() and local_path.is_file():
+                    local_path.unlink(missing_ok=True)
+                continue
+            log.error("Download %s: %s", path, e)
+            return f"Download {path}: {e}"
         except Exception as e:
             log.error("Download %s: %s", path, e)
             return f"Download {path}: {e}"
