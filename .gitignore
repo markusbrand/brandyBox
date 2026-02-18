@@ -1,7 +1,14 @@
-# Env and secrets
+# Env and secrets (never commit; use .env.example as template)
 .env
 .env.local
 *.env
+backend/.env
+
+# Database (runtime data)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 
 # Python
 __pycache__/

@@ -3,13 +3,13 @@
 Run all discovered E2E scenarios (BaseScenario subclasses in tests.e2e).
 
 Usage (from repo root):
-  export BRANDYBOX_TEST_EMAIL=markus@brandstaetter.rocks
+  export BRANDYBOX_TEST_EMAIL=you@example.com
   export BRANDYBOX_TEST_PASSWORD=<password>
   python -m tests.e2e.run_all_e2e
 
 Optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER, BRANDYBOX_E2E_MAX_ATTEMPTS.
 
-On Windows PowerShell, set env vars with: $env:BRANDYBOX_TEST_EMAIL = "markus@brandstaetter.rocks"
+On Windows PowerShell, set env vars with: $env:BRANDYBOX_TEST_EMAIL = "you@example.com"
 
 Scenarios are discovered by loading all modules under tests.e2e whose name
 matches *_scenario.py and collecting subclasses of BaseScenario (excluding
@@ -111,9 +111,9 @@ def main() -> int:
     password = os.environ.get("BRANDYBOX_TEST_PASSWORD", "").strip()
     if not email or not password:
         log.error("BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD must be set.")
-        log.error("PowerShell: $env:BRANDYBOX_TEST_EMAIL = \"markus@brandstaetter.rocks\"; $env:BRANDYBOX_TEST_PASSWORD = \"...\"")
-        log.error("CMD: set BRANDYBOX_TEST_EMAIL=markus@brandstaetter.rocks && set BRANDYBOX_TEST_PASSWORD=...")
-        log.error("Bash: export BRANDYBOX_TEST_EMAIL=markus@brandstaetter.rocks BRANDYBOX_TEST_PASSWORD=...")
+        log.error("PowerShell: $env:BRANDYBOX_TEST_EMAIL = \"you@example.com\"; $env:BRANDYBOX_TEST_PASSWORD = \"...\"")
+        log.error("CMD: set BRANDYBOX_TEST_EMAIL=you@example.com && set BRANDYBOX_TEST_PASSWORD=...")
+        log.error("Bash: export BRANDYBOX_TEST_EMAIL=you@example.com BRANDYBOX_TEST_PASSWORD=...")
         return 1
 
     scenario_classes = _discover_scenarios()

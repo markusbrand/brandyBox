@@ -73,3 +73,61 @@ def test_delete_file(monkeypatch, tmp_path):
         delete_file("u@x.co", "foo/bar.txt")
     with pytest.raises(ValueError):
         delete_file("u@x.co", "../../etc/passwd")
+
+
+def test_resolve_user_path_rejects_unsafe_segment(monkeypatch) -> None:
+    """Path segment with invalid characters (e.g. semicolon, percent) raises ValueError."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    with pytest.raises(ValueError, match="Unsafe path segment"):
+        resolve_user_path("a@b.co", "file%;.txt")
+    with pytest.raises(ValueError, match="Unsafe path segment"):
+        resolve_user_path("a@b.co", "dir/file\x00name.txt")
+
+
+def test_resolve_user_path_rejects_dot_segment(monkeypatch) -> None:
+    """Path segment '.' or '..' is rejected."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    with pytest.raises(ValueError):
+        resolve_user_path("a@b.co", ".")
+    with pytest.raises(ValueError):
+        resolve_user_path("a@b.co", "sub/..")
+
+
+def test_resolve_user_path_accepts_spaces_and_parens(monkeypatch) -> None:
+    """Safe segment with spaces and parentheses (e.g. 'File (1).txt') is accepted."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    got = resolve_user_path("u@x.co", "My File (1).txt")
+    assert got == Path("/data/u@x.co/My File (1).txt")
+
+
+def test_user_base_path_rejects_invalid_email(monkeypatch) -> None:
+    """Email with slash or empty raises ValueError."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    with pytest.raises(ValueError, match="Invalid email"):
+        user_base_path("")
+    with pytest.raises(ValueError):
+        user_base_path("user/../etc@x.co")
+
+
+def test_list_files_recursive_nested(tmp_path) -> None:
+    """Nested files and dirs are listed with correct relative paths."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "b.txt").write_text("b")
+    (tmp_path / "a" / "c.txt").write_text("c")
+    (tmp_path / "root.txt").write_text("r")
+    result = list_files_recursive(tmp_path)
+    paths = {r["path"] for r in result}
+    assert paths == {"root.txt", "a/b.txt", "a/c.txt"}
+    assert len(result) == 3

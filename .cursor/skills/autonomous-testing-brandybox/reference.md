@@ -40,7 +40,7 @@ Use this structure at the end of an autonomous test run:
 
 ## E2E environment
 
-- **BRANDYBOX_TEST_EMAIL**, **BRANDYBOX_TEST_PASSWORD**: Required for API login. If unset, the runner exits immediately with a hint. **PowerShell** (not `set`): `$env:BRANDYBOX_TEST_EMAIL = "markus@brandstaetter.rocks"; $env:BRANDYBOX_TEST_PASSWORD = "..."`
+- **BRANDYBOX_TEST_EMAIL**, **BRANDYBOX_TEST_PASSWORD**: Required for API login. If unset, the runner exits immediately with a hint. **PowerShell** (not `set`): `$env:BRANDYBOX_TEST_EMAIL = "you@example.com"; $env:BRANDYBOX_TEST_PASSWORD = "..."`
 - **BRANDYBOX_E2E_CLIENT_RUNNING**: Set to `1` (or `true`/`yes`) to skip starting the client; assume it is already running (e.g. started manually or in tray). Use when client start fails or you run client separately.
 - **BRANDYBOX_BASE_URL**, **BRANDYBOX_SYNC_FOLDER**, **BRANDYBOX_E2E_MAX_ATTEMPTS**: Optional. **BRANDYBOX_LARGE_FILE_SIZE_MB**: For large-file scenario (default 2).
 

@@ -3,10 +3,10 @@
 Autonomous E2E sync test: run the sync scenario, on failure run cleanup and retry until success.
 
 Usage (from repo root):
-  export BRANDYBOX_TEST_EMAIL=markus@brandstaetter.rocks
+  export BRANDYBOX_TEST_EMAIL=you@example.com
   export BRANDYBOX_TEST_PASSWORD=<your-test-password>
   # optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER, BRANDYBOX_E2E_CLIENT_RUNNING=1
-  # PowerShell: $env:BRANDYBOX_TEST_EMAIL = "markus@brandstaetter.rocks"; $env:BRANDYBOX_TEST_PASSWORD = "..."
+  # PowerShell: $env:BRANDYBOX_TEST_EMAIL = "you@example.com"; $env:BRANDYBOX_TEST_PASSWORD = "..."
   python -m tests.e2e.run_autonomous_sync
 
 Or:
@@ -76,8 +76,8 @@ def main() -> int:
     password = os.environ.get("BRANDYBOX_TEST_PASSWORD", "").strip()
     if not email or not password:
         log.error("BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD must be set.")
-        log.error("PowerShell: $env:BRANDYBOX_TEST_EMAIL = \"markus@brandstaetter.rocks\"; $env:BRANDYBOX_TEST_PASSWORD = \"...\"")
-        log.error("CMD: set BRANDYBOX_TEST_EMAIL=markus@brandstaetter.rocks && set BRANDYBOX_TEST_PASSWORD=...")
+        log.error("PowerShell: $env:BRANDYBOX_TEST_EMAIL = \"you@example.com\"; $env:BRANDYBOX_TEST_PASSWORD = \"...\"")
+        log.error("CMD: set BRANDYBOX_TEST_EMAIL=you@example.com && set BRANDYBOX_TEST_PASSWORD=...")
         return 1
     max_attempts = int(os.environ.get("BRANDYBOX_E2E_MAX_ATTEMPTS", str(DEFAULT_MAX_ATTEMPTS)))
     scenario = SyncE2EScenario()

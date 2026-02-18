@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy import Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,16 +37,13 @@ class UserCreate(BaseModel):
 class UserResponse(BaseModel):
     """User as returned by API (no password)."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     email: str
     first_name: str
     last_name: str
     is_admin: bool
     created_at: datetime
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
 
 
 class UserLogin(BaseModel):

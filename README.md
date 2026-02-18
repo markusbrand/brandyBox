@@ -23,8 +23,10 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    cd brandyBox/backend
    ```
 
-3. **Create a `.env` file** in `backend/` with your secrets (no quotes needed for values):
+3. **Create a `.env` file** in `backend/` with your secrets (copy from `backend/.env.example`; no quotes needed for values):
    ```bash
+   cp backend/.env.example backend/.env
+   # Edit backend/.env and set BRANDYBOX_JWT_SECRET, SMTP, admin, etc.
    BRANDYBOX_JWT_SECRET=<generate-a-long-random-string>
    BRANDYBOX_SMTP_HOST=smtp.example.com
    BRANDYBOX_SMTP_PORT=587
@@ -114,6 +116,7 @@ No sudo. The autostart entry is written to `~/.config/autostart/brandybox.deskto
 
 ## Security
 
-- No secrets in repo; backend uses env for JWT, SMTP, admin.
+- **No secrets in repo**: Passwords, JWT secret, and SMTP credentials are never committed. Backend reads from environment (use `backend/.env` from `backend/.env.example`; `.env` is gitignored).
+- **Safe to publish**: The repo can be made public on GitHub; no credentials or API keys are in source. E2E tests use env vars `BRANDYBOX_TEST_EMAIL` and `BRANDYBOX_TEST_PASSWORD` (set locally only).
 - Client stores only refresh token and email in OS keyring.
 - Auth and file endpoints are rate-limited; path traversal is blocked; CORS is restricted.
