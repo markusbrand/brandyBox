@@ -58,6 +58,14 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    - After **pulling updates**, rebuild so the new code and dependencies are used: `docker compose build --no-cache && docker compose up -d`. Then wait ~15 s before `curl …/health`.
    - If you get **"Empty reply from server"**, wait 10–15 seconds after `docker compose up` (startup runs DB init and admin bootstrap), then try `curl` again. If it still fails, run `docker compose logs` to see if the app is crashing on the first request.
 
+6. **Optional: Use the image from GitHub Container Registry**  
+   The backend image is built and published to [GitHub Container Registry](https://github.com/markusbrand/brandyBox/pkgs/container/brandybox-backend) on every push to `master`/`main` and on releases. To pull and run that image instead of building locally (same `.env` and `docker-compose.yml`):
+   ```bash
+   cd ~/brandyBox/backend
+   docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+   ```
+   Image: `ghcr.io/markusbrand/brandybox-backend:latest`. If the package is private, run `docker login ghcr.io` first (username: your GitHub user, password: a PAT with `read:packages`). To make the package public, open the package page on GitHub → Package settings → Change visibility.
+
 ### Storage on the Pi
 
 User files are stored under `BRANDYBOX_STORAGE_BASE_PATH` (default `/mnt/shared_storage/brandyBox`). Each user gets a subfolder (e.g. `admin@example.com`). Ensure that path exists on the host and is writable by the container; `docker-compose.yml` mounts it into the container. If sync fails (red tray icon), check backend logs and ensure the mount is correct.

@@ -3,6 +3,10 @@
 #   Set env vars (see below), then: docker compose up -d
 #   Host port defaults to 8081 to avoid conflict with other services on 8080.
 #   To use 8080 instead, add HOST_PORT=8080 to .env
+#
+# To use the pre-built image from GitHub Container Registry instead of building locally:
+#   docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+#   (see docker-compose.ghcr.yml)
 
 services:
   brandybox:

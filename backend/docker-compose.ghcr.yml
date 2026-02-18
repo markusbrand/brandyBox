@@ -1,0 +1,8 @@
+# Override to use the backend image from GitHub Container Registry (ghcr.io)
+# Use: docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+# For public image no login needed; for private: docker login ghcr.io -u USER -p PAT
+
+services:
+  brandybox:
+    image: ghcr.io/markusbrand/brandybox-backend:latest
+    build: !reset null  # use image only, do not build
