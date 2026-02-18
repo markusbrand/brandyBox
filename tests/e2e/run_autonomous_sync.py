@@ -3,9 +3,10 @@
 Autonomous E2E sync test: run the sync scenario, on failure run cleanup and retry until success.
 
 Usage (from repo root):
-  export BRANDYBOX_TEST_EMAIL=user@example.com
+  export BRANDYBOX_TEST_EMAIL=markus@brandstaetter.rocks
   export BRANDYBOX_TEST_PASSWORD=<your-test-password>
-  # optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER
+  # optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER, BRANDYBOX_E2E_CLIENT_RUNNING=1
+  # PowerShell: $env:BRANDYBOX_TEST_EMAIL = "markus@brandstaetter.rocks"; $env:BRANDYBOX_TEST_PASSWORD = "..."
   python -m tests.e2e.run_autonomous_sync
 
 Or:
@@ -58,12 +59,26 @@ def _is_client_not_started(error: str) -> bool:
     return "could not start" in error.lower() or "client start timeout" in error.lower()
 
 
+def _is_credentials_missing(error: str) -> bool:
+    """True if failure is due to missing test credentials (no point retrying)."""
+    if not error:
+        return False
+    return "BRANDYBOX_TEST_EMAIL" in error and "BRANDYBOX_TEST_PASSWORD" in error
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    email = os.environ.get("BRANDYBOX_TEST_EMAIL", "").strip()
+    password = os.environ.get("BRANDYBOX_TEST_PASSWORD", "").strip()
+    if not email or not password:
+        log.error("BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD must be set.")
+        log.error("PowerShell: $env:BRANDYBOX_TEST_EMAIL = \"markus@brandstaetter.rocks\"; $env:BRANDYBOX_TEST_PASSWORD = \"...\"")
+        log.error("CMD: set BRANDYBOX_TEST_EMAIL=markus@brandstaetter.rocks && set BRANDYBOX_TEST_PASSWORD=...")
+        return 1
     max_attempts = int(os.environ.get("BRANDYBOX_E2E_MAX_ATTEMPTS", str(DEFAULT_MAX_ATTEMPTS)))
     scenario = SyncE2EScenario()
     for attempt in range(1, max_attempts + 1):
@@ -73,6 +88,9 @@ def main() -> int:
             log.info("Scenario passed on attempt %d", attempt)
             return 0
         log.warning("Scenario failed: %s", error)
+        if _is_credentials_missing(error or ""):
+            log.error("Credentials not set. Use PowerShell: $env:BRANDYBOX_TEST_EMAIL = \"...\"; $env:BRANDYBOX_TEST_PASSWORD = \"...\"")
+            return 1
         if _is_auth_error(error or ""):
             log.error(
                 "Login failed (401). Check BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD. No retry."

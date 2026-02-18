@@ -465,16 +465,15 @@ def show_settings(
     log.info("show_settings: start parent=%s", parent is not None)
     if parent is not None:
         # On Linux, a Toplevel of a withdrawn parent may never map. Deiconify parent
-        # briefly so the Toplevel can be created and shown, then hide parent again.
+        # briefly so the Toplevel can be created, then hide parent again.
         parent.deiconify()
         parent.update_idletasks()
         log.info("show_settings: creating Toplevel")
         win = tk.Toplevel(parent)
+        win.withdraw()  # Keep hidden until fast UI is built (avoids incomplete window on Windows)
         # Do not use transient(parent): when parent is later withdrawn, some WMs hide transient children
         parent.withdraw()
-        win.deiconify()
-        win.lift()
-        log.info("show_settings: Toplevel created and raised")
+        log.info("show_settings: Toplevel created (withdrawn until ready)")
     else:
         win = tk.Tk()
         log.info("show_settings: Tk() created")
@@ -727,21 +726,37 @@ def show_settings(
         chpwd_btn.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, 0))
         sec4.columnconfigure(0, weight=1)
 
-    # --- Admin: user management ---
-    is_admin = False
+    # --- Admin: user management (deferred so window shows quickly; avoids blocking on api.me/list_users) ---
+    admin_sec: Optional[ttk.Frame] = None
     if api:
-        try:
-            me = api.me()
-            # Backend may return is_admin or isAdmin
-            is_admin = me.get("is_admin", me.get("isAdmin", False))
-            log.info("show_settings: me is_admin=%s", is_admin)
-        except Exception as e:
-            log.warning("show_settings: could not fetch /me for admin check: %s", e)
-
-    if is_admin and api:
         sec5, r5 = _section(frame, "User management (admin)", row)
         row += 2
-        users_listbox_frame = ttk.Frame(sec5)
+        admin_sec = sec5
+        admin_placeholder = ttk.Label(sec5, text="Loading…", style="Caption.TLabel")
+        admin_placeholder.grid(row=0, column=0, sticky="w", pady=(0, PAD_ROW))
+        sec5.columnconfigure(0, weight=1)
+
+    def _load_admin_section_async() -> None:
+        """Run after window is shown: fetch is_admin and either show list or 'Only for administrators'."""
+        if not api or admin_sec is None:
+            return
+        # Remove placeholder
+        for w in admin_sec.grid_slaves():
+            w.destroy()
+        is_admin = False
+        try:
+            me = api.me()
+            is_admin = me.get("is_admin", me.get("isAdmin", False))
+            log.info("show_settings: me is_admin=%s (deferred)", is_admin)
+        except Exception as e:
+            log.warning("show_settings: could not fetch /me for admin check: %s", e)
+        if not is_admin:
+            ttk.Label(
+                admin_sec, text="Only for administrators.", style="Caption.TLabel"
+            ).grid(row=0, column=0, sticky="w", pady=(0, PAD_ROW))
+            return
+        r5 = 0
+        users_listbox_frame = ttk.Frame(admin_sec)
         users_listbox_frame.grid(row=r5, column=0, columnspan=2, sticky="nsew", pady=(0, PAD_ROW))
         r5 += 1
         users_listbox = tk.Listbox(
@@ -876,12 +891,12 @@ def show_settings(
             except Exception as e:
                 messagebox.showerror("Error", f"Could not delete user: {e}", parent=win)
 
-        btn_frame = ttk.Frame(sec5)
+        btn_frame = ttk.Frame(admin_sec)
         btn_frame.grid(row=r5, column=0, columnspan=2, sticky="w", pady=(0, 0))
         _secondary_btn(btn_frame, "Refresh list", refresh_users_list, side="left", padx=(0, PAD_ROW))
         _primary_btn(btn_frame, "Create user…", create_user_dialog, side="left", padx=(0, PAD_ROW))
         _secondary_btn(btn_frame, "Delete selected", delete_selected_user, side="left")
-        sec5.columnconfigure(0, weight=1)
+        admin_sec.columnconfigure(0, weight=1)
         refresh_users_list()
 
     def on_close() -> None:
@@ -909,6 +924,7 @@ def show_settings(
     if not saved_geom:
         _center(win)
     if parent is not None:
+        win.deiconify()
         win.lift()
         win.focus_force()
         win.update()  # force map and draw so window is visible
@@ -917,7 +933,11 @@ def show_settings(
             win.winfo_viewable(),
             win.winfo_ismapped(),
         )
+        if api and admin_sec is not None:
+            win.after(0, _load_admin_section_async)
     else:
         log.info("show_settings: entering mainloop")
+    if parent is None and api and admin_sec is not None:
+        win.after(0, _load_admin_section_async)
     if parent is None:
         win.mainloop()

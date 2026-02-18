@@ -31,13 +31,20 @@ def _client_running() -> bool:
     """True if Brandy Box client process is running."""
     try:
         if sys.platform == "win32":
-            out = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq python.exe", "/NH"],
+            # tasklist does not show command line; use PowerShell to get CommandLine
+            ps = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" -ErrorAction SilentlyContinue | ForEach-Object { $_.CommandLine }",
+                ],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=10,
             )
-            return "brandybox" in (out.stdout or "").lower()
+            stdout = (ps.stdout or "").lower()
+            return "brandybox.main" in stdout or "-m brandybox" in stdout
         out = subprocess.run(
             ["pgrep", "-f", "brandybox.main"],
             capture_output=True,
@@ -50,6 +57,10 @@ def _client_running() -> bool:
 
 def _start_client() -> bool:
     """Start Brandy Box client from repo root. Returns True if started or already running."""
+    # Allow skipping start when client is run manually (e.g. BRANDYBOX_E2E_CLIENT_RUNNING=1)
+    if os.environ.get("BRANDYBOX_E2E_CLIENT_RUNNING", "").strip().lower() in ("1", "true", "yes"):
+        log.info("BRANDYBOX_E2E_CLIENT_RUNNING set; assuming client is already running")
+        return True
     if _client_running():
         log.info("Client already running")
         return True
