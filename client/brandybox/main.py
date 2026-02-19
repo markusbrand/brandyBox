@@ -47,22 +47,50 @@ from brandybox.config import get_config_path, get_instance_lock_path, user_has_s
 from brandybox.tray import run_tray
 from brandybox.ui.settings import show_login, show_settings
 
-# Hold the lock file open for the process lifetime so the lock stays acquired.
+# Hold the lock file (and on Windows the mutex) for the process lifetime so only one instance runs.
 _instance_lock_file = None
+_instance_mutex_handle = None  # Windows: keep handle so mutex is not released
 
 
 def _try_acquire_single_instance_lock() -> bool:
     """Acquire an exclusive lock so only one app instance runs per user. Returns True if acquired.
-    When BRANDYBOX_CONFIG_DIR is set (E2E/test mode), skip the check so the test client can run
-    alongside production without showing the 'already running' dialog."""
+    Outside testing it must not be possible to run two instances on the same machine (per user).
+    When BRANDYBOX_CONFIG_DIR is set (E2E/test mode), skip the check so test clients can run
+    alongside production or multiple test instances with different config dirs."""
     if os.environ.get("BRANDYBOX_CONFIG_DIR", "").strip():
         return True
-    global _instance_lock_file
+    global _instance_lock_file, _instance_mutex_handle
+
+    # Windows: named mutex is the most reliable single-instance mechanism (survives cwd/path quirks).
+    mutex_acquired = False
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            ERROR_ALREADY_EXISTS = 183
+            mutex_name = "Local\\BrandyBox_SingleInstance"
+            mutex = kernel32.CreateMutexW(None, wintypes.BOOL(True), mutex_name)
+            err = kernel32.GetLastError()
+            if mutex is None or (mutex and err == ERROR_ALREADY_EXISTS):
+                if mutex is not None:
+                    kernel32.CloseHandle(mutex)
+                return False
+            _instance_mutex_handle = mutex  # keep so handle is not closed until process exits
+            mutex_acquired = True
+        except Exception:
+            # If mutex API fails, fall through to file lock
+            pass
+
     path = get_instance_lock_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         _instance_lock_file = open(path, "w", encoding="utf-8")
     except OSError:
+        if mutex_acquired and _instance_mutex_handle is not None:
+            import ctypes
+            ctypes.windll.kernel32.CloseHandle(_instance_mutex_handle)  # type: ignore[attr-defined]
+            _instance_mutex_handle = None
         return False
     try:
         if os.name == "nt":
@@ -74,6 +102,10 @@ def _try_acquire_single_instance_lock() -> bool:
     except (OSError, BlockingIOError):
         _instance_lock_file.close()
         _instance_lock_file = None
+        if mutex_acquired and _instance_mutex_handle is not None:
+            import ctypes
+            ctypes.windll.kernel32.CloseHandle(_instance_mutex_handle)  # type: ignore[attr-defined]
+            _instance_mutex_handle = None
         return False
     return True
 
@@ -128,10 +160,12 @@ def _show_quick_access_window(
     win.lift()
 
 
-def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsStore) -> None:
-    """Run tray in a background thread and tk mainloop on main thread so Settings works on Linux."""
+def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsStore) -> bool:
+    """Run tray in a background thread and tk mainloop on main thread so Settings works on Linux.
+    Returns True if user chose Log out (caller should show login); False if user chose Quit (caller should exit)."""
     ui_queue: queue.Queue = queue.Queue()
     main_log = logging.getLogger("brandybox.main")
+    user_quit_app = [False]  # [True] = tray Quit clicked; [False] = logout or other
 
     root = Tk()
     # Keep root off-screen and minimal so Toplevel(Settings) can map on Linux when we deiconify briefly
@@ -157,10 +191,14 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
         creds.clear_stored()
         root.quit()
 
+    def on_quit() -> None:
+        user_quit_app[0] = True
+        root.quit()
+
     run_tray(
         api,
         access_token,
-        on_quit=root.quit,
+        on_quit=on_quit,
         schedule_ui=schedule_ui,
         refresh_token_callback=lambda: creds.get_valid_access_token(api),
         settings_parent=root,
@@ -173,6 +211,7 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
     # xorg backend: no context menu; left-click still opens Settings (default action).
     # Use app menu "Quit Brandy Box" to quit. We no longer auto-show the quick-access window.
     root.mainloop()
+    return not user_quit_app[0]
 
 
 def _ensure_cwd_repo_root() -> None:
@@ -225,8 +264,11 @@ def main() -> None:
         access_token = creds.get_valid_access_token(api)
         if access_token:
             log.info("Using stored credentials, starting tray")
-            _run_tray_with_ui(api, access_token, creds)
-            # Tray exited. If user chose "Log out", creds were cleared; loop to show login.
+            should_show_login = _run_tray_with_ui(api, access_token, creds)
+            if not should_show_login:
+                log.info("User quit from tray; exiting.")
+                sys.exit(0)
+            # Tray exited with Log out; creds cleared, show login again.
             continue
         log.info("No valid credentials, showing login")
         # No valid credentials: show login (or re-show after logout)
