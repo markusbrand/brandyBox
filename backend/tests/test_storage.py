@@ -120,6 +120,17 @@ def test_resolve_user_path_accepts_unicode_letters(monkeypatch) -> None:
     assert got == Path("/data/u@x.co/Outdoor/uebernahmebestätigung_2020-07-01_19-02-52.pdf")
 
 
+def test_resolve_user_path_accepts_at_in_filename(monkeypatch) -> None:
+    """Path segments with @ (e.g. export filename 'cloudflare-user@domain.txt') are accepted."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    path = "Settings and programs/cloudflare/cloudflare-markus@brandstaetter.rocks-2026.01.21.txt"
+    got = resolve_user_path("u@x.co", path)
+    assert got == Path("/data/u@x.co/Settings and programs/cloudflare/cloudflare-markus@brandstaetter.rocks-2026.01.21.txt")
+
+
 def test_resolve_user_path_accepts_plus_in_filename(monkeypatch) -> None:
     """Path segments with plus signs (e.g. 'two+hikers+3d+model.stl') are accepted."""
     from app.files import storage

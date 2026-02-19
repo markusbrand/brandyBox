@@ -7,9 +7,9 @@ from typing import List, Optional
 
 from app.config import get_settings
 
-# Safe path segment: letters, numbers, common punctuation. No / \ @ (traversal/ambiguity).
-# Allow: . _ - space ( ) + ~ # ! & ' , ; = [ ] for "File (1).txt", "file.kra~", "don't.txt", "file[1].txt", etc.
-_SAFE_SEGMENT_ASCII = re.compile(r"^[a-zA-Z0-9_. \-()+~#!&',;=\[\]]+$")
+# Safe path segment: letters, numbers, common punctuation. No / \ (traversal).
+# Allow: . _ - space ( ) + ~ # ! & ' , ; = [ ] @ for "File (1).txt", "user@host.txt", etc.
+_SAFE_SEGMENT_ASCII = re.compile(r"^[a-zA-Z0-9_. \-()+~#!&',;=\[\]@]+$")
 # Email used as folder name: allow @ and dots
 _SAFE_EMAIL = re.compile(r"^[a-zA-Z0-9_.@-]+$")
 
@@ -18,11 +18,11 @@ def _is_safe_path_char(c: str) -> bool:
     """True if char is allowed in a path segment (no traversal, no control chars)."""
     if len(c) != 1:
         return False
-    if c in "/\\@":
-        return False
+    if c in "/\\%":
+        return False  # % can be used in encoding/URLs; keep path segments safe
     if ord(c) < 32:
         return False
-    if ("a" <= c <= "z") or ("A" <= c <= "Z") or ("0" <= c <= "9") or c in "_. -()+~#!&',;=[]":
+    if ("a" <= c <= "z") or ("A" <= c <= "Z") or ("0" <= c <= "9") or c in "_. -()+~#!&',;=[]@":
         return True
     cat = unicodedata.category(c)
     # Letter, Number, or Punctuation (e.g. fullwidth parentheses （） in "Manual（CN）.pdf")
