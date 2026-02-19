@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+import stat
 from pathlib import Path
 from typing import Callable, List, Optional, Set, Tuple
 
@@ -11,6 +13,21 @@ from brandybox.api.client import BrandyBoxAPI
 from brandybox.config import get_sync_state_path
 
 log = logging.getLogger(__name__)
+
+# System / file-manager metadata files: not needed for content sync, often read-only or
+# cause permission issues on other OS (e.g. .directory on Windows). Never upload or download.
+SYNC_IGNORE_BASENAMES: frozenset[str] = frozenset({
+    ".directory",   # KDE Dolphin view settings
+    "Thumbs.db",    # Windows thumbnail cache
+    "Desktop.ini",  # Windows folder customisation
+    ".DS_Store",    # macOS Finder metadata
+})
+
+
+def _is_ignored(path_str: str) -> bool:
+    """True if the path's basename is in the sync-ignore list."""
+    parts = path_str.replace("\\", "/").split("/")
+    return parts[-1] in SYNC_IGNORE_BASENAMES if parts else False
 
 
 def _list_local(root: Path) -> List[Tuple[str, float]]:
@@ -22,6 +39,8 @@ def _list_local(root: Path) -> List[Tuple[str, float]]:
                 try:
                     rel = f.relative_to(root)
                     path_str = str(rel).replace("\\", "/")
+                    if _is_ignored(path_str):
+                        continue
                     out.append((path_str, f.stat().st_mtime))
                 except (OSError, ValueError):
                     continue
@@ -92,7 +111,7 @@ def sync_run(
     log.info("Listed %d local files, %d remote files, %d in last_synced", len(current_local_paths), len(current_remote_paths), len(last_synced))
 
     # 1) Propagate deletions: local deletes → server, server deletes → local
-    to_delete_remote = last_synced - current_local_paths  # we removed these locally
+    to_delete_remote = {p for p in (last_synced - current_local_paths) if not _is_ignored(p)}
     to_delete_local = last_synced - current_remote_paths  # gone from remote (e.g. other client)
     log.debug("Deletions: %d from server, %d from local", len(to_delete_remote), len(to_delete_local))
 
@@ -132,6 +151,8 @@ def sync_run(
     remote_list_tuples = [(item["path"], item["mtime"]) for item in remote_list]
     to_download: List[str] = []
     for path, remote_mtime in remote_list_tuples:
+        if _is_ignored(path):
+            continue
         parts = path.replace("\\", "/").split("/")
         local_path = local_root.joinpath(*parts)
         if not local_path.exists():
@@ -152,7 +173,27 @@ def sync_run(
             parts = path.replace("\\", "/").split("/")
             target = local_root.joinpath(*parts)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(body)
+            try:
+                target.write_bytes(body)
+            except (PermissionError, OSError) as write_err:
+                if getattr(write_err, "errno", None) == 13 or isinstance(write_err, PermissionError):
+                    if target.exists() and target.is_file():
+                        try:
+                            os.chmod(target, stat.S_IMODE(target.stat().st_mode) | stat.S_IWUSR)
+                            target.write_bytes(body)
+                        except Exception:
+                            log.warning(
+                                "Download %s: permission denied (e.g. read-only or policy), skipping: %s",
+                                path, write_err,
+                            )
+                            continue
+                    else:
+                        log.warning(
+                            "Download %s: permission denied, skipping: %s",
+                            path, write_err,
+                        )
+                        continue
+                raise
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 # File was removed on server (e.g. by us in this cycle or another client); skip and remove locally if present
@@ -190,6 +231,7 @@ def sync_run(
 
     # Persist synced paths for next run (remote state after our deletes and uploads)
     new_synced = (current_remote_paths - to_delete_remote) | set(to_upload)
+    new_synced = {p for p in new_synced if not _is_ignored(p)}
     _save_last_synced_paths(new_synced)
     log.info("Sync cycle completed (synced paths: %d)", len(new_synced))
 

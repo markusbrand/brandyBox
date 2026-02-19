@@ -5,4 +5,6 @@ theme:
 nav:
   - Home: index.md
   - Backend: backend/overview.md
-  - Client: client/overview.md
+  - Client:
+    - Overview: client/overview.md
+    - Troubleshooting: client/troubleshooting.md

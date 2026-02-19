@@ -25,6 +25,8 @@ On Linux the app prefers **Wayland** when the session is Wayland (`XDG_SESSION_T
 
 On Linux the tray icon is drawn at 32 px so it stays crisp when the panel uses ~22–24 px (e.g. KDE Plasma). If the icon appears as a plain blue square or a click-indicator circle jumps on the tray, the default backend (XOrg/AppIndicator) is still the one that shows the icon on KDE. Do **not** set `PYSTRAY_BACKEND=gtk` on KDE: the GTK backend uses Gtk.StatusIcon, which Plasma often does not display, so you may see no icon at all.
 
+See [Client troubleshooting](troubleshooting.md) for common issues (e.g. permission denied when syncing on Windows).
+
 ## Build
 
 From repo root: `pyinstaller client/brandybox.spec`. Icons in `assets/logo/` (generate with `python scripts/generate_logos.py`).
