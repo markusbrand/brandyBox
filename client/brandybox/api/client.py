@@ -138,16 +138,29 @@ class BrandyBoxAPI:
                 return
 
     def download_file(self, relative_path: str) -> bytes:
-        """GET /api/files/download?path=... Returns file bytes."""
+        """GET /api/files/download?path=... Returns file bytes. Retries on 429."""
         log.debug("download_file path=%s", relative_path)
-        with httpx.Client(timeout=60.0) as client:
-            r = client.get(
-                f"{self._base_url}/api/files/download",
-                params={"path": relative_path},
-                headers=self._headers(),
-            )
-            r.raise_for_status()
-            return r.content
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            with httpx.Client(timeout=60.0) as client:
+                r = client.get(
+                    f"{self._base_url}/api/files/download",
+                    params={"path": relative_path},
+                    headers=self._headers(),
+                )
+                if r.status_code == 429 and attempt < max_attempts - 1:
+                    delay = 65
+                    retry_after = r.headers.get("Retry-After")
+                    if retry_after and retry_after.isdigit():
+                        delay = min(65, int(retry_after))
+                    log.warning(
+                        "Download %s: 429 Too Many Requests, retry in %ds (attempt %d/%d)",
+                        relative_path, delay, attempt + 1, max_attempts,
+                    )
+                    time.sleep(delay)
+                    continue
+                r.raise_for_status()
+                return r.content
 
     def delete_file(self, relative_path: str) -> None:
         """DELETE /api/files/delete?path=... Remove file from remote (Raspberry Pi).

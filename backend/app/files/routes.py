@@ -70,7 +70,7 @@ async def upload_file(
 
 
 @router.get("/download")
-@limiter.limit("120/minute")
+@limiter.limit("600/minute")  # Bulk sync: same as upload
 async def download_file(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -106,7 +106,7 @@ async def download_file(
 
 
 @router.delete("/delete")
-@limiter.limit("120/minute")
+@limiter.limit("600/minute")  # Bulk sync
 async def delete_file(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],

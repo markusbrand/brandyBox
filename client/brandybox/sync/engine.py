@@ -180,8 +180,11 @@ def sync_run(
                 to_download.append(path)
 
     log.info("Downloading %d files from server", len(to_download))
+    DOWNLOAD_DELAY = 0.12  # ~8/sec to stay under rate limit
     for i, path in enumerate(to_download):
         try:
+            if i > 0:
+                time.sleep(DOWNLOAD_DELAY)
             progress("download", i + 1, len(to_download))
             status(f"Downloading {path}…")
             body = api.download_file(path)
