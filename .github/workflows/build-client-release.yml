@@ -8,10 +8,15 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag to build and attach assets to (e.g. v0.1.1). Leave empty to only build (no attach).'
+        required: false
+        type: string
 
 env:
-  # Version for artifact names: release tag (e.g. v0.1.0) or 'dev' when run manually
-  VERSION: ${{ github.event.release.tag_name || 'dev' }}
+  # Version for artifact names: release tag or manual input, else 'dev'
+  VERSION: ${{ github.event.release.tag_name || github.event.inputs.release_tag || 'dev' }}
 
 jobs:
   build-windows:
@@ -20,7 +25,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -49,7 +54,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -75,7 +80,7 @@ jobs:
   attach-to-release:
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: (github.event_name == 'release' && github.event.action == 'published') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
     permissions:
       contents: write
     steps:
@@ -92,7 +97,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.event.release.tag_name }}"
+          TAG="${{ github.event.release.tag_name || github.event.inputs.release_tag }}"
           count=0
           while IFS= read -r -d '' f; do
             echo "Uploading $f to release $TAG"
