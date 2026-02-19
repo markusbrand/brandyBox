@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import tkinter as tk
@@ -49,6 +49,140 @@ log = logging.getLogger(__name__)
 # Use 32 px so the xorg backend has enough detail when the tray resizes the window.
 TRAY_ICON_SIZE_DEFAULT = 64
 TRAY_ICON_SIZE_LINUX = 32
+
+# Text progress bar width (for tooltip; ASCII-safe for X11)
+_PROGRESS_BAR_WIDTH = 12
+
+# Phase label for tooltip (ASCII-only for X11 WM_NAME / tooltip)
+_SYNC_PHASE_LABELS = {
+    "listing": "Listing",
+    "delete_server": "Deleting on server",
+    "delete_local": "Deleting locally",
+    "download": "Downloading",
+    "upload": "Uploading",
+}
+
+
+def _progress_tooltip_text(phase: str, current: int, total: int) -> str:
+    """Build tooltip string with optional text progress bar. ASCII-only for X11."""
+    label = _SYNC_PHASE_LABELS.get(phase, "Syncing")
+    if total <= 0:
+        return f"Brandy Box - {label}..."
+    pct = min(100, (current * 100) // total) if total else 0
+    filled = (_PROGRESS_BAR_WIDTH * current) // total if total else 0
+    bar = "=" * filled + " " * (_PROGRESS_BAR_WIDTH - filled)
+    return f"Brandy Box - {label} [{bar}] {pct}% ({current}/{total})"
+
+
+def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> None:
+    """Show a small floating window with a real progress bar. Runs on main (UI) thread.
+    Reuses existing window if already open. Polls tray_app progress state every 500 ms.
+    """
+    import tkinter as tk
+    from tkinter import ttk
+
+    # Reuse existing window if still visible
+    if getattr(tray_app, "_progress_window", None) is not None:
+        w = tray_app._progress_window
+        try:
+            if w.winfo_exists():
+                w.lift()
+                w.focus_force()
+                return
+        except tk.TclError:
+            pass
+        tray_app._progress_window = None
+
+    root = parent
+    if root is None:
+        root = tk.Tk()
+        root.withdraw()
+
+    win = tk.Toplevel(root)
+    win.title("Brandy Box – Sync progress")
+    win.resizable(False, False)
+    win.transient(root)
+    tray_app._progress_window = win
+
+    pad = 12
+    inner = ttk.Frame(win, padding=pad)
+    inner.pack(fill=tk.BOTH, expand=True)
+
+    phase_label = _SYNC_PHASE_LABELS.get(tray_app._sync_phase, "Syncing")
+    total = tray_app._sync_total
+    current = tray_app._sync_current
+    if total > 0:
+        pct = min(100, (current * 100) // total)
+        status_text = f"{phase_label}: {current} / {total} files ({pct}%)"
+    else:
+        status_text = f"{phase_label}..." if tray_app._status == "syncing" else "No sync in progress"
+
+    lbl = ttk.Label(inner, text=status_text)
+    lbl.pack(anchor=tk.W)
+
+    bar = ttk.Progressbar(inner, length=260, mode="determinate", maximum=100)
+    bar.pack(pady=(4, 0), fill=tk.X)
+    if total > 0:
+        bar["value"] = min(100, (current * 100) // total)
+    else:
+        bar["value"] = 0
+
+    def on_close() -> None:
+        try:
+            win.destroy()
+        except tk.TclError:
+            pass
+        setattr(tray_app, "_progress_window", None)
+
+    win.protocol("WM_DELETE_WINDOW", on_close)
+
+    def poll() -> None:
+        try:
+            if not win.winfo_exists():
+                setattr(tray_app, "_progress_window", None)
+                return
+        except tk.TclError:
+            setattr(tray_app, "_progress_window", None)
+            return
+
+        phase = tray_app._sync_phase
+        total_n = tray_app._sync_total
+        current_n = tray_app._sync_current
+        phase_label = _SYNC_PHASE_LABELS.get(phase, "Syncing")
+
+        if tray_app._status == "syncing":
+            if total_n > 0:
+                pct = min(100, (current_n * 100) // total_n)
+                lbl.config(text=f"{phase_label}: {current_n} / {total_n} files ({pct}%)")
+                bar["value"] = pct
+            else:
+                lbl.config(text=f"{phase_label}...")
+            win.after(500, poll)
+        else:
+            # Sync ended
+            if total_n > 0:
+                lbl.config(text="Done")
+                bar["value"] = 100
+            else:
+                lbl.config(text="No sync in progress")
+            win.after(1500, on_close)
+
+    poll()
+
+    btn = ttk.Button(inner, text="Close", command=on_close)
+    btn.pack(pady=(pad, 0))
+
+    win.update_idletasks()
+    w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+    try:
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        x = max(0, sw - w - 24)
+        y = 24
+        win.geometry(f"+{x}+{y}")
+    except tk.TclError:
+        pass
+    win.lift()
 
 
 def _draw_fallback_icon(size: int, color: Tuple[int, int, int]) -> Image.Image:
@@ -212,6 +346,12 @@ class TrayApp:
         self._sync_thread: Optional[threading.Thread] = None
         self._stop_sync = threading.Event()
         self._sync_now = threading.Event()
+        # Progress during sync (phase, current, total) for tooltip progress bar
+        self._sync_phase: str = ""
+        self._sync_current: int = 0
+        self._sync_total: int = 0
+        # Optional floating window showing sync progress (created when user clicks "Sync progress")
+        self._progress_window: Optional[Any] = None
 
     def _get_icon_image(self) -> Image.Image:
         # On Linux use a smaller size so the tray (often 22–24 px) doesn't scale down and lose shape.
@@ -240,10 +380,14 @@ class TrayApp:
     def _update_icon(self) -> None:
         if self._icon:
             self._icon.icon = self._get_icon_image()
-            # Show error in tooltip when red (X11 WM_NAME is Latin-1 only)
+            # Tooltip: error message, or sync progress (bar + %), or default (X11: ASCII-safe)
             if self._status == "error" and self._last_error:
                 msg = (self._last_error[:80]).encode("ascii", errors="replace").decode("ascii")
                 self._icon.title = f"Brandy Box - error: {msg}"
+            elif self._status == "syncing" and (self._sync_phase or self._sync_total > 0):
+                self._icon.title = _progress_tooltip_text(
+                    self._sync_phase, self._sync_current, self._sync_total
+                )
             else:
                 self._icon.title = "Brandy Box"
 
@@ -269,10 +413,21 @@ class TrayApp:
             log.info("Starting sync cycle (folder=%s)", sync_path)
             self._set_status("syncing")
             self._last_error = None
+            self._sync_phase = ""
+            self._sync_current = 0
+            self._sync_total = 0
+
+            def on_progress(phase: str, current: int, total: int) -> None:
+                self._sync_phase = phase
+                self._sync_current = current
+                self._sync_total = total
+                self._update_icon()
+
             engine = SyncEngine(
                 self._api,
                 sync_path,
                 on_status=lambda _: None,
+                on_progress=on_progress,
             )
             err = engine.run()
             # If 401, try refreshing the access token and sync once more
@@ -282,6 +437,9 @@ class TrayApp:
                 if new_token:
                     self._api.set_access_token(new_token)
                     err = engine.run()
+            self._sync_phase = ""
+            self._sync_current = 0
+            self._sync_total = 0
             if err:
                 self._last_error = err
                 self._set_status("error")
@@ -305,7 +463,7 @@ class TrayApp:
                     log.debug("Pausing %ds until next sync cycle", retry_interval)
             else:
                 self._set_status("synced")
-                self._last_notified_error = None  # allow notification for next error
+                self._last_notified_error = None
                 log.info("Sync cycle completed successfully")
                 retry_interval = 60
                 log.debug("Pausing %ds until next sync cycle", retry_interval)
@@ -353,6 +511,15 @@ class TrayApp:
         self._sync_now.set()
         log.info("Sync now requested from menu")
 
+    def _show_sync_progress(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        """Show floating window with progress bar (runs on main thread via schedule_ui)."""
+        def open_() -> None:
+            _show_sync_progress_window(tray_app=self, parent=self._settings_parent)
+        if self._schedule_ui:
+            self._schedule_ui(open_)
+        else:
+            open_()
+
     def _toggle_pause(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         self._paused = not self._paused
         item.checked = self._paused
@@ -380,6 +547,7 @@ class TrayApp:
             pystray.MenuItem("Settings", self._open_settings, default=True),
             pystray.MenuItem("Open folder", self._open_folder),
             pystray.MenuItem("Sync now", self._sync_now_click),
+            pystray.MenuItem("Sync progress", self._show_sync_progress),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Pause sync", self._toggle_pause, checked=lambda item: self._paused),
             pystray.Menu.SEPARATOR,

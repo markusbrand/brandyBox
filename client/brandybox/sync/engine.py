@@ -7,6 +7,9 @@ import stat
 from pathlib import Path
 from typing import Callable, List, Optional, Set, Tuple
 
+# Progress callback: (phase, current_index, total_count). Phase: "listing"|"delete_server"|"delete_local"|"download"|"upload". total=0 when unknown.
+ProgressCallback = Callable[[str, int, int], None]
+
 import httpx
 
 from brandybox.api.client import BrandyBoxAPI
@@ -83,6 +86,7 @@ def sync_run(
     api: BrandyBoxAPI,
     local_root: Path,
     on_status: Optional[Callable[[str], None]] = None,
+    on_progress: Optional[ProgressCallback] = None,
 ) -> Optional[str]:
     """
     Run one sync cycle: (1) list server and local; (2) propagate deletions (local→server,
@@ -94,9 +98,14 @@ def sync_run(
         if on_status:
             on_status(msg)
 
+    def progress(phase: str, current: int, total: int) -> None:
+        if on_progress:
+            on_progress(phase, current, total)
+
     log.info("Sync cycle started (local_root=%s)", local_root)
     try:
         status("Listing…")
+        progress("listing", 0, 0)
         local_list = _list_local(local_root)
         remote_list = api.list_files()
     except Exception as e:
@@ -116,8 +125,10 @@ def sync_run(
     log.debug("Deletions: %d from server, %d from local", len(to_delete_remote), len(to_delete_local))
 
     # Delete on server deepest paths first so backend can remove empty parent dirs
-    for path in sorted(to_delete_remote, key=lambda p: -p.count("/")):
+    to_del_list = sorted(to_delete_remote, key=lambda p: -p.count("/"))
+    for i, path in enumerate(to_del_list):
         try:
+            progress("delete_server", i + 1, len(to_del_list) if to_del_list else 0)
             status(f"Deleting on server {path}…")
             api.delete_file(path)
         except Exception as e:
@@ -125,8 +136,10 @@ def sync_run(
             return f"Delete on server {path}: {e}"
 
     # Delete locally deepest first, then remove empty parent dirs
-    for path in sorted(to_delete_local, key=lambda p: -p.count("/")):
+    to_del_local_list = sorted(to_delete_local, key=lambda p: -p.count("/"))
+    for i, path in enumerate(to_del_local_list):
         try:
+            progress("delete_local", i + 1, len(to_del_local_list) if to_del_local_list else 0)
             parts = path.replace("\\", "/").split("/")
             local_path = local_root.joinpath(*parts)
             if local_path.exists() and local_path.is_file():
@@ -166,8 +179,9 @@ def sync_run(
                 to_download.append(path)
 
     log.info("Downloading %d files from server", len(to_download))
-    for path in to_download:
+    for i, path in enumerate(to_download):
         try:
+            progress("download", i + 1, len(to_download))
             status(f"Downloading {path}…")
             body = api.download_file(path)
             parts = path.replace("\\", "/").split("/")
@@ -218,8 +232,9 @@ def sync_run(
             to_upload.append(path)
 
     log.info("Uploading %d files to server", len(to_upload))
-    for path in to_upload:
+    for i, path in enumerate(to_upload):
         try:
+            progress("upload", i + 1, len(to_upload))
             status(f"Uploading {path}…")
             parts = path.replace("\\", "/").split("/")
             full = local_root.joinpath(*parts)
@@ -248,11 +263,18 @@ class SyncEngine:
         api: BrandyBoxAPI,
         local_root: Path,
         on_status: Optional[Callable[[str], None]] = None,
+        on_progress: Optional[ProgressCallback] = None,
     ) -> None:
         self._api = api
         self._local_root = local_root
         self._on_status = on_status
+        self._on_progress = on_progress
 
     def run(self) -> Optional[str]:
         """Run one sync cycle. Returns None on success, error message on failure."""
-        return sync_run(self._api, self._local_root, self._on_status)
+        return sync_run(
+            self._api,
+            self._local_root,
+            on_status=self._on_status,
+            on_progress=self._on_progress,
+        )
