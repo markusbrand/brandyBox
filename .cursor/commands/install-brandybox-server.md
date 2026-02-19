@@ -1,6 +1,16 @@
 # install-brandybox-server
 
-Detailed Linux terminal commands to **update and upgrade the Brandy Box backend** on the Raspberry Pi. Run these from your **Garuda Linux PC**; the backend runs in Docker on the Pi at **192.168.0.150** (SSH with public key, no password).
+How to **update the Brandy Box backend** on the Raspberry Pi. The image is **built and published by GitHub Actions** to GitHub Container Registry (GHCR); on the Pi you pull the new image and restart the container. SSH from your Garuda PC to the Pi at **192.168.0.150** (public key, no password).
+
+---
+
+## How updates work
+
+- **GitHub Actions** (workflow `publish-backend-image.yml`) builds and pushes the backend image to `ghcr.io/markusbrand/brandybox-backend:latest` on:
+  - push to `master` or `main` (when `backend/**` or the workflow file changes),
+  - release publish,
+  - or manual **workflow_dispatch** in the GitHub Actions tab.
+- **On the Pi** you use that image via `docker-compose.ghcr.yml`. Updating the server = pull latest image and restart (no local build, no git pull of source on the Pi).
 
 ---
 
@@ -14,42 +24,28 @@ ssh pi
 
 - Replace `pi` with your Pi username if different.
 - If you use a specific key: `ssh -i ~/.ssh/your_key pi@192.168.0.150`.
-- You should get a shell on the Pi without being asked for a password.
 
 ---
 
-## 2. Go to the repo and pull the latest code
+## 2. Pull the new image and restart the backend
 
-On the Pi (inside the SSH session):
-
-```bash
-cd ~/brandyBox
-git fetch origin
-git status
-git pull origin master
-```
-
-- If your default branch is `main` instead of `master`, use: `git pull origin main`.
-- If `git status` shows local changes you don’t want to keep: `git checkout -- .` then pull again, or `git stash` then `git pull` then `git stash pop` if you need to reapply local changes.
-
----
-
-## 3. Rebuild and restart the backend container
-
-Still on the Pi, from the repo root:
+On the Pi. Repo path is assumed `~/brandyBox`; change it if your clone is elsewhere.
 
 ```bash
 cd ~/brandyBox/backend
-docker compose build --no-cache
-docker compose up -d
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
 ```
 
-- `build --no-cache` forces a full rebuild so new code and dependency changes are applied.
-- `up -d` starts the container in the background. Existing `.env` in `backend/` is unchanged.
+- `pull` fetches the latest image from GHCR (built by the last successful GitHub Actions run).
+- `up -d` recreates the container with the new image. Your existing `.env` and volumes are unchanged.
+
+If the package is **private**, log in once (or when token expires):  
+`docker login ghcr.io` (username: GitHub user, password: PAT with `read:packages`).
 
 ---
 
-## 4. Check that the backend is up
+## 3. Check that the backend is up
 
 Wait a few seconds for the app to start, then:
 
@@ -58,21 +54,18 @@ sleep 15
 curl -s http://localhost:8081/health
 ```
 
-- Expected: `{"status":"ok"}` (or similar JSON with status).
-- If the service uses another port (e.g. 8082), use that port in the URL.
+- Expected: `{"status":"ok"}` (or similar). Use the port from your `.env` (e.g. 8082) if different.
 
-Optional: check container status and recent logs:
+Optional: container status and logs:
 
 ```bash
-docker compose ps
-docker compose logs --tail 50
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml ps
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml logs --tail 50
 ```
-
-- If the container is **Exited**, run `docker compose logs` and fix any errors (e.g. missing `BRANDYBOX_JWT_SECRET` in `.env`).
 
 ---
 
-## 5. Exit SSH
+## 4. Exit SSH
 
 ```bash
 exit
@@ -82,13 +75,13 @@ exit
 
 ## One-liner (from Garuda PC)
 
-To do everything in one go from your Garuda PC (single SSH session):
+Update the server in one SSH session:
 
 ```bash
-ssh pi@192.168.0.150 'cd ~/brandyBox && git fetch origin && git pull origin master && cd backend && docker compose build --no-cache && docker compose up -d'
+ssh pi 'cd ~/brandyBox/backend && docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d'
 ```
 
-Then wait ~15 s and check health from your PC:
+Then check health from your PC:
 
 ```bash
 sleep 15
@@ -97,16 +90,46 @@ curl -s http://192.168.0.150:8081/health
 
 ---
 
+## First-time setup on the Pi (GHCR)
+
+If the backend is not yet running from GHCR:
+
+1. On the Pi: clone the repo (or copy `backend/` with `docker-compose.yml`, `docker-compose.ghcr.yml`, and create `.env` from `.env.example`).
+2. Ensure storage path exists and is writable (e.g. `/mnt/shared_storage/brandyBox`).
+3. Run:  
+   `cd ~/brandyBox/backend`  
+   `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d`  
+   (and configure `.env` before that if needed).
+
+See the main [README](../../README.md) backend section for `.env` and storage.
+
+---
+
+## Optional: build and run locally on the Pi (no GHCR)
+
+If you prefer to build the image on the Pi instead of using GHCR:
+
+```bash
+cd ~/brandyBox
+git fetch origin && git pull origin master   # or main
+cd backend
+docker compose build --no-cache
+docker compose up -d
+```
+
+- Use this only when you need a local build (e.g. no GHCR access or testing uncommitted changes). Do **not** overwrite `backend/.env` when pulling.
+
+---
+
 ## Summary
 
 | Step | Where | Command |
 |------|--------|---------|
-| Connect | Garuda PC | `ssh pi@192.168.0.150` |
-| Update code | On Pi | `cd ~/brandyBox` → `git fetch` → `git pull origin master` (or `main`) |
-| Rebuild & run | On Pi | `cd ~/brandyBox/backend` → `docker compose build --no-cache` → `docker compose up -d` |
-| Verify | On Pi (or from PC) | `curl -s http://localhost:8081/health` or `http://192.168.0.150:8081/health` |
+| **Trigger image build** | GitHub | Push to `master`/`main` (backend changes) or run workflow manually |
+| **Update server** | On Pi (or via SSH) | `cd ~/brandyBox/backend` → `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull` → `… up -d` |
+| **Verify** | On Pi or from PC | `curl -s http://localhost:8081/health` or `http://192.168.0.150:8081/health` |
 
-- Repo path on Pi is assumed to be `~/brandyBox`; change it if your clone is elsewhere.
-- Do **not** overwrite `backend/.env` when pulling; keep your JWT secret, SMTP, and admin settings.
+- Image: `ghcr.io/markusbrand/brandybox-backend:latest`.
+- Keep `backend/.env` (JWT secret, SMTP, admin) safe; it is not in the image.
 
 This command is available in chat as `/install-brandybox-server`.

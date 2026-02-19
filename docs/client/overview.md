@@ -23,9 +23,9 @@ On Linux the app prefers **Wayland** when the session is Wayland (`XDG_SESSION_T
 
 ## Linux / KDE system tray
 
-On Linux the tray icon is drawn at 32 px so it stays crisp when the panel uses ~22–24 px (e.g. KDE Plasma). If the icon appears as a plain blue square or a click-indicator circle jumps on the tray, the default backend (XOrg/AppIndicator) is still the one that shows the icon on KDE. Do **not** set `PYSTRAY_BACKEND=gtk` on KDE: the GTK backend uses Gtk.StatusIcon, which Plasma often does not display, so you may see no icon at all.
+On Linux the tray icon is drawn at 32 px so it stays crisp when the panel uses ~22–24 px (e.g. KDE Plasma). **For new installs on Linux (Garuda, KDE, etc.) use the venv-based install** so the app runs as `python -m brandybox.main` and can use the system PyGObject (AppIndicator). That gives the correct tray icon and right-click menu. The **standalone PyInstaller binary** on Linux often falls back to the XOrg backend (square icon, no context menu); this is a known, recurring issue — see [Client troubleshooting](troubleshooting.md#linux-tray-shows-square-icon--no-context-menu-recurring-with-new-installs). Do **not** set `PYSTRAY_BACKEND=gtk` on KDE: the GTK backend uses Gtk.StatusIcon, which Plasma often does not display, so you may see no icon at all.
 
-See [Client troubleshooting](troubleshooting.md) for common issues (e.g. permission denied when syncing on Windows).
+See [Client troubleshooting](troubleshooting.md) for common issues (Linux tray, permission denied when syncing on Windows).
 
 ## Build
 

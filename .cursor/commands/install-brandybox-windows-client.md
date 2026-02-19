@@ -2,22 +2,25 @@
 
 PowerShell commands for **Windows** (e.g. Lenovo laptop, no admin): run the client from Cursor for testing, then build a portable exe for any Windows machine.
 
+Replace `C:\path\to\brandyBox` with your actual repo path (e.g. `C:\Users\mbrandstaetter\cursorWS\brandyBox` or your workspace path).
+
 ---
 
 ## 1. Test-run from Cursor (no install, no admin)
 
-From the repo root in PowerShell (e.g. from Cursor’s terminal):
+From the **repo root** in PowerShell (e.g. from Cursor’s terminal):
 
 ```powershell
-cd C:\Users\mbrandstaetter\cursorWS\brandybox\brandyBox\client
+cd C:\path\to\brandyBox\client
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .
+cd ..
 python -m brandybox.main
 ```
 
-- Replace the `cd` path with your actual workspace path if different.
-- If execution policy blocks the activate script: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` (once), or run: `.\.venv\Scripts\activate.bat` in `cmd` then `python -m brandybox.main`.
+- The `cd ..` and run from repo root so assets and config paths resolve correctly.
+- If execution policy blocks the activate script: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` (once), or use `cmd` and `.\.venv\Scripts\activate.bat` then `python -m brandybox.main`.
 - Tray icon should appear. To exit the venv: `deactivate`.
 
 Optional — run tests first:
@@ -34,7 +37,7 @@ pytest
 Build from the **repo root** (not `client/`). No admin required if Python and pip are user-installed.
 
 ```powershell
-cd C:\Users\mbrandstaetter\cursorWS\brandybox\brandyBox
+cd C:\path\to\brandyBox
 pip install pyinstaller
 pyinstaller client/brandybox.spec
 ```
@@ -56,10 +59,9 @@ For one `.exe` installer that does per-user install (no admin):
 3. In PowerShell from repo root:
 
 ```powershell
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "C:\Users\mbrandstaetter\cursorWS\brandybox\brandyBox\assets\installers\brandybox.iss"
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "C:\path\to\brandyBox\assets\installers\brandybox.iss"
 ```
 
-- Adjust the path to `brandybox.iss` if your repo is elsewhere.
 - Installer is created at `dist\BrandyBox-Setup.exe`. Run it on any Windows machine for a per-user install (Start Menu shortcut, uninstaller).
 
 ---
@@ -68,7 +70,7 @@ For one `.exe` installer that does per-user install (no admin):
 
 | Goal | PowerShell (from repo or client as noted) |
 |------|------------------------------------------|
-| **Test-run in Cursor** | `cd …\brandyBox\client` → `.\.venv\Scripts\Activate.ps1` → `pip install -e .` → `python -m brandybox.main` |
+| **Test-run in Cursor** | `cd …\brandyBox\client` → `.\.venv\Scripts\Activate.ps1` → `pip install -e .` → `cd ..` → `python -m brandybox.main` |
 | **Portable exe folder** | From repo root: `pip install pyinstaller` → `pyinstaller client/brandybox.spec` → use `dist\BrandyBox\BrandyBox.exe` (copy whole folder to target PC) |
 | **Single installer exe** | After PyInstaller build, run Inno Setup: `ISCC.exe …\assets\installers\brandybox.iss` → `dist\BrandyBox-Setup.exe` |
 

@@ -1,0 +1,12 @@
+---
+description: Linux client install — use venv for proper tray; PyInstaller has known limitations
+globs: README.md, docs/**/*.md, assets/installers/*.md, assets/installers/*.sh, client/**/*.py
+alwaysApply: false
+---
+
+# Linux client install (Brandy Box)
+
+- **Recurring issue**: New client installs on Linux (e.g. Garuda, KDE) often show a **square tray icon**, **no right-click context menu**, and sometimes a **persistent settings popup**. This happens when the app runs as the **PyInstaller standalone binary** (`~/.local/share/brandybox/BrandyBox`), because the bundled environment cannot use the system PyGObject (AppIndicator) correctly and falls back to the XOrg tray backend.
+- **Recommended fix for Linux**: Always use the **venv-based install** so the app runs as `python -m brandybox.main` with the system Python/venv and can load the system `gi` (PyGObject). That gives the correct tray icon and context menu.
+- **Steps**: From repo root: `python -m venv .venv --system-site-packages`, `source .venv/bin/activate`, `cd client && pip install -e . && cd ..`, then either `./scripts/install_desktop_venv.sh` or `./assets/installers/linux_install.sh --venv`. Prerequisites: `sudo pacman -S python-gobject libappindicator-gtk3` (Arch/Garuda).
+- When writing or updating **documentation** (README, installers README, client troubleshooting, client overview), state clearly that on **Linux** the venv-based install is the recommended way to avoid the tray icon/menu issue; the PyInstaller binary is fine for Windows/macOS or for running manually on Linux, but for menu/autostart on Linux use the venv install.

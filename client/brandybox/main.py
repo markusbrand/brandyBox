@@ -24,7 +24,8 @@ if sys.platform == "linux":
         gi.require_version("Gtk", "3.0")
         import gi.repository.Gtk  # noqa: F401
         _have_gi = True
-    except (ImportError, ValueError, OSError):
+    except (ImportError, ValueError, OSError, AttributeError):
+        # AttributeError: frozen build may bundle a stub 'gi' without require_version
         pass
     if not _have_gi and os.environ.get("DISPLAY"):
         os.environ.setdefault("PYSTRAY_BACKEND", "xorg")
@@ -151,10 +152,8 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
     # If user has never set a sync folder, open Settings once so they see default ~/brandyBox (avoids broken tray menu on Linux)
     if not user_has_set_sync_folder():
         root.after(200, lambda: schedule_ui(lambda: show_settings(api=api, parent=root)))
-    # Only when using xorg backend (no context menu): show quick-access window
-    import pystray
-    if getattr(pystray.Icon, "__module__", "").endswith("_xorg"):
-        root.after(300, lambda: _show_quick_access_window(root, api, schedule_ui))
+    # xorg backend: no context menu; left-click still opens Settings (default action).
+    # Use app menu "Quit Brandy Box" to quit. We no longer auto-show the quick-access window.
     root.mainloop()
 
 

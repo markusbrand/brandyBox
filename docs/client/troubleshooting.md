@@ -1,5 +1,27 @@
 # Client troubleshooting
 
+## Linux: tray shows square icon / no context menu (recurring with new installs)
+
+**Symptom:** On Linux (e.g. Garuda, KDE) the tray icon appears as a **square** instead of the Brandy Box “B” icon, **right-click does not open a context menu** (or a circle/indicator appears), and sometimes a settings popup stays on screen.
+
+**Cause:** This happens when the app is run as the **standalone PyInstaller binary** (e.g. from `~/.local/share/brandybox/BrandyBox` or a desktop entry that points to it). The bundled environment cannot use the system PyGObject (AppIndicator) correctly, so the app falls back to the XOrg tray backend, which has these limitations. This is a **known, recurring issue** with new client installs on Linux.
+
+**Fix — use the venv-based install:**
+
+1. **Prerequisites** (Arch/Garuda):  
+   `sudo pacman -S python-gobject libappindicator-gtk3`
+2. From the **repo root**:  
+   `python -m venv .venv --system-site-packages`  
+   `source .venv/bin/activate`  
+   `cd client && pip install -e . && cd ..`
+3. Install desktop entries that run the venv:  
+   `./scripts/install_desktop_venv.sh`  
+   or  
+   `./assets/installers/linux_install.sh --venv`
+4. Start **Brandy Box** from the application menu (the entry will now use `python -m brandybox.main` from the venv). The tray will show the correct icon and right-click menu.
+
+See also the main [README](../../README.md) section “Install on Linux” and [Installers](../../assets/installers/README_installers.md) (Option A — Venv).
+
 ## System metadata files (`.directory`, `Thumbs.db`, etc.)
 
 Files like `.directory` (KDE Dolphin), `Thumbs.db`, `Desktop.ini` (Windows), and `.DS_Store` (macOS) are created automatically by the OS or file manager to store view settings or thumbnails. **Brandy Box does not need them** for syncing your actual content.

@@ -86,24 +86,29 @@ cd ..
 python -m brandybox.main
 ```
 
-### Install on Linux (venv, e.g. Garuda)
+### Install on Linux (venv — recommended; avoids tray icon/menu issues)
 
-To add **Brandy Box**, **Brandy Box Settings**, and **Quit Brandy Box** to the application menu and allow starting at login:
+On Linux (e.g. Garuda, KDE), **use the venv-based install** so the tray shows the correct icon and right-click menu. The standalone PyInstaller binary on Linux often shows a square icon, no context menu, and can show a persistent popup; this is a known, recurring issue with new installs — the venv install avoids it.
 
-1. Create venv with system site-packages (for tray icon + menu):  
+1. **Prerequisites** (Arch/Garuda):  
+   `sudo pacman -S python-gobject libappindicator-gtk3`
+2. **Create venv and install client** (from repo root):  
    `python -m venv .venv --system-site-packages`  
    Then `source .venv/bin/activate`, `cd client && pip install -e . && cd ..`
-2. Install desktop entries (from repo root, with venv activated):  
-   `chmod +x scripts/install_desktop_venv.sh && ./scripts/install_desktop_venv.sh`
-3. Start **Brandy Box** from the app menu, then in **Settings** enable **“Start when I log in”**.
+3. **Install desktop entries** (from repo root, venv can be activated or not):  
+   `chmod +x scripts/install_desktop_venv.sh && ./scripts/install_desktop_venv.sh`  
+   Or: `./assets/installers/linux_install.sh --venv`
+4. Start **Brandy Box** from the app menu, then in **Settings** enable **“Start when I log in”**.
 
-No sudo. The autostart entry is written to `~/.config/autostart/brandybox.desktop` with the correct working directory.
+No sudo (except for the pacman packages). The autostart entry is written to `~/.config/autostart/brandybox.desktop` when you enable it in Settings.
+
+See [Client troubleshooting](docs/client/troubleshooting.md) if you see a square tray icon or no context menu.
 
 ### Build (installers)
 
 1. Generate logos (optional, from repo root): `python scripts/generate_logos.py`
 2. Build: `pip install pyinstaller && pyinstaller client/brandybox.spec`
-3. Output: `dist/BrandyBox/` (run the app with `dist/BrandyBox/BrandyBox`). See [assets/installers/README_installers.md](assets/installers/README_installers.md) for Linux/Windows/macOS installer steps.
+3. Output: `dist/BrandyBox/` (run the app with `dist/BrandyBox/BrandyBox`). See [assets/installers/README_installers.md](assets/installers/README_installers.md) for Linux/Windows/macOS installer steps. **On Linux**, the standalone binary often has tray issues (square icon, no menu); use the venv install above instead for the application menu.
 
 ### Usage
 
@@ -112,7 +117,7 @@ No sudo. The autostart entry is written to `~/.config/autostart/brandybox.deskto
 - **404 on login**: If the client shows "404 Not Found" for `…/api/auth/login`, the backend URL may be wrong. Check that `curl https://brandybox.brandstaetter.rocks/health` returns `{"status":"ok"}`. If `/health` works but login still 404s, your Cloudflare Tunnel may be using a path prefix; set `BRANDYBOX_BASE_URL` (e.g. `https://brandybox.brandstaetter.rocks/backend`) and run the app again.
 - **Open Settings**: If you have never set a sync folder, the Settings window opens automatically (showing default ~/brandyBox); close it or choose another folder so sync can start. You can also run **"Brandy Box Settings"** from your app menu (Linux install adds this desktop entry) or run `BrandyBox --settings` to open Settings without the tray. Left-clicking the tray icon is supposed to open Settings too, but on some Linux setups the tray menu is broken (grey circle); use "Brandy Box Settings" instead.
 - **Quit the app**: Right-click tray icon → Quit (if the menu opens). If the tray menu is broken, run **"Quit Brandy Box"** from your app menu (Linux install adds this), or run `killall BrandyBox` in a terminal.
-- **Tray icon / menu on Linux**: For the full tray (icon + right‑click menu), install PyGObject and AppIndicator: `sudo pacman -S python-gobject libappindicator-gtk3` (Arch/Garuda). The app then uses the AppIndicator backend. If you use a venv, either run with system Python for the tray, or create the venv with `python -m venv .venv --system-site-packages` so the venv can use the system `gi` module. If PyGObject is missing, the app falls back to the XOrg backend (no context menu) and shows a quick-access window (Settings + Quit).
+- **Tray icon / menu on Linux**: For the full tray (icon + right‑click menu), install PyGObject and AppIndicator: `sudo pacman -S python-gobject libappindicator-gtk3` (Arch/Garuda). The app then uses the AppIndicator backend. **On Garuda/KDE, use the venv-based install** (see “Install on Linux” above or `./assets/installers/linux_install.sh --venv`) so the menu runs `python -m brandybox.main` with the system `gi`; the standalone PyInstaller binary falls back to the XOrg backend (square icon, no context menu). If you use a venv, create it with `python -m venv .venv --system-site-packages` so the venv can use the system `gi` module.
 - Tray icon shows sync state: synced (blue), syncing (amber), error (red). The icon is drawn as a rounded "B". If the icon turns **red**, hover over it to see the error in the tooltip (e.g. "401 Unauthorized" or "Upload test.txt: …"); fix the cause (token, network, or Pi storage) and the next sync will retry. Expired tokens are refreshed automatically.
 - Option “Start when I log in” in Settings (no admin required).
 

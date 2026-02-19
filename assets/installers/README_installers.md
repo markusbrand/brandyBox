@@ -1,5 +1,7 @@
 # Brandy Box installers
 
+**Linux (Garuda/KDE):** New installs often see a square tray icon and no context menu when using the standalone binary. Use **Option A (venv)** below for the correct tray; see also [Client troubleshooting](../docs/client/troubleshooting.md#linux-tray-shows-square-icon--no-context-menu-recurring-with-new-installs).
+
 Build the client first (from repo root):
 
 ```bash
@@ -11,13 +13,26 @@ Output: `dist/BrandyBox/` with the executable and assets.
 
 ## Linux
 
+**Option A — Venv (recommended on Garuda/KDE for proper tray icon + context menu):**
+
+```bash
+cd /path/to/brandyBox
+python -m venv .venv --system-site-packages && source .venv/bin/activate
+cd client && pip install -e . && cd ..
+./assets/installers/linux_install.sh --venv
+```
+
+Use `--system-site-packages` so the venv can use the system PyGObject (e.g. `pacman -S python-gobject libappindicator-gtk3`). This installs desktop entries that run `python -m brandybox.main` from the repo venv; the tray then shows the correct icon and right-click menu.
+
+**Option B — Standalone binary (PyInstaller):**
+
 ```bash
 chmod +x assets/installers/linux_install.sh
 ./assets/installers/linux_install.sh
 # Or pass the build folder: ./assets/installers/linux_install.sh dist/BrandyBox
 ```
 
-Installs to `~/.local/share/brandybox` and adds desktop entries: **Brandy Box**, **Brandy Box Settings**, **Quit Brandy Box** (use the last to stop the app when the tray menu does not open). No sudo.
+Installs to `~/.local/share/brandybox` and adds desktop entries. On Garuda/KDE the binary may show a square tray icon and no context menu (XOrg fallback); use Option A for the best experience. No sudo.
 
 ## Windows
 
