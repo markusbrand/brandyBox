@@ -37,7 +37,7 @@ async def list_files(
 
 
 @router.post("/upload")
-@limiter.limit("120/minute")
+@limiter.limit("600/minute")  # Bulk sync: allow ~10 uploads/sec so 18k files finish in ~30 min
 async def upload_file(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],

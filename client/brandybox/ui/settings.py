@@ -255,6 +255,30 @@ def _center(win: tk.Tk | tk.Toplevel) -> None:
     win.geometry(f"+{x}+{y}")
 
 
+# Margin from screen edge when placing window near tray (first start)
+_TRAY_ANCHOR_MARGIN = 16
+
+
+def _position_near_tray(win: tk.Tk | tk.Toplevel) -> None:
+    """Place window as close as possible to the tray (top-right) while staying on-screen.
+    Used on first start before the user has moved the window; tray is usually top-right
+    (Linux/macOS) or bottom-right (Windows). We use top-right so the window appears
+    just below/left of the tray and clamp to the visible area.
+    """
+    win.update_idletasks()
+    w = win.winfo_width()
+    h = win.winfo_height()
+    sw = win.winfo_screenwidth()
+    sh = win.winfo_screenheight()
+    # Anchor near top-right (tray area)
+    x = sw - w - _TRAY_ANCHOR_MARGIN
+    y = _TRAY_ANCHOR_MARGIN
+    # Clamp so the whole window stays within the visible screen
+    x = max(0, min(x, sw - w))
+    y = max(0, min(y, sh - h))
+    win.geometry(f"+{x}+{y}")
+
+
 def ask_directory(
     parent: tk.Tk | tk.Toplevel,
     title: str = "Select folder",
@@ -949,10 +973,10 @@ def show_settings(
     win.protocol("WM_DELETE_WINDOW", on_close)
 
     frame.columnconfigure(0, weight=1)
-    log.info("show_settings: layout complete, centering")
+    log.info("show_settings: layout complete, positioning")
     win.update_idletasks()
     if not saved_geom:
-        _center(win)
+        _position_near_tray(win)
     if parent is not None:
         win.deiconify()
         win.lift()

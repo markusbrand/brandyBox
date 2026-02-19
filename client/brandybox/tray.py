@@ -81,6 +81,7 @@ def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> No
     import tkinter as tk
     from tkinter import ttk
 
+    log.info("Opening Sync progress window (parent=%s)", parent is not None)
     # Reuse existing window if still visible
     if getattr(tray_app, "_progress_window", None) is not None:
         w = tray_app._progress_window
@@ -101,7 +102,8 @@ def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> No
     win = tk.Toplevel(root)
     win.title("Brandy Box – Sync progress")
     win.resizable(False, False)
-    win.transient(root)
+    # Do not set transient when parent is withdrawn (main app root): on KDE/Wayland
+    # the window would stay hidden. Skip transient for this floating progress popup.
     tray_app._progress_window = win
 
     pad = 12
@@ -182,7 +184,19 @@ def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> No
         win.geometry(f"+{x}+{y}")
     except tk.TclError:
         pass
+    win.deiconify()
     win.lift()
+    try:
+        win.focus_force()
+    except tk.TclError:
+        pass
+    # Briefly raise above other windows so it's visible (KDE/Wayland)
+    try:
+        win.attributes("-topmost", True)
+        win.after(400, lambda: win.attributes("-topmost", False))
+    except tk.TclError:
+        pass
+    win.update()  # Force map so window appears on Wayland/KDE
 
 
 def _draw_fallback_icon(size: int, color: Tuple[int, int, int]) -> Image.Image:
@@ -410,6 +424,11 @@ class TrayApp:
             if not sync_path.exists():
                 sync_path.mkdir(parents=True, exist_ok=True)
                 log.info("Created sync folder %s", sync_path)
+            # In automatic mode, re-resolve base URL each cycle so LAN is used when on local network
+            if get_base_url_mode() == "automatic":
+                url = get_base_url()
+                self._api.set_base_url(url)
+                log.debug("Sync cycle using base URL: %s", url)
             log.info("Starting sync cycle (folder=%s)", sync_path)
             self._set_status("syncing")
             self._last_error = None

@@ -1,6 +1,7 @@
 """HTTP client for Brandy Box backend API."""
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -104,16 +105,37 @@ class BrandyBoxAPI:
             return data
 
     def upload_file(self, relative_path: str, body: bytes) -> None:
-        """POST /api/files/upload?path=... with body."""
+        """POST /api/files/upload?path=... with body. Retries on 502/503 (gateway errors)."""
         log.debug("upload_file path=%s size=%d", relative_path, len(body))
-        with httpx.Client(timeout=60.0) as client:
-            r = client.post(
-                f"{self._base_url}/api/files/upload",
-                params={"path": relative_path},
-                content=body,
-                headers=self._headers(),
-            )
-            r.raise_for_status()
+        # Longer timeout for large files (e.g. STL): 5 min base + extra for big uploads
+        timeout = 300.0 + min(300.0, len(body) / (1024 * 1024) * 30)
+        for attempt in range(3):
+            with httpx.Client(timeout=timeout) as client:
+                r = client.post(
+                    f"{self._base_url}/api/files/upload",
+                    params={"path": relative_path},
+                    content=body,
+                    headers=self._headers(),
+                )
+                if r.status_code in (429, 502, 503) and attempt < 2:
+                    # 429: rate limit; 502/503: gateway. Use Retry-After if present, else backoff
+                    delay = 5
+                    if r.status_code == 429:
+                        retry_after = r.headers.get("Retry-After")
+                        if retry_after and retry_after.isdigit():
+                            delay = min(60, int(retry_after))
+                        else:
+                            delay = 5 * (2 ** attempt)  # 5s, 10s
+                    else:
+                        delay = 2 * (2 ** attempt)  # 2s, 4s
+                    log.warning(
+                        "Upload %s: %s %s, retry in %ds (attempt %d/3)",
+                        relative_path, r.status_code, r.reason_phrase, delay, attempt + 1,
+                    )
+                    time.sleep(delay)
+                    continue
+                r.raise_for_status()
+                return
 
     def download_file(self, relative_path: str) -> bytes:
         """GET /api/files/download?path=... Returns file bytes."""
