@@ -1,6 +1,6 @@
 # Brandy Box installers
 
-**Pre-built assets:** On every [GitHub Release](https://github.com/markusbrand/brandyBox/releases), the CI attaches `BrandyBox-<version>-Windows-x64.zip` and `BrandyBox-<version>-Linux-x64.zip`. Download the zip for your OS, unzip, then run the executable (Windows: `BrandyBox.exe`; Linux: run `./BrandyBox` or use the install script on the unzipped folder).
+**Pre-built assets:** On every [GitHub Release](https://github.com/markusbrand/brandyBox/releases), the CI attaches `BrandyBox-<version>-Windows-x64.zip`, `BrandyBox-<version>-Linux-x64.zip`, and `BrandyBox-<version>-macOS-<arch>.zip` (arm64 or x64). Download the zip for your OS, unzip, then run the executable (Windows: `BrandyBox.exe`; Linux/macOS: run `./BrandyBox` or use the Linux install script on the unzipped folder).
 
 **Linux (Garuda/KDE):** New installs often see a square tray icon and no context menu when using the standalone binary. Use **Option A (venv)** below for the correct tray; see also [Client troubleshooting](../docs/client/troubleshooting.md#linux-tray-shows-square-icon--no-context-menu-recurring-with-new-installs).
 

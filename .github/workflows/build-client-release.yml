@@ -1,5 +1,5 @@
-# Build Brandy Box client (Windows + Linux) and attach zips to GitHub Releases.
-# On "Release published", produces BrandyBox-<tag>-Windows-x64.zip and BrandyBox-<tag>-Linux-x64.zip
+# Build Brandy Box client (Windows, Linux, macOS) and attach zips to GitHub Releases.
+# On "Release published", produces BrandyBox-<tag>-Windows-x64.zip, -Linux-x64.zip, -macOS-<arch>.zip
 # as downloadable assets on the release page.
 
 name: Build Client for Release
@@ -77,8 +77,41 @@ jobs:
           name: BrandyBox-Linux-x64
           path: BrandyBox-${{ env.VERSION }}-Linux-x64.zip
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies and build
+        run: |
+          pip install pyinstaller
+          pip install -e ./client
+          pyinstaller -y client/brandybox.spec
+
+      - name: Zip macOS artifact
+        id: zip-macos
+        run: |
+          ARCH=$(echo "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')
+          ZIP_NAME="BrandyBox-${{ env.VERSION }}-macOS-${ARCH}.zip"
+          cd dist && zip -r "../${ZIP_NAME}" BrandyBox && cd ..
+          echo "zip_path=${ZIP_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrandyBox-macOS
+          path: ${{ steps.zip-macos.outputs.zip_path }}
+
   attach-to-release:
-    needs: [build-windows, build-linux]
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     if: (github.event_name == 'release' && github.event.action == 'published') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
     permissions:
