@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from brandybox.sync.engine import (
+    SYNC_IGNORE_BASENAMES,
+    _is_ignored,
     _list_local,
     _load_last_synced_paths,
     _remote_to_set,
@@ -32,6 +34,32 @@ def test_list_local_nested_files(tmp_path: Path) -> None:
     assert paths == {"top.txt", "a/f1.txt", "a/f2.txt"}
     for _, mtime in result:
         assert isinstance(mtime, (int, float))
+
+
+def test_is_ignored() -> None:
+    """_is_ignored returns True for SYNC_IGNORE_BASENAMES, False for others."""
+    for name in SYNC_IGNORE_BASENAMES:
+        assert _is_ignored(name) is True
+        assert _is_ignored(f"subdir/{name}") is True
+    assert _is_ignored("normal.txt") is False
+    assert _is_ignored("a/b/c.txt") is False
+    assert _is_ignored(".directory.bak") is False  # basename is .directory.bak, not in set
+
+
+def test_list_local_excludes_ignored_basenames(tmp_path: Path) -> None:
+    """_list_local does not include files whose basename is in SYNC_IGNORE_BASENAMES."""
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "doc.txt").write_text("content")
+    (tmp_path / ".directory").write_text("")
+    (tmp_path / "Thumbs.db").write_text("")
+    (tmp_path / "sub" / ".DS_Store").write_text("")
+    (tmp_path / "sub" / "real.txt").write_text("x")
+    result = _list_local(tmp_path)
+    paths = {p for p, _ in result}
+    assert paths == {"doc.txt", "sub/real.txt"}
+    assert ".directory" not in paths
+    assert "Thumbs.db" not in paths
+    assert "sub/.DS_Store" not in paths
 
 
 def test_remote_to_set() -> None:
