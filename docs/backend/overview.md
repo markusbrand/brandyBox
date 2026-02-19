@@ -35,7 +35,7 @@ On the Raspberry Pi, updates to the backend image can be applied automatically w
 - **`update_brandybox.sh`** – Script in `backend/`. Changes into the backend directory and runs `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull` then `up -d`, so the latest GHCR image is used and the container is recreated with existing `.env` and volumes.
 - **Cron:** A cron job (e.g. `@reboot`) can start the webhook listener so it runs after a Pi reboot. Alternatively, cron can run `update_brandybox.sh` on a schedule (e.g. daily) as a fallback if webhooks are not configured.
 
-Configure the webhook in GitHub (repo → Settings → Webhooks): Payload URL pointing to the listener (e.g. `https://your-domain:9000/webhook`), Content type `application/json`, Secret equal to `GITHUB_WEBHOOK_SECRET`, and trigger “Workflow runs”. Do not commit the secret; set it in the environment when starting the listener.
+Configure the webhook in GitHub (repo → Settings → Webhooks): Payload URL pointing to the listener (e.g. `https://deploy.brandstaetter.rocks/webhook` via Cloudflare tunnel to the Pi on port 9000), Content type `application/json`, Secret equal to `GITHUB_WEBHOOK_SECRET`, and trigger “Workflow runs”. Do not commit the secret; set it in the environment when starting the listener.
 
 ## Security
 

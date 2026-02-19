@@ -36,5 +36,5 @@ def handle_webhook():
     return "Kein Update erforderlich", 200
 
 if __name__ == '__main__':
-    # Läuft auf Port 9000, den du via Cloudflare Tunnel ansprichst
-    app.run(host='0.0.0.0', port=9000)
+    port = int(os.environ.get("PORT", "9000"))
+    app.run(host='0.0.0.0', port=port)

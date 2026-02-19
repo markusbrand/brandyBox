@@ -94,7 +94,7 @@ curl -s http://192.168.0.150:8081/health
 
 When GitHub Actions has built the new image, the Pi can update itself without manual SSH:
 
-- **Webhook listener** (`backend/webhook_listener.py`): Flask app on port 9000. Configure a GitHub webhook (repo → Settings → Webhooks) to call your Pi (e.g. via Cloudflare tunnel) at `/webhook`. Set `GITHUB_WEBHOOK_SECRET` in the environment to match the webhook secret. On successful `workflow_run` completion, the listener runs `backend/update_brandybox.sh`, which pulls the latest image and restarts the container.
+- **Webhook listener** (`backend/webhook_listener.py`): Flask app on port 9000. Configure a GitHub webhook (repo → Settings → Webhooks) to call your Pi, e.g. Payload URL `https://deploy.brandstaetter.rocks/webhook` (Cloudflare tunnel to the Pi). Set `GITHUB_WEBHOOK_SECRET` in the environment to match the webhook secret. On successful `workflow_run` completion, the listener runs `backend/update_brandybox.sh`, which pulls the latest image and restarts the container.
 - **Cron:** Use a cron job (e.g. `@reboot`) to start the webhook listener after a reboot, or run `update_brandybox.sh` periodically (e.g. daily) as a fallback.
 
 See the main [README](../../README.md) (backend section 7) and [Backend overview](../../docs/backend/overview.md) for details.
