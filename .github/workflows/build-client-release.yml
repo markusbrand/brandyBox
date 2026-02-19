@@ -84,6 +84,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
