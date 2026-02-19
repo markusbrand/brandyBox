@@ -1,0 +1,101 @@
+# Build Brandy Box client (Windows + Linux) and attach zips to GitHub Releases.
+# On "Release published", produces BrandyBox-<tag>-Windows-x64.zip and BrandyBox-<tag>-Linux-x64.zip
+# as downloadable assets on the release page.
+
+name: Build Client for Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  # Version for artifact names: release tag (e.g. v0.1.0) or 'dev' when run manually
+  VERSION: ${{ github.event.release.tag_name || 'dev' }}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies and build
+        run: |
+          pip install pyinstaller
+          pip install -e ./client
+          pyinstaller -y client/brandybox.spec
+
+      - name: Zip Windows artifact
+        run: |
+          Compress-Archive -Path dist/BrandyBox/* -DestinationPath "BrandyBox-${{ env.VERSION }}-Windows-x64.zip"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrandyBox-Windows-x64
+          path: BrandyBox-${{ env.VERSION }}-Windows-x64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies and build
+        run: |
+          pip install pyinstaller
+          pip install -e ./client
+          pyinstaller -y client/brandybox.spec
+
+      - name: Zip Linux artifact
+        run: |
+          cd dist && zip -r "../BrandyBox-${{ env.VERSION }}-Linux-x64.zip" BrandyBox && cd ..
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrandyBox-Linux-x64
+          path: BrandyBox-${{ env.VERSION }}-Linux-x64.zip
+
+  attach-to-release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: BrandyBox-Windows-x64
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: BrandyBox-Linux-x64
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            BrandyBox-Windows-x64/BrandyBox-*.zip
+            BrandyBox-Linux-x64/BrandyBox-*.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

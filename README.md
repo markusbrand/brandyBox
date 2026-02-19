@@ -124,6 +124,8 @@ See [Client troubleshooting](docs/client/troubleshooting.md) if you see a square
 2. Build: `pip install pyinstaller && pyinstaller client/brandybox.spec`
 3. Output: `dist/BrandyBox/` (run the app with `dist/BrandyBox/BrandyBox`). See [assets/installers/README_installers.md](assets/installers/README_installers.md) for Linux/Windows/macOS installer steps. **On Linux**, the standalone binary often has tray issues (square icon, no menu); use the venv install above instead for the application menu.
 
+   **Pre-built assets:** For each [GitHub Release](https://github.com/markusbrand/brandyBox/releases) (e.g. [v0.1.0](https://github.com/markusbrand/brandyBox/releases/tag/v0.1.0)), the CI builds the client and attaches `BrandyBox-<version>-Windows-x64.zip` and `BrandyBox-<version>-Linux-x64.zip` as downloadable assets. Unzip and run the executable (or use the Linux install script on the unzipped folder).
+
 ### Usage
 
 - Run the app; log in with email and password (or use stored credentials).
