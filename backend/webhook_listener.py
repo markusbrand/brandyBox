@@ -2,12 +2,25 @@ import hmac
 import hashlib
 import subprocess
 import os
+from pathlib import Path
+
 from flask import Flask, request, abort
+
+# Load .env from backend directory so GITHUB_WEBHOOK_SECRET can be set there (file not committed)
+_env_file = Path(__file__).resolve().parent / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            key = key.strip()
+            if key and key not in os.environ:
+                os.environ[key] = value.strip().strip("'\"")
 
 app = Flask(__name__)
 
 # Webhook secret: must match the value in GitHub repo → Settings → Webhooks → Secret.
-# Prefer environment variable so the secret is not committed (e.g. set in .env or systemd).
+# Set in backend/.env as GITHUB_WEBHOOK_SECRET=... or in the environment.
 GITHUB_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "").encode("utf-8") or b"" 
 
 def verify_signature(payload, signature):
