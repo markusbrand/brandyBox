@@ -8,3 +8,4 @@ nav:
   - Client:
     - Overview: client/overview.md
     - Troubleshooting: client/troubleshooting.md
+  - License: license.md

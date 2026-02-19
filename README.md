@@ -1,5 +1,7 @@
 # Brandy Box
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudflare tunnel or LAN. Per-user storage, admin user management, and secure credential storage.
 
 ## Architecture
@@ -149,3 +151,9 @@ See [Client troubleshooting](docs/client/troubleshooting.md) if you see a square
 - **Safe to publish**: The repo can be made public on GitHub; no credentials or API keys are in source. E2E tests use env vars `BRANDYBOX_TEST_EMAIL` and `BRANDYBOX_TEST_PASSWORD` (set locally only).
 - Client stores only refresh token and email in OS keyring.
 - Auth and file endpoints are rate-limited; path traversal is blocked; CORS is restricted.
+
+## License
+
+Copyright 2026 Markus Brand.
+
+This project is open source under the [Apache License 2.0](LICENSE). See [LICENSE](LICENSE) for the full text. You may use, modify, and distribute the software under the terms of that license, with attribution as described in [NOTICE](NOTICE).
