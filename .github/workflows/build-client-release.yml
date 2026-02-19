@@ -79,23 +79,28 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download Windows artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: BrandyBox-Windows-x64
+          pattern: BrandyBox-*
+          merge-multiple: true
 
-      - name: Download Linux artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: BrandyBox-Linux-x64
+      - name: List downloaded files
+        run: find . -name '*.zip' -type f
 
       - name: Upload to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: |
-            BrandyBox-Windows-x64/BrandyBox-*.zip
-            BrandyBox-Linux-x64/BrandyBox-*.zip
-          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          count=0
+          while IFS= read -r -d '' f; do
+            echo "Uploading $f to release $TAG"
+            gh release upload "$TAG" "$f" --clobber
+            count=$((count + 1))
+          done < <(find . -name 'BrandyBox-*.zip' -type f -print0)
+          if [ "$count" -eq 0 ]; then
+            echo "No BrandyBox-*.zip files found to upload"
+            exit 1
+          fi
+          echo "Uploaded $count file(s)"
