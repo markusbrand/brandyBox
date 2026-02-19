@@ -33,7 +33,11 @@ On the Raspberry Pi, updates to the backend image can be applied automatically w
 
 - **`webhook_listener.py`** – Small Flask app (port 9000) that receives GitHub webhook POSTs. Verifies `X-Hub-Signature-256` using `GITHUB_WEBHOOK_SECRET`. When a `workflow_run` event has `action: completed` and `conclusion: success`, it runs `update_brandybox.sh` in the background.
 - **`update_brandybox.sh`** – Script in `backend/`. Changes into the backend directory and runs `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull` then `up -d`, so the latest GHCR image is used and the container is recreated with existing `.env` and volumes.
-- **Cron:** A cron job (e.g. `@reboot`) can start the webhook listener so it runs after a Pi reboot. Alternatively, cron can run `update_brandybox.sh` on a schedule (e.g. daily) as a fallback if webhooks are not configured.
+- **Cron:** To start the webhook listener after a Pi reboot, run `crontab -e` and add:
+  ```cron
+  @reboot cd /home/pi/brandyBox/backend && nohup python3 webhook_listener.py >> webhook.log 2>&1 &
+  ```
+  The listener reads `GITHUB_WEBHOOK_SECRET` from `backend/.env`. Log output goes to `backend/webhook.log`. Alternatively, cron can run `update_brandybox.sh` on a schedule (e.g. daily) as a fallback if webhooks are not configured.
 
 Configure the webhook in GitHub (repo → Settings → Webhooks): Payload URL pointing to the listener (e.g. `https://deploy.brandstaetter.rocks/webhook` via Cloudflare tunnel to the Pi on port 9000), Content type `application/json`, Secret equal to `GITHUB_WEBHOOK_SECRET`, and trigger “Workflow runs”. Do not commit the secret; set it in the environment when starting the listener.
 

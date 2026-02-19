@@ -72,7 +72,11 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    - **On the Pi:** A small Flask app (`backend/webhook_listener.py`) listens for GitHub webhook POSTs (e.g. on port 9000). It verifies the request with `X-Hub-Signature-256` using a secret, and on successful `workflow_run` completion it runs `backend/update_brandybox.sh`, which runs `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull && … up -d`.
    - **Secret:** Set `GITHUB_WEBHOOK_SECRET` in the environment when starting the webhook listener (e.g. in a systemd unit or a small `.env` that is not committed). Use the same value in GitHub: repo → **Settings** → **Webhooks** → **Add webhook** → Payload URL: `https://deploy.brandstaetter.rocks/webhook` (Cloudflare tunnel to the Pi listener on port 9000), Content type: `application/json`, Secret: your secret. Under “Which events would you like to trigger this webhook?” choose **Workflow runs** (or “Let me select… → Workflow runs). The listener only acts when `workflow_run` has `action: completed` and `conclusion: success`.
    - **Run the listener:** e.g. `cd ~/brandyBox/backend && GITHUB_WEBHOOK_SECRET='your-secret' python webhook_listener.py` (or run it under systemd/gunicorn). Expose port 9000 via a Cloudflare tunnel (e.g. to `https://deploy.brandstaetter.rocks/webhook`) so GitHub can reach it.
-   - **Cron (optional):** To ensure the webhook listener is running after a reboot, add a cron job for the Pi user, e.g. `@reboot cd /home/pi/brandyBox/backend && GITHUB_WEBHOOK_SECRET='…' python webhook_listener.py &` (or use a systemd service instead of cron). Alternatively, a cron job can run `update_brandybox.sh` periodically (e.g. daily) as a fallback if webhooks are not used.
+   - **Cron (optional):** To start the webhook listener after a reboot, add a cron job for the Pi user: run `crontab -e` and add:
+     ```cron
+     @reboot cd /home/pi/brandyBox/backend && nohup python3 webhook_listener.py >> webhook.log 2>&1 &
+     ```
+     The listener loads `GITHUB_WEBHOOK_SECRET` from `backend/.env`, so the secret does not need to be in the cron line. Log output is appended to `backend/webhook.log`. Alternatively, a cron job can run `update_brandybox.sh` periodically (e.g. daily) as a fallback if webhooks are not used.
 
    See [Backend overview](docs/backend/overview.md) for the script and listener layout.
 
