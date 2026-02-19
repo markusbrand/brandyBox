@@ -211,6 +211,7 @@ class TrayApp:
         self._icon: Optional[pystray.Icon] = None
         self._sync_thread: Optional[threading.Thread] = None
         self._stop_sync = threading.Event()
+        self._sync_now = threading.Event()
 
     def _get_icon_image(self) -> Image.Image:
         # On Linux use a smaller size so the tray (often 22–24 px) doesn't scale down and lose shape.
@@ -308,7 +309,14 @@ class TrayApp:
                 log.info("Sync cycle completed successfully")
                 retry_interval = 60
                 log.debug("Pausing %ds until next sync cycle", retry_interval)
-            self._stop_sync.wait(timeout=retry_interval)
+            # Wait retry_interval seconds, or until "Sync now" or stop requested
+            self._sync_now.clear()
+            for _ in range(retry_interval):
+                if self._stop_sync.wait(timeout=1):
+                    break
+                if self._sync_now.is_set():
+                    log.debug("Sync now requested, starting cycle")
+                    break
 
     def _open_folder(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         import subprocess
@@ -340,6 +348,11 @@ class TrayApp:
         else:
             open_()
 
+    def _sync_now_click(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        """Request an immediate sync cycle (wakes the sync thread from its wait)."""
+        self._sync_now.set()
+        log.info("Sync now requested from menu")
+
     def _toggle_pause(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         self._paused = not self._paused
         item.checked = self._paused
@@ -366,6 +379,7 @@ class TrayApp:
         menu = pystray.Menu(
             pystray.MenuItem("Settings", self._open_settings, default=True),
             pystray.MenuItem("Open folder", self._open_folder),
+            pystray.MenuItem("Sync now", self._sync_now_click),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Pause sync", self._toggle_pause, checked=lambda item: self._paused),
             pystray.Menu.SEPARATOR,
