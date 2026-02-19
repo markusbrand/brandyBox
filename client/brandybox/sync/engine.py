@@ -125,11 +125,42 @@ def sync_run(
     to_delete_local = last_synced - current_remote_paths  # gone from remote (e.g. other client)
     log.debug("Deletions: %d from server, %d from local", len(to_delete_remote), len(to_delete_local))
 
-    # Delete on server deepest paths first so backend can remove empty parent dirs
     to_del_list = sorted(to_delete_remote, key=lambda p: -p.count("/"))
-    for i, path in enumerate(to_del_list):
+    to_del_local_list = sorted(to_delete_local, key=lambda p: -p.count("/"))
+
+    # Build to_download and to_upload so we can compute total work for combined progress bar
+    remote_list_tuples = [(item["path"], item["mtime"]) for item in remote_list]
+    to_download = []
+    for path, remote_mtime in remote_list_tuples:
+        if _is_ignored(path):
+            continue
+        parts = path.replace("\\", "/").split("/")
+        local_path = local_root.joinpath(*parts)
+        if not local_path.exists():
+            to_download.append(path)
+        else:
+            try:
+                local_mtime = local_path.stat().st_mtime
+                if remote_mtime > local_mtime:
+                    to_download.append(path)
+            except OSError:
+                to_download.append(path)
+
+    to_upload = []
+    for path, local_mtime in local_list:
+        if path not in remote_by_path:
+            to_upload.append(path)
+        elif local_mtime > remote_by_path[path]:
+            to_upload.append(path)
+
+    total_work = len(to_del_list) + len(to_del_local_list) + len(to_download) + len(to_upload)
+    done = 0
+
+    # Delete on server deepest paths first so backend can remove empty parent dirs
+    for path in to_del_list:
         try:
-            progress("delete_server", i + 1, len(to_del_list) if to_del_list else 0)
+            done += 1
+            progress("delete_server", done, total_work)
             status(f"Deleting on server {path}…")
             api.delete_file(path)
         except Exception as e:
@@ -137,10 +168,10 @@ def sync_run(
             return f"Delete on server {path}: {e}"
 
     # Delete locally deepest first, then remove empty parent dirs
-    to_del_local_list = sorted(to_delete_local, key=lambda p: -p.count("/"))
-    for i, path in enumerate(to_del_local_list):
+    for path in to_del_local_list:
         try:
-            progress("delete_local", i + 1, len(to_del_local_list) if to_del_local_list else 0)
+            done += 1
+            progress("delete_local", done, total_work)
             parts = path.replace("\\", "/").split("/")
             local_path = local_root.joinpath(*parts)
             if local_path.exists() and local_path.is_file():
@@ -162,30 +193,14 @@ def sync_run(
             return f"Delete locally {path}: {e}"
 
     # 2) Download from server to local (server is source of truth for existing files)
-    remote_list_tuples = [(item["path"], item["mtime"]) for item in remote_list]
-    to_download: List[str] = []
-    for path, remote_mtime in remote_list_tuples:
-        if _is_ignored(path):
-            continue
-        parts = path.replace("\\", "/").split("/")
-        local_path = local_root.joinpath(*parts)
-        if not local_path.exists():
-            to_download.append(path)
-        else:
-            try:
-                local_mtime = local_path.stat().st_mtime
-                if remote_mtime > local_mtime:
-                    to_download.append(path)
-            except OSError:
-                to_download.append(path)
-
     log.info("Downloading %d files from server", len(to_download))
     DOWNLOAD_DELAY = 0.12  # ~8/sec to stay under rate limit
     for i, path in enumerate(to_download):
         try:
             if i > 0:
                 time.sleep(DOWNLOAD_DELAY)
-            progress("download", i + 1, len(to_download))
+            done += 1
+            progress("download", done, total_work)
             status(f"Downloading {path}…")
             body = api.download_file(path)
             parts = path.replace("\\", "/").split("/")
@@ -228,21 +243,14 @@ def sync_run(
             return f"Download {path}: {e}"
 
     # 3) Upload local additions and newer files to server
-    to_upload: List[str] = []
-    for path, local_mtime in local_list:
-        if path not in remote_by_path:
-            to_upload.append(path)
-        elif local_mtime > remote_by_path[path]:
-            to_upload.append(path)
-
     log.info("Uploading %d files to server", len(to_upload))
-    # Throttle uploads to stay under backend rate limit (600/min = 10/sec)
-    UPLOAD_DELAY = 0.12  # ~8 uploads/sec
+    UPLOAD_DELAY = 0.12  # ~8 uploads/sec to stay under rate limit
     for i, path in enumerate(to_upload):
         try:
             if i > 0:
                 time.sleep(UPLOAD_DELAY)
-            progress("upload", i + 1, len(to_upload))
+            done += 1
+            progress("upload", done, total_work)
             status(f"Uploading {path}…")
             parts = path.replace("\\", "/").split("/")
             full = local_root.joinpath(*parts)

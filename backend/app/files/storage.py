@@ -25,7 +25,8 @@ def _is_safe_path_char(c: str) -> bool:
     if ("a" <= c <= "z") or ("A" <= c <= "Z") or ("0" <= c <= "9") or c in "_. -()+~#!&',;=[]":
         return True
     cat = unicodedata.category(c)
-    return cat.startswith("L") or cat.startswith("N")  # Letter or Number
+    # Letter, Number, or Punctuation (e.g. fullwidth parentheses （） in "Manual（CN）.pdf")
+    return cat.startswith("L") or cat.startswith("N") or cat.startswith("P")
 
 
 def _sanitize_segment(segment: str) -> Optional[str]:

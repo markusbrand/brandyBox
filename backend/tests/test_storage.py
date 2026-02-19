@@ -142,6 +142,17 @@ def test_resolve_user_path_accepts_tilde_in_filename(monkeypatch) -> None:
     assert got == Path("/data/u@x.co/Documents/krita/bart_simpson.kra~")
 
 
+def test_resolve_user_path_accepts_fullwidth_parens(monkeypatch) -> None:
+    """Path segments with fullwidth parentheses (e.g. 'Manual（CN）.pdf') are accepted."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    path = "Documents/3D print/1. 3D Printer User Manual/Ender-3 V2-SM-002_User Manual（CN）.pdf"
+    got = resolve_user_path("u@x.co", path)
+    assert got == Path("/data/u@x.co/Documents/3D print/1. 3D Printer User Manual/Ender-3 V2-SM-002_User Manual（CN）.pdf")
+
+
 def test_user_base_path_rejects_invalid_email(monkeypatch) -> None:
     """Email with slash or empty raises ValueError."""
     from app.files import storage
