@@ -71,19 +71,27 @@ def test_sync_run_list_failure_returns_error(tmp_path: Path) -> None:
     assert "network error" in err
 
 
-def test_sync_run_success_empty(tmp_path: Path) -> None:
+def test_sync_run_success_empty(monkeypatch, tmp_path: Path) -> None:
     """sync_run with no local/remote files completes and returns None."""
+    from brandybox.sync import engine
+
+    state_path = tmp_path / "sync_state.json"
+    monkeypatch.setattr(engine, "get_sync_state_path", lambda: state_path)
     api = MagicMock()
     api.list_files.return_value = []
     err = sync_run(api, tmp_path)
     assert err is None
 
 
-def test_sync_engine_run_delegates_to_sync_run(tmp_path: Path) -> None:
+def test_sync_engine_run_delegates_to_sync_run(monkeypatch, tmp_path: Path) -> None:
     """SyncEngine.run() calls sync_run and returns same result."""
+    from brandybox.sync import engine
+
+    state_path = tmp_path / "sync_state.json"
+    monkeypatch.setattr(engine, "get_sync_state_path", lambda: state_path)
     api = MagicMock()
     api.list_files.return_value = []
-    engine = SyncEngine(api, tmp_path)
-    err = engine.run()
+    engine_instance = SyncEngine(api, tmp_path)
+    err = engine_instance.run()
     assert err is None
     api.list_files.assert_called_once()

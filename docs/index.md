@@ -7,4 +7,4 @@ Sync a local folder to your Raspberry Pi storage (Dropbox-style). Backend runs i
 - [Backend overview](backend/overview.md)
 - [Client overview](client/overview.md)
 - [Client troubleshooting](client/troubleshooting.md)
-- Root [README](../README.md) for installation and run instructions.
+- [README](https://github.com/markusbrand/brandyBox/blob/master/README.md) in the repo for installation and run instructions.

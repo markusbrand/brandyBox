@@ -20,7 +20,7 @@
    `./assets/installers/linux_install.sh --venv`
 4. Start **Brandy Box** from the application menu (the entry will now use `python -m brandybox.main` from the venv). The tray will show the correct icon and right-click menu.
 
-See also the main [README](../../README.md) section “Install on Linux” and [Installers](../../assets/installers/README_installers.md) (Option A — Venv).
+See also the main [README](https://github.com/markusbrand/brandyBox/blob/master/README.md) section “Install on Linux” and [Installers](https://github.com/markusbrand/brandyBox/blob/master/assets/installers/README_installers.md) (Option A — Venv).
 
 ## System metadata files (`.directory`, `Thumbs.db`, etc.)
 
