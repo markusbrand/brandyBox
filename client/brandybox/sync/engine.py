@@ -120,6 +120,10 @@ def sync_run(
     server→local); (3) download from server to local (server is source of truth);
     (4) upload local additions and newer files to server. Returns None on success,
     or an error message on failure.
+
+    Sync state is saved after the delete phase and after each successful upload so that
+    closing the app mid-sync does not lose progress; the next run only transfers what is
+    still missing or newer.
     """
     def status(msg: str) -> None:
         if on_status:
@@ -218,6 +222,12 @@ def sync_run(
             log.error("Delete locally %s: %s", path, e)
             return f"Delete locally {path}: {e}"
 
+    # Persist state after deletes so a mid-sync close doesn't lose progress; next run will only do remaining work.
+    base_synced = (current_remote_paths - to_delete_remote)
+    base_synced = {p for p in base_synced if not _is_ignored(p)}
+    _save_last_synced_paths(base_synced)
+    log.debug("Saved sync state after deletes (%d paths)", len(base_synced))
+
     # 2) Download from server to local (concurrent, rate-limited to stay under backend 600/min)
     log.info("Downloading %d files from server (%d workers)", len(to_download), SYNC_MAX_WORKERS)
     rate_limiter = _RateLimiter(SYNC_RATE_LIMIT_PER_SEC)
@@ -280,6 +290,8 @@ def sync_run(
     # 3) Upload local additions and newer files to server (concurrent, rate-limited)
     log.info("Uploading %d files to server (%d workers)", len(to_upload), SYNC_MAX_WORKERS)
     done_after_downloads = done
+    completed_uploads: Set[str] = set()  # persist after each so mid-sync close can resume
+    upload_save_lock = threading.Lock()
 
     def _upload_one(path: str) -> Tuple[str, Optional[Exception]]:
         """Returns (path, None) on success, (path, exc) on error."""
@@ -306,6 +318,10 @@ def sync_run(
                     f.cancel()
                 log.error("Upload %s: %s", path, result)
                 return f"Upload {path}: {result}"
+            # Persist so closing the app mid-upload lets the next run pick up where we left off
+            with upload_save_lock:
+                completed_uploads.add(path)
+                _save_last_synced_paths(base_synced | completed_uploads)
 
     # Persist synced paths for next run (remote state after our deletes and uploads)
     new_synced = (current_remote_paths - to_delete_remote) | set(to_upload)
