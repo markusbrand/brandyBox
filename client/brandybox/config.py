@@ -11,7 +11,12 @@ DEFAULT_REMOTE_BASE_URL = "https://brandybox.brandstaetter.rocks"
 
 
 def _config_dir() -> Path:
-    """Platform-specific config directory (no admin)."""
+    """Platform-specific config directory (no admin).
+    When BRANDYBOX_CONFIG_DIR is set (e.g. for E2E testing), use that instead so
+    test user and sync folder stay separate from production."""
+    override = os.environ.get("BRANDYBOX_CONFIG_DIR", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
     if os.name == "nt":
         base = os.environ.get("APPDATA", os.path.expanduser("~"))
         return Path(base) / "BrandyBox"

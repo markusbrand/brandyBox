@@ -1,6 +1,7 @@
 """Keyring-backed credential storage and token refresh."""
 
 import logging
+import os
 from typing import Optional, Tuple
 
 import keyring
@@ -9,9 +10,15 @@ from brandybox.api.client import BrandyBoxAPI
 
 log = logging.getLogger(__name__)
 
-SERVICE_NAME = "BrandyBox"
 KEY_EMAIL = "email"
 KEY_REFRESH_TOKEN = "refresh_token"
+
+
+def _keyring_service_name() -> str:
+    """Use a separate keyring namespace when BRANDYBOX_CONFIG_DIR is set (E2E)."""
+    if os.environ.get("BRANDYBOX_CONFIG_DIR", "").strip():
+        return "BrandyBox-E2E"
+    return "BrandyBox"
 
 
 class CredentialsStore:
@@ -30,8 +37,9 @@ class CredentialsStore:
         so the app can show login and overwrite the entry.
         """
         try:
-            email = keyring.get_password(SERVICE_NAME, KEY_EMAIL)
-            token = keyring.get_password(SERVICE_NAME, KEY_REFRESH_TOKEN)
+            service = _keyring_service_name()
+            email = keyring.get_password(service, KEY_EMAIL)
+            token = keyring.get_password(service, KEY_REFRESH_TOKEN)
         except Exception as e:
             log.warning("Could not read stored credentials: %s", e)
             return None
@@ -41,17 +49,19 @@ class CredentialsStore:
 
     def set_stored(self, email: str, refresh_token: str) -> None:
         """Store email and refresh token in keyring."""
-        keyring.set_password(SERVICE_NAME, KEY_EMAIL, email)
-        keyring.set_password(SERVICE_NAME, KEY_REFRESH_TOKEN, refresh_token)
+        service = _keyring_service_name()
+        keyring.set_password(service, KEY_EMAIL, email)
+        keyring.set_password(service, KEY_REFRESH_TOKEN, refresh_token)
 
     def clear_stored(self) -> None:
         """Remove stored credentials."""
+        service = _keyring_service_name()
         try:
-            keyring.delete_password(SERVICE_NAME, KEY_EMAIL)
+            keyring.delete_password(service, KEY_EMAIL)
         except keyring.errors.PasswordDeleteError:
             pass
         try:
-            keyring.delete_password(SERVICE_NAME, KEY_REFRESH_TOKEN)
+            keyring.delete_password(service, KEY_REFRESH_TOKEN)
         except keyring.errors.PasswordDeleteError:
             pass
 

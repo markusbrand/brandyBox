@@ -3,10 +3,10 @@
 Autonomous E2E sync test: run the sync scenario, on failure run cleanup and retry until success.
 
 Usage (from repo root):
-  export BRANDYBOX_TEST_EMAIL=you@example.com
-  export BRANDYBOX_TEST_PASSWORD=<your-test-password>
-  # optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER, BRANDYBOX_E2E_CLIENT_RUNNING=1
-  # PowerShell: $env:BRANDYBOX_TEST_EMAIL = "you@example.com"; $env:BRANDYBOX_TEST_PASSWORD = "..."
+  Set credentials via repo-root .env (recommended) or environment:
+    .env at repo root: BRANDYBOX_TEST_EMAIL=... BRANDYBOX_TEST_PASSWORD=...
+  Or: export BRANDYBOX_TEST_EMAIL=... BRANDYBOX_TEST_PASSWORD=...
+  Optional in .env or env: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER, BRANDYBOX_E2E_CLIENT_RUNNING=1
   python -m tests.e2e.run_autonomous_sync
 
 Or:
@@ -28,6 +28,9 @@ if str(_repo_root) not in sys.path:
 _client = _repo_root / "client"
 if _client.exists() and str(_client) not in sys.path:
     sys.path.insert(0, str(_client))
+
+from tests.e2e.env_loader import load_e2e_env
+load_e2e_env(_repo_root)
 
 from tests.e2e.sync_scenario import SyncE2EScenario
 
@@ -76,6 +79,7 @@ def main() -> int:
     password = os.environ.get("BRANDYBOX_TEST_PASSWORD", "").strip()
     if not email or not password:
         log.error("BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD must be set.")
+        log.error("Set them in repo-root .env (see .env.example) or in the environment.")
         log.error("PowerShell: $env:BRANDYBOX_TEST_EMAIL = \"you@example.com\"; $env:BRANDYBOX_TEST_PASSWORD = \"...\"")
         log.error("CMD: set BRANDYBOX_TEST_EMAIL=you@example.com && set BRANDYBOX_TEST_PASSWORD=...")
         return 1

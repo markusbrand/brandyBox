@@ -55,17 +55,29 @@ def _client_running() -> bool:
         return False
 
 
+def _e2e_config_dir() -> Path:
+    """Directory for E2E client config (test user + test sync folder). Gitignored."""
+    return _repo_root() / "tests" / "e2e" / "e2e_client_config"
+
+
 def _start_client() -> bool:
-    """Start Brandy Box client from repo root. Returns True if started or already running."""
+    """Start Brandy Box client from repo root. Returns True if started or already running.
+    When using E2E config (BRANDYBOX_SYNC_FOLDER set), starts client with BRANDYBOX_CONFIG_DIR
+    so it uses the test user and test folder; does not skip start just because another client is running."""
     # Allow skipping start when client is run manually (e.g. BRANDYBOX_E2E_CLIENT_RUNNING=1)
     if os.environ.get("BRANDYBOX_E2E_CLIENT_RUNNING", "").strip().lower() in ("1", "true", "yes"):
         log.info("BRANDYBOX_E2E_CLIENT_RUNNING set; assuming client is already running")
         return True
-    if _client_running():
+    root = _repo_root()
+    e2e_config = _e2e_config_dir()
+    use_e2e_config = bool(os.environ.get("BRANDYBOX_SYNC_FOLDER", "").strip())
+    if not use_e2e_config and _client_running():
         log.info("Client already running")
         return True
-    root = _repo_root()
     env = os.environ.copy()
+    if use_e2e_config:
+        env["BRANDYBOX_CONFIG_DIR"] = str(e2e_config)
+        log.info("Starting client with E2E config dir: %s", e2e_config)
     # Ensure we can import brandybox when client is started from repo
     if "PYTHONPATH" in env:
         env["PYTHONPATH"] = str(root / "client") + os.pathsep + env["PYTHONPATH"]
@@ -175,10 +187,16 @@ class SyncE2EScenario(BaseScenario):
                 if AUTOTEST_FILE in last_paths and AUTOTEST_FOLDER_FILE in last_paths:
                     return StepResult("wait_sync_create", True)
             time.sleep(SYNC_POLL_INTERVAL)
+        hint = (
+            "E2E client may not be syncing. Do the one-time setup: run the client with "
+            "BRANDYBOX_CONFIG_DIR=<repo>/tests/e2e/e2e_client_config, log in as the test user "
+            "(BRANDYBOX_TEST_EMAIL), and set the sync folder to the same path as BRANDYBOX_SYNC_FOLDER. "
+            "See tests/e2e/README.md."
+        )
         return StepResult(
             "wait_sync_create",
             False,
-            f"Timeout waiting for {AUTOTEST_FILE} and {AUTOTEST_FOLDER_FILE} on server",
+            f"Timeout waiting for {AUTOTEST_FILE} and {AUTOTEST_FOLDER_FILE} on server. {hint}",
             details={"paths_seen": list(last_paths)},
         )
 

@@ -52,7 +52,11 @@ _instance_lock_file = None
 
 
 def _try_acquire_single_instance_lock() -> bool:
-    """Acquire an exclusive lock so only one app instance runs per user. Returns True if acquired."""
+    """Acquire an exclusive lock so only one app instance runs per user. Returns True if acquired.
+    When BRANDYBOX_CONFIG_DIR is set (E2E/test mode), skip the check so the test client can run
+    alongside production without showing the 'already running' dialog."""
+    if os.environ.get("BRANDYBOX_CONFIG_DIR", "").strip():
+        return True
     global _instance_lock_file
     path = get_instance_lock_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,7 +101,9 @@ def _setup_logging() -> None:
     root.info("Logging to %s", log_file)
 
 
-def _show_quick_access_window(root: Tk, api: BrandyBoxAPI, schedule_ui) -> None:
+def _show_quick_access_window(
+    root: Tk, api: BrandyBoxAPI, schedule_ui, on_logout=None
+) -> None:
     """Show a small window with Settings and Quit on Linux (xorg tray has no context menu)."""
     win = Toplevel(root)
     win.title("Brandy Box")
@@ -105,7 +111,14 @@ def _show_quick_access_window(root: Tk, api: BrandyBoxAPI, schedule_ui) -> None:
     win.attributes("-type", "dialog")
     f = Frame(win, padx=12, pady=12)
     f.pack(fill="both", expand=True)
-    Button(f, text="Open Settings", width=14, command=lambda: schedule_ui(lambda: show_settings(api=api, parent=root))).pack(side="left", padx=(0, 8))
+    Button(
+        f,
+        text="Open Settings",
+        width=14,
+        command=lambda: schedule_ui(
+            lambda: show_settings(api=api, parent=root, on_logout=on_logout)
+        ),
+    ).pack(side="left", padx=(0, 8))
     Button(f, text="Quit", width=8, command=root.quit).pack(side="left")
     win.update_idletasks()
     # Position near top-right of screen
@@ -140,6 +153,10 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
 
     schedule_ui = ui_queue.put
 
+    def on_logout() -> None:
+        creds.clear_stored()
+        root.quit()
+
     run_tray(
         api,
         access_token,
@@ -147,6 +164,7 @@ def _run_tray_with_ui(api: BrandyBoxAPI, access_token: str, creds: CredentialsSt
         schedule_ui=schedule_ui,
         refresh_token_callback=lambda: creds.get_valid_access_token(api),
         settings_parent=root,
+        on_logout=on_logout,
     )
     root.after(0, process_queue)  # start processing immediately so left-click → Settings works
     # If user has never set a sync folder, open Settings once so they see default ~/brandyBox (avoids broken tray menu on Linux)
@@ -202,34 +220,42 @@ def main() -> None:
 
     api = BrandyBoxAPI()
     creds = CredentialsStore()
-    access_token = creds.get_valid_access_token(api)
-    if access_token:
-        log.info("Using stored credentials, starting tray")
-        _run_tray_with_ui(api, access_token, creds)
-        return
-    log.info("No valid credentials, showing login")
-    # No valid credentials: show login
-    def on_success(email: str, password: str) -> None:
-        try:
-            data = api.login(email, password)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                log.warning("Login failed: 401 for %s", email)
-                msg = "Invalid email or password."
-                try:
-                    detail = e.response.json().get("detail", msg)
-                    msg = detail if isinstance(detail, str) else msg
-                except Exception:
-                    pass
-                messagebox.showerror("Login failed", msg)
-                show_login(on_success=on_success, on_cancel=lambda: None)
-                return
-            log.exception("Login HTTP error: %s", e)
-            raise
-        log.info("Login successful for %s", email)
-        creds.set_stored(email, data["refresh_token"])
-        _run_tray_with_ui(api, data["access_token"], creds)
-    show_login(on_success=on_success, on_cancel=lambda: None)
+
+    while True:
+        access_token = creds.get_valid_access_token(api)
+        if access_token:
+            log.info("Using stored credentials, starting tray")
+            _run_tray_with_ui(api, access_token, creds)
+            # Tray exited. If user chose "Log out", creds were cleared; loop to show login.
+            continue
+        log.info("No valid credentials, showing login")
+        # No valid credentials: show login (or re-show after logout)
+
+        def on_success(email: str, password: str) -> None:
+            try:
+                data = api.login(email, password)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    log.warning("Login failed: 401 for %s", email)
+                    msg = "Invalid email or password."
+                    try:
+                        detail = e.response.json().get("detail", msg)
+                        msg = detail if isinstance(detail, str) else msg
+                    except Exception:
+                        pass
+                    messagebox.showerror("Login failed", msg)
+                    show_login(on_success=on_success, on_cancel=lambda: None)
+                    return
+                log.exception("Login HTTP error: %s", e)
+                raise
+            log.info("Login successful for %s", email)
+            creds.set_stored(email, data["refresh_token"])
+            # Don't start tray here; loop will pick up token and run tray
+
+        def on_cancel() -> None:
+            sys.exit(0)
+
+        show_login(on_success=on_success, on_cancel=on_cancel)
 
 
 if __name__ == "__main__":

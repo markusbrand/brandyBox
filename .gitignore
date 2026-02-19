@@ -23,6 +23,11 @@ venv/
 dist/
 build/
 
+# E2E test sync folder (writable by tests; do not commit contents)
+tests/e2e/sync_test_dir/
+# E2E client config (test user credentials + sync folder; one-time setup)
+tests/e2e/e2e_client_config/
+
 # MkDocs
 site/
 

@@ -194,6 +194,7 @@ class TrayApp:
         schedule_ui: Optional[Callable[[Callable[[], None]], None]] = None,
         refresh_token_callback: Optional[Callable[[], Optional[str]]] = None,
         settings_parent: Optional["tk.Tk"] = None,
+        on_logout: Optional[Callable[[], None]] = None,
     ) -> None:
         self._api = api
         self._api.set_access_token(access_token)
@@ -201,6 +202,7 @@ class TrayApp:
         self._schedule_ui = schedule_ui
         self._refresh_token = refresh_token_callback
         self._settings_parent = settings_parent
+        self._on_logout = on_logout
         self._paused = False
         self._status = "synced"  # synced | syncing | error
         self._last_error: Optional[str] = None  # so user can see why sync failed (tooltip)
@@ -324,7 +326,11 @@ class TrayApp:
         def open_() -> None:
             try:
                 log.info("Opening Settings window")
-                show_settings(api=self._api, parent=self._settings_parent)
+                show_settings(
+                    api=self._api,
+                    parent=self._settings_parent,
+                    on_logout=self._on_logout,
+                )
                 log.info("show_settings returned")
             except Exception:
                 log.exception("Failed to open Settings window")
@@ -387,6 +393,7 @@ def run_tray(
     schedule_ui: Optional[Callable[[Callable[[], None]], None]] = None,
     refresh_token_callback: Optional[Callable[[], Optional[str]]] = None,
     settings_parent: Optional["tk.Tk"] = None,
+    on_logout: Optional[Callable[[], None]] = None,
 ) -> None:
     """
     Create and run tray app. If schedule_ui is provided, the tray runs in a
@@ -394,8 +401,15 @@ def run_tray(
     on the main thread; callers must run a mainloop and process scheduled calls.
     refresh_token_callback() can return a new access token on 401 so sync retries.
     settings_parent: when set, Settings opens as a Toplevel so it can be reopened.
+    on_logout: when set, Settings shows a "Log out" option; called after clearing credentials.
     """
     app = TrayApp(
-        api, access_token, on_quit, schedule_ui, refresh_token_callback, settings_parent
+        api,
+        access_token,
+        on_quit,
+        schedule_ui,
+        refresh_token_callback,
+        settings_parent,
+        on_logout,
     )
     app.run()

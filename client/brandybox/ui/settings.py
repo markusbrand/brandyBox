@@ -173,8 +173,12 @@ def _rounded_btn(
         height=h,
         highlightthickness=0,
         bg=frame.cget("bg"),
+        takefocus=1,
     )
     canvas.pack(fill=tk.BOTH, expand=True)
+
+    def on_key_activate(_e: tk.Event) -> None:
+        command()
 
     def draw(highlight: bool = False) -> None:
         canvas.delete("all")
@@ -200,6 +204,8 @@ def _rounded_btn(
     canvas.bind("<Enter>", on_enter)
     canvas.bind("<Leave>", on_leave)
     canvas.bind("<Button-1>", on_click)
+    canvas.bind("<Return>", on_key_activate)
+    canvas.bind("<KP_Enter>", on_key_activate)
     canvas.configure(cursor="hand2")
     if pack_kw:
         frame.pack(**pack_kw)
@@ -421,6 +427,14 @@ def show_login(
     password_entry = ttk.Entry(main, textvariable=password_var, show="*", width=40)
     password_entry.grid(row=3, column=0, sticky="ew", pady=(0, PAD_SECTION))
 
+    def _on_return_login(_e: tk.Event) -> None:
+        do_login()
+
+    email_entry.bind("<Return>", _on_return_login)
+    email_entry.bind("<KP_Enter>", _on_return_login)
+    password_entry.bind("<Return>", _on_return_login)
+    password_entry.bind("<KP_Enter>", _on_return_login)
+
     def do_login() -> None:
         email = email_var.get().strip()
         password = password_var.get()
@@ -446,6 +460,7 @@ def show_login(
     main.columnconfigure(0, weight=1)
     root.update_idletasks()
     _center(root)
+    email_entry.focus_set()
     root.mainloop()
 
 
@@ -454,6 +469,7 @@ def show_settings(
     on_toggle_autostart: Optional[Callable[[bool], None]] = None,
     api: Optional["BrandyBoxAPI"] = None,
     parent: Optional[tk.Tk] = None,
+    on_logout: Optional[Callable[[], None]] = None,
 ) -> None:
     """
     Show settings window: server URL (automatic/manual), sync folder,
@@ -461,6 +477,8 @@ def show_settings(
     If api is provided and current user is admin, show create/delete users.
     When parent is given (e.g. from tray), settings opens as a Toplevel so
     it can be closed and reopened; otherwise a standalone Tk and mainloop().
+    When on_logout is provided (e.g. from tray), an Account section shows
+    "Log out" to sign out and switch to a different account.
     """
     log.info("show_settings: start parent=%s", parent is not None)
     if parent is not None:
@@ -723,8 +741,25 @@ def show_settings(
             dlg.after(50, set_grab_chpwd)
 
         chpwd_btn = _secondary_btn(sec4, "Change password…", change_password_dialog)
-        chpwd_btn.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, 0))
+        chpwd_btn.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, PAD_ROW))
+        r4 += 1
         sec4.columnconfigure(0, weight=1)
+
+        if on_logout:
+
+            def do_logout() -> None:
+                if messagebox.askyesno(
+                    "Log out",
+                    "Log out and sign in with a different account?",
+                    parent=win,
+                    icon="question",
+                ):
+                    win.destroy()
+                    on_logout()
+
+            logout_btn = _secondary_btn(sec4, "Log out / Switch account", do_logout)
+            logout_btn.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, 0))
+            sec4.columnconfigure(0, weight=1)
 
     # --- Admin: user management (deferred so window shows quickly; avoids blocking on api.me/list_users) ---
     admin_sec: Optional[ttk.Frame] = None
@@ -910,11 +945,6 @@ def show_settings(
         except Exception:
             pass
         win.destroy()
-
-    # Footer with close
-    close_frame = ttk.Frame(frame)
-    close_frame.grid(row=row, column=0, sticky="w", pady=(PAD_SECTION, 0))
-    _secondary_btn(close_frame, "Close", on_close, side="left")
 
     win.protocol("WM_DELETE_WINDOW", on_close)
 
