@@ -18,10 +18,8 @@ log = logging.getLogger(__name__)
 
 
 def _normalize_path_param(path: Optional[str]) -> str:
-    """Normalize path from query string: + means space in application/x-www-form-urlencoded."""
-    if not path:
-        return path or ""
-    return path.replace("+", " ")
+    """Return path from query string. Do not replace + with space: filenames may contain +."""
+    return path or ""
 
 
 @router.get("/list", response_model=List[dict])
