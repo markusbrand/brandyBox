@@ -90,22 +90,29 @@ jobs:
           pattern: BrandyBox-*
           merge-multiple: true
 
-      - name: List downloaded files
-        run: find . -name '*.zip' -type f
+      - name: Show downloaded structure
+        run: |
+          echo "=== Working directory ==="
+          pwd
+          echo "=== Directory listing (recursive) ==="
+          ls -laR
+          echo "=== All .zip files ==="
+          find . -name '*.zip' -type f
 
       - name: Upload to Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.event.release.tag_name || github.event.inputs.release_tag }}"
+          echo "Target release tag: $TAG"
           count=0
-          while IFS= read -r -d '' f; do
+          for f in $(find . -name '*.zip' -type f); do
             echo "Uploading $f to release $TAG"
             gh release upload "$TAG" "$f" --clobber
             count=$((count + 1))
-          done < <(find . -name 'BrandyBox-*.zip' -type f -print0)
+          done
           if [ "$count" -eq 0 ]; then
-            echo "No BrandyBox-*.zip files found to upload"
+            echo "No .zip files found to upload"
             exit 1
           fi
           echo "Uploaded $count file(s)"
