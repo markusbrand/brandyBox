@@ -1,24 +1,43 @@
 """Safe path resolution under base dir (no directory traversal)."""
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import List, Optional
 
 from app.config import get_settings
 
 # Safe path segment for file/dir names (no @ to avoid ambiguity; space, parens for "File (1).txt" etc.)
-# Hyphen escaped so it's literal, not a range
-_SAFE_SEGMENT = re.compile(r"^[a-zA-Z0-9_. \-()]+$")
+# Hyphen escaped so it's literal, not a range. ASCII-only pattern for fast path.
+_SAFE_SEGMENT_ASCII = re.compile(r"^[a-zA-Z0-9_. \-()]+$")
 # Email used as folder name: allow @ and dots
 _SAFE_EMAIL = re.compile(r"^[a-zA-Z0-9_.@-]+$")
 
 
+def _is_safe_path_char(c: str) -> bool:
+    """True if char is allowed in a path segment (no traversal, no control chars)."""
+    if len(c) != 1:
+        return False
+    if c in "/\\@":
+        return False
+    if ord(c) < 32:
+        return False
+    if ("a" <= c <= "z") or ("A" <= c <= "Z") or ("0" <= c <= "9") or c in "_. -()":
+        return True
+    cat = unicodedata.category(c)
+    return cat.startswith("L") or cat.startswith("N")  # Letter or Number
+
+
 def _sanitize_segment(segment: str) -> Optional[str]:
-    """Return segment if safe, else None. Rejects empty, '..', '.', and invalid chars."""
+    """Return segment if safe, else None. Rejects empty, '..', '.', and invalid chars.
+    Allows Unicode letters and numbers (e.g. ä, ö, ü, é) for international filenames.
+    """
     segment = segment.strip()
     if not segment or segment in (".", ".."):
         return None
-    if not _SAFE_SEGMENT.match(segment):
+    if _SAFE_SEGMENT_ASCII.match(segment):
+        return segment
+    if not all(_is_safe_path_char(c) for c in segment):
         return None
     return segment
 

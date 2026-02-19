@@ -109,6 +109,17 @@ def test_resolve_user_path_accepts_spaces_and_parens(monkeypatch) -> None:
     assert got == Path("/data/u@x.co/My File (1).txt")
 
 
+def test_resolve_user_path_accepts_unicode_letters(monkeypatch) -> None:
+    """Path segments with Unicode letters (e.g. German umlauts) are accepted."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    path = "Outdoor/uebernahmebestätigung_2020-07-01_19-02-52.pdf"
+    got = resolve_user_path("u@x.co", path)
+    assert got == Path("/data/u@x.co/Outdoor/uebernahmebestätigung_2020-07-01_19-02-52.pdf")
+
+
 def test_user_base_path_rejects_invalid_email(monkeypatch) -> None:
     """Email with slash or empty raises ValueError."""
     from app.files import storage
