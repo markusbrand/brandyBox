@@ -6,8 +6,9 @@ from flask import Flask, request, abort
 
 app = Flask(__name__)
 
-# Dein Secret aus den GitHub Settings
-GITHUB_SECRET = b'wesrga76!ksdrf?SDs' 
+# Webhook secret: must match the value in GitHub repo → Settings → Webhooks → Secret.
+# Prefer environment variable so the secret is not committed (e.g. set in .env or systemd).
+GITHUB_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "").encode("utf-8") or b"" 
 
 def verify_signature(payload, signature):
     if not signature or not signature.startswith('sha256='):
@@ -18,6 +19,8 @@ def verify_signature(payload, signature):
 
 @app.route('/webhook', methods=['POST'])
 def handle_webhook():
+    if not GITHUB_SECRET:
+        abort(503)  # Secret not configured
     signature = request.headers.get('X-Hub-Signature-256')
     if not verify_signature(request.data, signature):
         abort(403)

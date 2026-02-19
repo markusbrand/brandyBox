@@ -27,6 +27,16 @@ Python FastAPI service in Docker on Raspberry Pi.
 
 Logging is configured at startup from env: `BRANDYBOX_LOG_LEVEL` (default `INFO`; use `DEBUG` for more detail) and optional `BRANDYBOX_LOG_FILE` (path to a file; if unset, logs go to stderr only, which Docker captures). Logs include startup/shutdown, login and refresh success/failure (email only), file operations (list/upload/download/delete with user and path), admin actions, auth failures (missing/invalid token, user not found), and unhandled exceptions (with traceback).
 
+## Automatic updates (GitHub webhook)
+
+On the Raspberry Pi, updates to the backend image can be applied automatically when GitHub Actions has finished building:
+
+- **`webhook_listener.py`** – Small Flask app (port 9000) that receives GitHub webhook POSTs. Verifies `X-Hub-Signature-256` using `GITHUB_WEBHOOK_SECRET`. When a `workflow_run` event has `action: completed` and `conclusion: success`, it runs `update_brandybox.sh` in the background.
+- **`update_brandybox.sh`** – Script in `backend/`. Changes into the backend directory and runs `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull` then `up -d`, so the latest GHCR image is used and the container is recreated with existing `.env` and volumes.
+- **Cron:** A cron job (e.g. `@reboot`) can start the webhook listener so it runs after a Pi reboot. Alternatively, cron can run `update_brandybox.sh` on a schedule (e.g. daily) as a fallback if webhooks are not configured.
+
+Configure the webhook in GitHub (repo → Settings → Webhooks): Payload URL pointing to the listener (e.g. `https://your-domain:9000/webhook`), Content type `application/json`, Secret equal to `GITHUB_WEBHOOK_SECRET`, and trigger “Workflow runs”. Do not commit the secret; set it in the environment when starting the listener.
+
 ## Security
 
 - Passwords hashed with bcrypt; JWT for access/refresh.

@@ -1,28 +1,14 @@
 #!/bin/bash
-# Pfad: /home/pi/brandyBox/backend/update_brandybox.sh
+# Pull latest Brandy Box backend image from GHCR and restart the container.
+# Used by the GitHub webhook listener when a workflow run completes successfully.
+# Run from anywhere; uses repo path relative to this script.
 
-echo "Starte Update für brandyBox Backend..."
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BACKEND_DIR="$SCRIPT_DIR"
+cd "$BACKEND_DIR"
 
-# Ins Backend-Verzeichnis wechseln
-cd /home/pi/brandyBox/backend
-
-# Neuestes Image von GitHub Packages ziehen
-docker pull ghcr.io/markusbrand/brandybox:latest
-
-# Container neu starten
-docker stop brandybox || true
-docker rm brandybox || true
-
-# Wir mappen:
-# 1. Den Port 8081
-# 2. Den Shared Storage für die Benutzerdaten (HDD)
-# 3. Den lokalen Backend-Ordner für die DB/Configs (SSD)
-docker run -d \
-  --name brandybox \
-  -p 8081:8081 \
-  -v /mnt/shared_storage/brandyBox:/data \
-  -v /home/pi/brandyBox/backend:/app/config \
-  --restart unless-stopped \
-  ghcr.io/markusbrand/brandybox:latest
-
-echo "Backend erfolgreich aktualisiert."
+echo "Pulling latest image and restarting backend..."
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+echo "Backend updated."

@@ -4,6 +4,9 @@
 *.env
 backend/.env
 
+# Webhook listener log (runtime)
+backend/webhook.log
+
 # Database (runtime data)
 *.db
 *.db-journal

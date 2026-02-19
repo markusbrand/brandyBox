@@ -66,6 +66,16 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
    ```
    Image: `ghcr.io/markusbrand/brandybox-backend:latest`. If the package is private, run `docker login ghcr.io` first (username: your GitHub user, password: a PAT with `read:packages`). To make the package public, open the package page on GitHub → Package settings → Change visibility.
 
+7. **Optional: Automatic updates via GitHub webhook**  
+   When GitHub Actions finishes building the backend image, a webhook can trigger an update on the Pi so the new image is pulled and the container restarted without manual SSH.
+
+   - **On the Pi:** A small Flask app (`backend/webhook_listener.py`) listens for GitHub webhook POSTs (e.g. on port 9000). It verifies the request with `X-Hub-Signature-256` using a secret, and on successful `workflow_run` completion it runs `backend/update_brandybox.sh`, which runs `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull && … up -d`.
+   - **Secret:** Set `GITHUB_WEBHOOK_SECRET` in the environment when starting the webhook listener (e.g. in a systemd unit or a small `.env` that is not committed). Use the same value in GitHub: repo → **Settings** → **Webhooks** → **Add webhook** → Payload URL: `https://your-tunnel-or-ip:9000/webhook`, Content type: `application/json`, Secret: your secret. Under “Which events would you like to trigger this webhook?” choose **Workflow runs** (or “Let me select… → Workflow runs). The listener only acts when `workflow_run` has `action: completed` and `conclusion: success`.
+   - **Run the listener:** e.g. `cd ~/brandyBox/backend && GITHUB_WEBHOOK_SECRET='your-secret' python webhook_listener.py` (or run it under systemd/gunicorn). Expose port 9000 via your Cloudflare tunnel (or LAN) so GitHub can reach it.
+   - **Cron (optional):** To ensure the webhook listener is running after a reboot, add a cron job for the Pi user, e.g. `@reboot cd /home/pi/brandyBox/backend && GITHUB_WEBHOOK_SECRET='…' python webhook_listener.py &` (or use a systemd service instead of cron). Alternatively, a cron job can run `update_brandybox.sh` periodically (e.g. daily) as a fallback if webhooks are not used.
+
+   See [Backend overview](docs/backend/overview.md) for the script and listener layout.
+
 ### Storage on the Pi
 
 User files are stored under `BRANDYBOX_STORAGE_BASE_PATH` (default `/mnt/shared_storage/brandyBox`). Each user gets a subfolder (e.g. `admin@example.com`). Ensure that path exists on the host and is writable by the container; `docker-compose.yml` mounts it into the container. If sync fails (red tray icon), check backend logs and ensure the mount is correct.
