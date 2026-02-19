@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# When showing Settings as a Toplevel (parent is not None), reuse one window: raise if already open.
+_current_settings_window: Optional[tk.Toplevel] = None
+
 # Spacing (logical pixels)
 PAD_WINDOW = 24
 PAD_SECTION = 20
@@ -500,18 +503,36 @@ def show_settings(
     autostart, and optionally admin user management.
     If api is provided and current user is admin, show create/delete users.
     When parent is given (e.g. from tray), settings opens as a Toplevel so
-    it can be closed and reopened; otherwise a standalone Tk and mainloop().
+    it can be closed and reopened; only one Settings window is shown at a time
+    (re-opening raises and focuses the existing window). Otherwise a standalone Tk and mainloop().
     When on_logout is provided (e.g. from tray), an Account section shows
     "Log out" to sign out and switch to a different account.
     """
+    global _current_settings_window
     log.info("show_settings: start parent=%s", parent is not None)
     if parent is not None:
+        # Single-instance: if Settings is already open, raise and focus it instead of opening a second window.
+        if _current_settings_window is not None:
+            try:
+                if _current_settings_window.winfo_exists():
+                    _current_settings_window.lift()
+                    _current_settings_window.focus_force()
+                    try:
+                        _current_settings_window.deiconify()
+                    except tk.TclError:
+                        pass
+                    log.info("show_settings: raised existing Settings window")
+                    return
+            except tk.TclError:
+                pass
+            _current_settings_window = None
         # On Linux, a Toplevel of a withdrawn parent may never map. Deiconify parent
         # briefly so the Toplevel can be created, then hide parent again.
         parent.deiconify()
         parent.update_idletasks()
         log.info("show_settings: creating Toplevel")
         win = tk.Toplevel(parent)
+        _current_settings_window = win
         win.withdraw()  # Keep hidden until fast UI is built (avoids incomplete window on Windows)
         # Do not use transient(parent): when parent is later withdrawn, some WMs hide transient children
         parent.withdraw()
@@ -959,6 +980,7 @@ def show_settings(
         refresh_users_list()
 
     def on_close() -> None:
+        global _current_settings_window
         if not app_config.user_has_set_sync_folder():
             try:
                 app_config.set_sync_folder_path(Path(path_var.get()).resolve())
@@ -968,6 +990,8 @@ def show_settings(
             app_config.set_settings_window_geometry(win.geometry())
         except Exception:
             pass
+        if _current_settings_window is win:
+            _current_settings_window = None
         win.destroy()
 
     win.protocol("WM_DELETE_WINDOW", on_close)
