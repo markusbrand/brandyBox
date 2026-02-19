@@ -77,9 +77,18 @@ def _progress_tooltip_text(phase: str, current: int, total: int) -> str:
 def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> None:
     """Show a small floating window with a real progress bar. Runs on main (UI) thread.
     Reuses existing window if already open. Polls tray_app progress state every 500 ms.
+    Google-style: white surface, blue progress bar, rounded Close button.
     """
     import tkinter as tk
     from tkinter import ttk
+
+    from brandybox.ui.settings import (
+        COLOR_BACKGROUND,
+        COLOR_PRIMARY,
+        COLOR_SURFACE,
+        _apply_theme,
+        _secondary_btn,
+    )
 
     log.info("Opening Sync progress window (parent=%s)", parent is not None)
     # Reuse existing window if still visible
@@ -102,13 +111,27 @@ def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> No
     win = tk.Toplevel(root)
     win.title("Brandy Box – Sync progress")
     win.resizable(False, False)
-    # Do not set transient when parent is withdrawn (main app root): on KDE/Wayland
-    # the window would stay hidden. Skip transient for this floating progress popup.
+    win.configure(bg=COLOR_SURFACE)
     tray_app._progress_window = win
 
-    pad = 12
+    _apply_theme(win)
+    style = ttk.Style(win)
+    style.configure(
+        "Horizontal.TProgressbar",
+        background=COLOR_PRIMARY,
+        troughcolor=COLOR_BACKGROUND,
+        lightcolor=COLOR_PRIMARY,
+        darkcolor=COLOR_PRIMARY,
+        bordercolor=COLOR_BACKGROUND,
+        thickness=10,
+    )
+
+    pad = 20
     inner = ttk.Frame(win, padding=pad)
     inner.pack(fill=tk.BOTH, expand=True)
+
+    title_lbl = ttk.Label(inner, text="Sync progress", style="Title.TLabel")
+    title_lbl.pack(anchor=tk.W, pady=(0, 8))
 
     phase_label = _SYNC_PHASE_LABELS.get(tray_app._sync_phase, "Syncing")
     total = tray_app._sync_total
@@ -122,8 +145,8 @@ def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> No
     lbl = ttk.Label(inner, text=status_text)
     lbl.pack(anchor=tk.W)
 
-    bar = ttk.Progressbar(inner, length=260, mode="determinate", maximum=100)
-    bar.pack(pady=(4, 0), fill=tk.X)
+    bar = ttk.Progressbar(inner, length=280, mode="determinate", maximum=100)
+    bar.pack(pady=(10, 0), fill=tk.X)
     if total > 0:
         bar["value"] = min(100, (current * 100) // total)
     else:
@@ -161,7 +184,6 @@ def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> No
                 lbl.config(text=f"{phase_label}...")
             win.after(500, poll)
         else:
-            # Sync ended
             if total_n > 0:
                 lbl.config(text="Done")
                 bar["value"] = 100
@@ -171,8 +193,7 @@ def _show_sync_progress_window(tray_app: "TrayApp", parent: Optional[Any]) -> No
 
     poll()
 
-    btn = ttk.Button(inner, text="Close", command=on_close)
-    btn.pack(pady=(pad, 0))
+    _secondary_btn(inner, "Close", on_close, pady=(20, 0))
 
     win.update_idletasks()
     w, h = win.winfo_reqwidth(), win.winfo_reqheight()

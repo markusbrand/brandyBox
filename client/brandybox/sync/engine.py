@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import stat
+import time
 from pathlib import Path
 from typing import Callable, List, Optional, Set, Tuple
 
@@ -232,8 +233,12 @@ def sync_run(
             to_upload.append(path)
 
     log.info("Uploading %d files to server", len(to_upload))
+    # Throttle uploads to stay under backend rate limit (600/min = 10/sec)
+    UPLOAD_DELAY = 0.12  # ~8 uploads/sec
     for i, path in enumerate(to_upload):
         try:
+            if i > 0:
+                time.sleep(UPLOAD_DELAY)
             progress("upload", i + 1, len(to_upload))
             status(f"Uploading {path}…")
             parts = path.replace("\\", "/").split("/")

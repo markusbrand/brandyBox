@@ -105,11 +105,12 @@ class BrandyBoxAPI:
             return data
 
     def upload_file(self, relative_path: str, body: bytes) -> None:
-        """POST /api/files/upload?path=... with body. Retries on 502/503 (gateway errors)."""
+        """POST /api/files/upload?path=... with body. Retries on 429/502/503."""
         log.debug("upload_file path=%s size=%d", relative_path, len(body))
         # Longer timeout for large files (e.g. STL): 5 min base + extra for big uploads
         timeout = 300.0 + min(300.0, len(body) / (1024 * 1024) * 30)
-        for attempt in range(3):
+        max_attempts = 5  # 429 needs more retries (wait for rate-limit window to reset)
+        for attempt in range(max_attempts):
             with httpx.Client(timeout=timeout) as client:
                 r = client.post(
                     f"{self._base_url}/api/files/upload",
@@ -117,20 +118,19 @@ class BrandyBoxAPI:
                     content=body,
                     headers=self._headers(),
                 )
-                if r.status_code in (429, 502, 503) and attempt < 2:
-                    # 429: rate limit; 502/503: gateway. Use Retry-After if present, else backoff
-                    delay = 5
+                if r.status_code in (429, 502, 503) and attempt < max_attempts - 1:
                     if r.status_code == 429:
+                        # Wait for rate-limit window to reset (backend is per-minute)
                         retry_after = r.headers.get("Retry-After")
                         if retry_after and retry_after.isdigit():
-                            delay = min(60, int(retry_after))
+                            delay = min(65, int(retry_after))
                         else:
-                            delay = 5 * (2 ** attempt)  # 5s, 10s
+                            delay = 65  # next minute
                     else:
-                        delay = 2 * (2 ** attempt)  # 2s, 4s
+                        delay = 2 * (2 ** attempt)  # 2s, 4s for 502/503
                     log.warning(
-                        "Upload %s: %s %s, retry in %ds (attempt %d/3)",
-                        relative_path, r.status_code, r.reason_phrase, delay, attempt + 1,
+                        "Upload %s: %s %s, retry in %ds (attempt %d/%d)",
+                        relative_path, r.status_code, r.reason_phrase, delay, attempt + 1, max_attempts,
                     )
                     time.sleep(delay)
                     continue
