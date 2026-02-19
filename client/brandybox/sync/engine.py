@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import stat
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, List, Optional, Set, Tuple
 
@@ -26,6 +28,30 @@ SYNC_IGNORE_BASENAMES: frozenset[str] = frozenset({
     "Desktop.ini",  # Windows folder customisation
     ".DS_Store",    # macOS Finder metadata
 })
+
+# Concurrent transfer tuning (best practices: 8–16 workers for small/mixed files on LAN)
+# Backend limit 600/min => max 10 requests/sec; we cap start rate to stay under.
+SYNC_MAX_WORKERS = 8
+SYNC_RATE_LIMIT_PER_SEC = 10.0  # max transfer starts per second (backend 600/minute)
+
+
+class _RateLimiter:
+    """Limits how often a new transfer may start so we stay under backend rate limit."""
+
+    def __init__(self, per_second: float = SYNC_RATE_LIMIT_PER_SEC) -> None:
+        self._interval = 1.0 / per_second if per_second > 0 else 0.0
+        self._next_ok = 0.0
+        self._lock = threading.Lock()
+
+    def acquire(self) -> None:
+        if self._interval <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            if now < self._next_ok:
+                time.sleep(self._next_ok - now)
+                now = self._next_ok
+            self._next_ok = now + self._interval
 
 
 def _is_ignored(path_str: str) -> bool:
@@ -192,16 +218,15 @@ def sync_run(
             log.error("Delete locally %s: %s", path, e)
             return f"Delete locally {path}: {e}"
 
-    # 2) Download from server to local (server is source of truth for existing files)
-    log.info("Downloading %d files from server", len(to_download))
-    DOWNLOAD_DELAY = 0.12  # ~8/sec to stay under rate limit
-    for i, path in enumerate(to_download):
+    # 2) Download from server to local (concurrent, rate-limited to stay under backend 600/min)
+    log.info("Downloading %d files from server (%d workers)", len(to_download), SYNC_MAX_WORKERS)
+    rate_limiter = _RateLimiter(SYNC_RATE_LIMIT_PER_SEC)
+    done_lock = threading.Lock()
+
+    def _download_one(path: str) -> Tuple[str, Optional[object]]:
+        """Returns (path, None) on success, (path, 'skip') on 404/skip, (path, exc) on error."""
+        rate_limiter.acquire()
         try:
-            if i > 0:
-                time.sleep(DOWNLOAD_DELAY)
-            done += 1
-            progress("download", done, total_work)
-            status(f"Downloading {path}…")
             body = api.download_file(path)
             parts = path.replace("\\", "/").split("/")
             target = local_root.joinpath(*parts)
@@ -216,49 +241,71 @@ def sync_run(
                             target.write_bytes(body)
                         except Exception:
                             log.warning(
-                                "Download %s: permission denied (e.g. read-only or policy), skipping: %s",
+                                "Download %s: permission denied, skipping: %s",
                                 path, write_err,
                             )
-                            continue
+                            return (path, "skip")
                     else:
-                        log.warning(
-                            "Download %s: permission denied, skipping: %s",
-                            path, write_err,
-                        )
-                        continue
-                raise
+                        log.warning("Download %s: permission denied, skipping: %s", path, write_err)
+                        return (path, "skip")
+                return (path, write_err)
+            return (path, None)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
-                # File was removed on server (e.g. by us in this cycle or another client); skip and remove locally if present
                 log.debug("Download %s: 404, file no longer on server", path)
                 parts = path.replace("\\", "/").split("/")
                 local_path = local_root.joinpath(*parts)
                 if local_path.exists() and local_path.is_file():
                     local_path.unlink(missing_ok=True)
-                continue
-            log.error("Download %s: %s", path, e)
-            return f"Download {path}: {e}"
+                return (path, "skip")
+            return (path, e)
         except Exception as e:
-            log.error("Download %s: %s", path, e)
-            return f"Download {path}: {e}"
+            return (path, e)
 
-    # 3) Upload local additions and newer files to server
-    log.info("Uploading %d files to server", len(to_upload))
-    UPLOAD_DELAY = 0.12  # ~8 uploads/sec to stay under rate limit
-    for i, path in enumerate(to_upload):
+    with ThreadPoolExecutor(max_workers=SYNC_MAX_WORKERS) as executor:
+        download_futures = {executor.submit(_download_one, p): p for p in to_download}
+        for fut in as_completed(download_futures):
+            path, result = fut.result()
+            with done_lock:
+                done += 1
+                progress("download", done, total_work)
+            status(f"Downloading… ({done - len(to_del_list) - len(to_del_local_list)}/{len(to_download)})")
+            if result is not None and result != "skip":
+                for f in download_futures:
+                    f.cancel()
+                err = result if isinstance(result, Exception) else result
+                log.error("Download %s: %s", path, err)
+                return f"Download {path}: {err}"
+
+    # 3) Upload local additions and newer files to server (concurrent, rate-limited)
+    log.info("Uploading %d files to server (%d workers)", len(to_upload), SYNC_MAX_WORKERS)
+    done_after_downloads = done
+
+    def _upload_one(path: str) -> Tuple[str, Optional[Exception]]:
+        """Returns (path, None) on success, (path, exc) on error."""
+        rate_limiter.acquire()
         try:
-            if i > 0:
-                time.sleep(UPLOAD_DELAY)
-            done += 1
-            progress("upload", done, total_work)
-            status(f"Uploading {path}…")
             parts = path.replace("\\", "/").split("/")
             full = local_root.joinpath(*parts)
             body = full.read_bytes()
             api.upload_file(path, body)
+            return (path, None)
         except Exception as e:
-            log.error("Upload %s: %s", path, e)
-            return f"Upload {path}: {e}"
+            return (path, e)
+
+    with ThreadPoolExecutor(max_workers=SYNC_MAX_WORKERS) as executor:
+        upload_futures = {executor.submit(_upload_one, p): p for p in to_upload}
+        for fut in as_completed(upload_futures):
+            path, result = fut.result()
+            with done_lock:
+                done += 1
+                progress("upload", done, total_work)
+            status(f"Uploading… ({done - done_after_downloads}/{len(to_upload)})")
+            if result is not None:
+                for f in upload_futures:
+                    f.cancel()
+                log.error("Upload %s: %s", path, result)
+                return f"Upload {path}: {result}"
 
     # Persist synced paths for next run (remote state after our deletes and uploads)
     new_synced = (current_remote_paths - to_delete_remote) | set(to_upload)

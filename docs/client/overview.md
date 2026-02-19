@@ -8,7 +8,7 @@ Desktop app: system tray, sync, settings (server URL, folder, autostart, change 
 - `brandybox/tray.py` – Pystray icon (synced/syncing/error), menu, background sync loop
 - `brandybox/api/client.py` – HTTP client (login, refresh, list, upload, download, delete)
 - `brandybox/auth/credentials.py` – Keyring store for email + refresh token
-- `brandybox/sync/engine.py` – Sync order: propagate deletes both ways, download server→local, upload local→server
+- `brandybox/sync/engine.py` – Sync order: propagate deletes both ways, download server→local, upload local→server; downloads and uploads run with multiple workers (default 8) and a rate limiter so the client stays under the backend’s 600 requests/minute while improving throughput on the local network.
 - `brandybox/network.py` – Base URL: automatic (local vs remote) or manual. Local when WiFi SSID is "brandstaetter" or when on Ethernet and the Raspberry Pi at `http://192.168.0.150:8081` is reachable; otherwise remote (Cloudflare `https://brandybox.brandstaetter.rocks`).
 - `brandybox/config.py` – Sync folder, base URL mode and manual URL, autostart preference, platform startup entries, sync state, instance lock path
 - `brandybox/ui/` – Login window, settings (server URL automatic/manual, folder picker, autostart, change password, logout / switch account, admin: create/delete users), dialogs; UI follows Google Material–inspired guidelines (clear hierarchy, spacing, primary actions); `ui/notify.py` – desktop notifications for errors (Linux: notify-send, macOS: osascript)
@@ -26,6 +26,10 @@ On Linux the app prefers **Wayland** when the session is Wayland (`XDG_SESSION_T
 On Linux the tray icon is drawn at 32 px so it stays crisp when the panel uses ~22–24 px (e.g. KDE Plasma). **For new installs on Linux (Garuda, KDE, etc.) use the venv-based install** so the app runs as `python -m brandybox.main` and can use the system PyGObject (AppIndicator). That gives the correct tray icon and right-click menu. The **standalone PyInstaller binary** on Linux often falls back to the XOrg backend (square icon, no context menu); this is a known, recurring issue — see [Client troubleshooting](troubleshooting.md#linux-tray-shows-square-icon-no-context-menu-recurring-with-new-installs). Do **not** set `PYSTRAY_BACKEND=gtk` on KDE: the GTK backend uses Gtk.StatusIcon, which Plasma often does not display, so you may see no icon at all.
 
 See [Client troubleshooting](troubleshooting.md) for common issues (Linux tray, permission denied when syncing on Windows).
+
+## Sync performance
+
+Sync uses **concurrent transfers** for downloads and uploads: up to 8 workers run in parallel so the client can use available bandwidth on the local network. A **rate limiter** caps how often new transfers start (10 per second) so the backend’s 600 requests/minute limit is not exceeded. Deletes still run sequentially (deepest first). If you see 429 (Too Many Requests), the client will retry after the indicated delay.
 
 ## Build
 
