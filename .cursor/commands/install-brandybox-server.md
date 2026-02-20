@@ -1,150 +1,113 @@
 # install-brandybox-server
 
-How to **update the Brandy Box backend** on the Raspberry Pi. The image is **built and published by GitHub Actions** to GitHub Container Registry (GHCR); on the Pi you pull the new image and restart the container. SSH from your Garuda PC to the Pi at **192.168.0.150** (public key, no password).
+How to **trigger a Brandy Box backend update**: the image is built and published by GitHub Actions to GHCR; the **Raspberry Pi updates automatically** via the webhook listener—no manual SSH needed. This command covers triggering the build and **verifying in webhook.log** that the Pi actually applied the update.
+
+**Second option:** If you want a **direct update** (build and run from code on the Pi, **without GitHub** / **without GHCR**), e.g. for **build from source** or **test build**, use **Option 2** below (SSH → pull code → build image on Pi → restart).
 
 ---
 
-## How updates work
+## How it works (Option 1 — GHCR + webhook)
 
 - **GitHub Actions** (workflow `publish-backend-image.yml`) builds and pushes the backend image to `ghcr.io/markusbrand/brandybox-backend:latest` on:
   - push to `master` or `main` (when `backend/**` or the workflow file changes),
   - release publish,
   - or manual **workflow_dispatch** in the GitHub Actions tab.
-- **On the Pi** you use that image via `docker-compose.ghcr.yml`. Updating the server = pull latest image and restart (no local build, no git pull of source on the Pi).
+- **On the Pi**, `webhook_listener.py` (port 9000) receives a GitHub webhook when the workflow completes. It runs `update_brandybox.sh`, which pulls the new image and restarts the container. **You do not need to SSH and run pull/up manually.**
 
 ---
 
-## 1. SSH into the Raspberry Pi
+## Option 1 — 1. Trigger the image build on GitHub
 
-From your Garuda PC:
+Do **one** of the following:
 
-```bash
-ssh pi
-```
+- **Push** backend changes to `master` or `main` (workflow runs automatically).
+- **Publish a release** (workflow runs for that event).
+- **Run the workflow manually**: GitHub → Actions → **Publish Backend to GHCR** → Run workflow.
 
-- Replace `pi` with your Pi username if different.
-- If you use a specific key: `ssh -i ~/.ssh/your_key pi@192.168.0.150`.
-
----
-
-## 2. Pull the new image and restart the backend
-
-On the Pi. Repo path is assumed `~/brandyBox`; change it if your clone is elsewhere.
-
-```bash
-cd ~/brandyBox/backend
-docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull
-docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
-```
-
-- `pull` fetches the latest image from GHCR (built by the last successful GitHub Actions run).
-- `up -d` recreates the container with the new image. Your existing `.env` and volumes are unchanged.
-
-If the package is **private**, log in once (or when token expires):  
-`docker login ghcr.io` (username: GitHub user, password: PAT with `read:packages`).
+Wait for the workflow to finish successfully in the Actions tab.
 
 ---
 
-## 3. Check that the backend is up
+## Option 1 — 2. Verify the Pi updated (after a timeout)
 
-Wait a few seconds for the app to start, then:
+The webhook calls the Pi when the workflow completes; the listener runs `update_brandybox.sh` in the background. After **about 2–3 minutes** (workflow done → webhook delivery → pull + restart), verify that the update actually happened.
+
+**Option A — Check webhook.log on the Pi**
+
+SSH in and inspect the last lines of `backend/webhook.log`:
 
 ```bash
-sleep 15
-curl -s http://localhost:8081/health
+ssh pi 'tail -30 ~/brandyBox/backend/webhook.log'
 ```
 
-- Expected: `{"status":"ok"}` (or similar). Use the port from your `.env` (e.g. 8082) if different.
+You should see:
 
-Optional: container status and logs:
+- A line indicating the webhook was received and an update was triggered (e.g. from the listener: "Neues Package bereit. Starte Update..." or similar).
+- Lines from `update_brandybox.sh`: "Pulling latest image and restarting backend..." and "Backend updated."
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.ghcr.yml ps
-docker compose -f docker-compose.yml -f docker-compose.ghcr.yml logs --tail 50
-```
+If the webhook is not configured or the listener isn’t running, you won’t see these lines; in that case use **Option 2** (direct update) below or the main README.
 
----
+**Option B — Check backend health**
 
-## 4. Exit SSH
+From your PC (Pi at **192.168.0.150**, port from your setup, e.g. 8081):
 
 ```bash
-exit
-```
-
----
-
-## One-liner (from Garuda PC)
-
-Update the server in one SSH session:
-
-```bash
-ssh pi 'cd ~/brandyBox/backend && docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d'
-```
-
-Then check health from your PC:
-
-```bash
-sleep 15
+sleep 120
 curl -s http://192.168.0.150:8081/health
 ```
 
----
-
-## Optional: automatic updates (webhook + cron)
-
-When GitHub Actions has built the new image, the Pi can update itself without manual SSH:
-
-- **Webhook listener** (`backend/webhook_listener.py`): Flask app on port 9000. Configure a GitHub webhook (repo → Settings → Webhooks) to call your Pi, e.g. Payload URL `https://deploy.brandstaetter.rocks/webhook` (Cloudflare tunnel to the Pi). Set `GITHUB_WEBHOOK_SECRET` in the environment to match the webhook secret. On successful `workflow_run` completion, the listener runs `backend/update_brandybox.sh`, which pulls the latest image and restarts the container.
-- **Cron:** To start the webhook listener after a reboot: `crontab -e`, then add:
-  ```cron
-  @reboot cd /home/pi/brandyBox/backend && nohup python3 webhook_listener.py >> webhook.log 2>&1 &
-  ```
-  The listener loads `GITHUB_WEBHOOK_SECRET` from `backend/.env`. Logs: `backend/webhook.log`. Alternatively, run `update_brandybox.sh` periodically (e.g. daily) as a fallback.
-
-See the main [README](../../README.md) (backend section 7) and [Backend overview](../../docs/backend/overview.md) for details.
+Expected: `{"status":"ok"}`. This confirms the backend is up; for proof that the *update* ran, use Option A.
 
 ---
 
-## First-time setup on the Pi (GHCR)
+## Option 2 — Direct update (build from source on the Pi, without GitHub/GHCR)
 
-If the backend is not yet running from GHCR:
+Use this when you want to **build and run from code on the Raspberry Pi**—no GHCR, no webhook (e.g. **direct update**, **build from source**, **without GitHub**, **without GHCR**, **test build**).
 
-1. On the Pi: clone the repo (or copy `backend/` with `docker-compose.yml`, `docker-compose.ghcr.yml`, and create `.env` from `.env.example`).
-2. Ensure storage path exists and is writable (e.g. `/mnt/shared_storage/brandyBox`).
-3. Run:  
-   `cd ~/brandyBox/backend`  
-   `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d`  
-   (and configure `.env` before that if needed).
+1. **SSH into the Pi** (from your PC, Pi at **192.168.0.150**):
 
-See the main [README](../../README.md) backend section for `.env` and storage.
+   ```bash
+   ssh pi
+   ```
+   Or with a key: `ssh -i ~/.ssh/your_key pi@192.168.0.150`.
 
----
+2. **Pull code, build image, restart** (repo path `~/brandyBox`; change if different):
 
-## Optional: build and run locally on the Pi (no GHCR)
+   ```bash
+   cd ~/brandyBox
+   git fetch origin && git pull origin master
+   cd backend
+   docker compose build --no-cache
+   docker compose up -d
+   ```
 
-If you prefer to build the image on the Pi instead of using GHCR:
+   Do **not** overwrite `backend/.env` when pulling.
+
+3. **Verify** (after ~15 s):
+
+   ```bash
+   curl -s http://localhost:8081/health
+   ```
+   Expected: `{"status":"ok"}`. From your PC: `curl -s http://192.168.0.150:8081/health`.
+
+**One-liner from your PC:**
 
 ```bash
-cd ~/brandyBox
-git fetch origin && git pull origin master   # or main
-cd backend
-docker compose build --no-cache
-docker compose up -d
+ssh pi 'cd ~/brandyBox && git fetch origin && git pull origin master && cd backend && docker compose build --no-cache && docker compose up -d'
 ```
 
-- Use this only when you need a local build (e.g. no GHCR access or testing uncommitted changes). Do **not** overwrite `backend/.env` when pulling.
+Then check health: `sleep 15 && curl -s http://192.168.0.150:8081/health`.
 
 ---
 
 ## Summary
 
-| Step | Where | Command |
-|------|--------|---------|
-| **Trigger image build** | GitHub | Push to `master`/`main` (backend changes) or run workflow manually |
-| **Update server** | On Pi (or via SSH) | `cd ~/brandyBox/backend` → `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull` → `… up -d` |
-| **Verify** | On Pi or from PC | `curl -s http://localhost:8081/health` or `http://192.168.0.150:8081/health` |
+| Mode | Where | Action |
+|------|--------|--------|
+| **Option 1 — GHCR** | GitHub | Trigger build (push / release / workflow_dispatch); Pi updates via webhook. Verify with `tail -30 ~/brandyBox/backend/webhook.log` and/or health curl after ~2–3 min. |
+| **Option 2 — Direct** | On Pi (SSH) | `cd ~/brandyBox` → `git pull` → `cd backend` → `docker compose build --no-cache` → `docker compose up -d`. No GitHub/GHCR. |
 
-- Image: `ghcr.io/markusbrand/brandybox-backend:latest`.
-- Keep `backend/.env` (JWT secret, SMTP, admin) safe; it is not in the image.
+- **Option 1** image: `ghcr.io/markusbrand/brandybox-backend:latest`. Webhook + listener: see main [README](../../README.md) and [Backend overview](../../docs/backend/overview.md).
+- **Option 2**: use when you need a local/test build or have no GHCR access. Keep `backend/.env` safe.
 
-This command is available in chat as `/install-brandybox-server`.
+This command is available in chat as `/install-brandybox-server`. Say e.g. **direct update**, **build from source**, **without GHCR**, or **test build** to get Option 2.
