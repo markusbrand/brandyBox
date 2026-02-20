@@ -142,3 +142,87 @@ def test_sync_engine_run_delegates_to_sync_run(monkeypatch, tmp_path: Path) -> N
     err = engine_instance.run()
     assert err is None
     api.list_files.assert_called_once()
+
+
+# --- Tests to prevent "new client deletes everything on server" bug ---
+
+
+def test_sync_run_new_client_empty_local_does_not_delete_on_server(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """With empty local dir and no sync state, sync must not delete any file on server.
+    (New device should only download, never treat missing local as delete-on-server.)"""
+    from brandybox.sync import engine
+
+    state_path = tmp_path / "sync_state.json"
+    monkeypatch.setattr(engine, "get_sync_state_path", lambda: state_path)
+    api = MagicMock()
+    api.list_files.return_value = [
+        {"path": "doc.txt", "mtime": 100.0},
+        {"path": "sub/file.txt", "mtime": 200.0},
+    ]
+    api.download_file.return_value = b"content"
+
+    err = sync_run(api, tmp_path)
+
+    assert err is None
+    api.delete_file.assert_not_called()
+
+
+def test_sync_run_safety_skips_mass_server_deletes_when_local_tiny(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """When last_synced has many paths but local is empty (e.g. wrong state or new device),
+    sync must skip server deletes and only download (safety guard)."""
+    from brandybox.sync import engine
+
+    state_path = tmp_path / "sync_state.json"
+    monkeypatch.setattr(engine, "get_sync_state_path", lambda: state_path)
+    # Prime state as if we had 200 paths "in sync" (e.g. corrupted or from another machine)
+    remote_paths = [f"file_{i}.txt" for i in range(200)]
+    state_path.write_text(
+        json.dumps({"paths": remote_paths, "downloaded_paths": [], "file_hashes": {}}),
+        encoding="utf-8",
+    )
+    api = MagicMock()
+    api.list_files.return_value = [{"path": p, "mtime": 100.0} for p in remote_paths]
+    api.download_file.return_value = b"x"
+
+    err = sync_run(api, tmp_path)
+
+    assert err is None
+    api.delete_file.assert_not_called()
+
+
+def test_sync_run_after_deletes_saved_state_only_includes_paths_present_locally(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """After the delete phase, persisted sync state must only contain paths that exist
+    on both sides (intersection). Prevents marking remote-only paths as in-sync before
+    download, which would cause next run to delete them on server."""
+    from brandybox.sync import engine
+
+    state_path = tmp_path / "sync_state.json"
+    monkeypatch.setattr(engine, "get_sync_state_path", lambda: state_path)
+    # Local has only "a.txt"; last_synced wrongly has a.txt and b.txt
+    (tmp_path / "a.txt").write_text("a")
+    state_path.write_text(
+        json.dumps({"paths": ["a.txt", "b.txt"], "downloaded_paths": [], "file_hashes": {}}),
+        encoding="utf-8",
+    )
+    api = MagicMock()
+    api.list_files.return_value = [
+        {"path": "a.txt", "mtime": 100.0},
+        {"path": "b.txt", "mtime": 100.0},
+    ]
+    api.download_file.side_effect = Exception("abort after deletes so we can check state")
+
+    err = sync_run(api, tmp_path)
+
+    assert err is not None
+    assert "abort" in err
+    # We should have deleted b.txt on server (it was in last_synced but not local)
+    api.delete_file.assert_called_once_with("b.txt")
+    # State saved after deletes must only contain a.txt (present locally), not b.txt
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["paths"] == ["a.txt"]

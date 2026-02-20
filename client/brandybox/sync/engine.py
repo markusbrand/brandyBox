@@ -194,11 +194,25 @@ def sync_run(
     log.info("Listed %d local files, %d remote files, %d in last_synced", len(current_local_paths), len(current_remote_paths), len(last_synced))
 
     # 1) Propagate deletions: local deletes → server, server deletes → local
+    # Only treat "missing locally" as "delete on server" for paths we actually had locally (last_synced
+    # should mean "in sync on both sides"). Otherwise a new/empty client would mark all remote paths
+    # as in-sync before downloading and then delete them on the next run.
     to_delete_remote = {p for p in (last_synced - current_local_paths) if not _is_ignored(p)}
     to_delete_local = last_synced - current_remote_paths  # gone from remote (e.g. other client)
     log.debug("Deletions: %d from server, %d from local", len(to_delete_remote), len(to_delete_local))
 
-    to_del_list = sorted(to_delete_remote, key=lambda p: -p.count("/"))
+    # Safety: never delete a large number of files on server when local is empty or tiny (new device
+    # or wrong folder). Prevents wiping server when sync state is from another machine or corrupted.
+    if len(to_delete_remote) > 100 and len(current_local_paths) < max(100, len(to_delete_remote) // 10):
+        log.warning(
+            "Skipping server deletes: would delete %d on server but only %d files locally; "
+            "likely new device or wrong sync folder. Downloading from server instead.",
+            len(to_delete_remote), len(current_local_paths),
+        )
+        to_delete_remote = set()
+        to_del_list = []
+    else:
+        to_del_list = sorted(to_delete_remote, key=lambda p: -p.count("/"))
     to_del_local_list = sorted(to_delete_local, key=lambda p: -p.count("/"))
 
     # Build to_download: skip if already downloaded and present, or if content hash matches (server sends hash when available).
@@ -299,11 +313,14 @@ def sync_run(
             log.error("Delete locally %s: %s", path, e)
             return f"Delete locally {path}: {e}"
 
-    # Persist state after deletes so a mid-sync close doesn't lose progress; next run will only do remaining work.
-    base_synced = (current_remote_paths - to_delete_remote)
-    base_synced = {p for p in base_synced if not _is_ignored(p)}
+    # Persist state after deletes so a mid-sync close doesn't lose progress. Only mark paths as "in sync"
+    # when they exist on both sides (we have them locally). Otherwise a new/empty client would record all
+    # remote paths here, then on the next run treat "missing locally" as delete-on-server and wipe the server.
+    remaining_local = current_local_paths - to_delete_local
+    remaining_remote = current_remote_paths - to_delete_remote
+    base_synced = {p for p in (remaining_remote & remaining_local) if not _is_ignored(p)}
     _save_last_synced_paths(base_synced)
-    log.debug("Saved sync state after deletes (%d paths)", len(base_synced))
+    log.debug("Saved sync state after deletes (%d paths, only those present locally)", len(base_synced))
 
     # 2) Download from server to local (concurrent, rate-limited to stay under backend 600/min)
     log.info("Downloading %d files from server (%d workers)", len(to_download), SYNC_MAX_WORKERS)
