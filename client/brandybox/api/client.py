@@ -105,37 +105,47 @@ class BrandyBoxAPI:
             return data
 
     def upload_file(self, relative_path: str, body: bytes) -> None:
-        """POST /api/files/upload?path=... with body. Retries on 429/502/503."""
+        """POST /api/files/upload?path=... with body. Retries on 429/502/503 and on timeout."""
         log.debug("upload_file path=%s size=%d", relative_path, len(body))
-        # Longer timeout for large files (e.g. STL): 5 min base + extra for big uploads
-        timeout = 300.0 + min(300.0, len(body) / (1024 * 1024) * 30)
+        # Generous timeout for large files (e.g. PPTX): 10 min base + 60 sec per MB, cap 30 min
+        timeout = 600.0 + min(1200.0, len(body) / (1024 * 1024) * 60)
         max_attempts = 5  # 429 needs more retries (wait for rate-limit window to reset)
         for attempt in range(max_attempts):
-            with httpx.Client(timeout=timeout) as client:
-                r = client.post(
-                    f"{self._base_url}/api/files/upload",
-                    params={"path": relative_path},
-                    content=body,
-                    headers=self._headers(),
-                )
-                if r.status_code in (429, 502, 503) and attempt < max_attempts - 1:
-                    if r.status_code == 429:
-                        # Wait for rate-limit window to reset (backend is per-minute)
-                        retry_after = r.headers.get("Retry-After")
-                        if retry_after and retry_after.isdigit():
-                            delay = min(65, int(retry_after))
+            try:
+                with httpx.Client(timeout=timeout) as client:
+                    r = client.post(
+                        f"{self._base_url}/api/files/upload",
+                        params={"path": relative_path},
+                        content=body,
+                        headers=self._headers(),
+                    )
+                    if r.status_code in (429, 502, 503) and attempt < max_attempts - 1:
+                        if r.status_code == 429:
+                            retry_after = r.headers.get("Retry-After")
+                            if retry_after and retry_after.isdigit():
+                                delay = min(65, int(retry_after))
+                            else:
+                                delay = 65
                         else:
-                            delay = 65  # next minute
-                    else:
-                        delay = 2 * (2 ** attempt)  # 2s, 4s for 502/503
+                            delay = 2 * (2 ** attempt)
+                        log.warning(
+                            "Upload %s: %s %s, retry in %ds (attempt %d/%d)",
+                            relative_path, r.status_code, r.reason_phrase, delay, attempt + 1, max_attempts,
+                        )
+                        time.sleep(delay)
+                        continue
+                    r.raise_for_status()
+                    return
+            except httpx.TimeoutException as e:
+                if attempt < max_attempts - 1:
+                    delay = 10 * (attempt + 1)  # 10s, 20s, 30s
                     log.warning(
-                        "Upload %s: %s %s, retry in %ds (attempt %d/%d)",
-                        relative_path, r.status_code, r.reason_phrase, delay, attempt + 1, max_attempts,
+                        "Upload %s: timeout, retry in %ds (attempt %d/%d)",
+                        relative_path, delay, attempt + 1, max_attempts,
                     )
                     time.sleep(delay)
                     continue
-                r.raise_for_status()
-                return
+                raise
 
     def download_file(self, relative_path: str) -> bytes:
         """GET /api/files/download?path=... Returns file bytes. Retries on 429."""

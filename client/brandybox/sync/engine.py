@@ -55,8 +55,12 @@ class _RateLimiter:
 
 
 def _is_ignored(path_str: str) -> bool:
-    """True if the path's basename is in the sync-ignore list."""
-    parts = path_str.replace("\\", "/").split("/")
+    """True if the path should be excluded from sync (ignore list or .git)."""
+    normalized = path_str.replace("\\", "/")
+    # Skip Git metadata: avoids permission issues and keeps sync content-only
+    if "/.git/" in normalized or normalized.startswith(".git/"):
+        return True
+    parts = normalized.split("/")
     return parts[-1] in SYNC_IGNORE_BASENAMES if parts else False
 
 
@@ -178,6 +182,8 @@ def sync_run(
 
     to_upload = []
     for path, local_mtime in local_list:
+        if _is_ignored(path):
+            continue
         if path not in remote_by_path:
             to_upload.append(path)
         elif local_mtime > remote_by_path[path]:

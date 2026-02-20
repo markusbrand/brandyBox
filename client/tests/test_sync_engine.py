@@ -44,6 +44,11 @@ def test_is_ignored() -> None:
     assert _is_ignored("normal.txt") is False
     assert _is_ignored("a/b/c.txt") is False
     assert _is_ignored(".directory.bak") is False  # basename is .directory.bak, not in set
+    # .git paths are ignored (avoid permission issues and keep sync content-only)
+    assert _is_ignored("Settings and programs/PycharmProjects/webcrawl/.git/objects/72/b5f82560debad7a1f1c2a76b52be96d44d4d81") is True
+    assert _is_ignored(".git/HEAD") is True
+    assert _is_ignored("repo/.git/config") is True
+    assert _is_ignored("docs/readme.txt") is False  # no .git in path
 
 
 def test_list_local_excludes_ignored_basenames(tmp_path: Path) -> None:
@@ -60,6 +65,20 @@ def test_list_local_excludes_ignored_basenames(tmp_path: Path) -> None:
     assert ".directory" not in paths
     assert "Thumbs.db" not in paths
     assert "sub/.DS_Store" not in paths
+
+
+def test_list_local_excludes_git_paths(tmp_path: Path) -> None:
+    """_list_local does not include files under .git (avoids permission issues)."""
+    (tmp_path / "proj").mkdir()
+    (tmp_path / "proj" / ".git").mkdir()
+    (tmp_path / "proj" / ".git" / "objects").mkdir()
+    (tmp_path / "proj" / ".git" / "objects" / "ab").mkdir()
+    (tmp_path / "proj" / ".git" / "objects" / "ab" / "cdef123").write_text("")
+    (tmp_path / "proj" / "readme.txt").write_text("hi")
+    result = _list_local(tmp_path)
+    paths = {p for p, _ in result}
+    assert "proj/readme.txt" in paths
+    assert not any(".git" in p for p in paths)
 
 
 def test_remote_to_set() -> None:
