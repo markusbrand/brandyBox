@@ -11,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.db.session import get_session, init_db
+from app.files.hash_model import FileHash  # noqa: F401  # register for create_all
 from app.files.routes import router as files_router
 from app.users.routes import router as users_router
 from app.users.service import ensure_admin_exists

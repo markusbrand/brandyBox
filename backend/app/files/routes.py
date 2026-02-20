@@ -8,6 +8,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.db.session import get_db
+from app.files.hash_store import compute_hash, get_hashes_for_paths, set_hash, delete_hash
 from app.files.storage import delete_file as storage_delete_file
 from app.files.storage import list_files_recursive, resolve_user_path, user_base_path
 from app.limiter import limiter
@@ -27,11 +29,17 @@ def _normalize_path_param(path: Optional[str]) -> str:
 async def list_files(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ) -> List[dict]:
-    """List all files for the current user (recursive, path + mtime)."""
+    """List all files for the current user (recursive, path + mtime + optional content_hash)."""
     base = user_base_path(current_user.email)
-    base.mkdir(parents=True, exist_ok=True)  # ensure user folder exists (e.g. /mnt/.../user@email)
+    base.mkdir(parents=True, exist_ok=True)
     result = list_files_recursive(base)
+    paths = [r["path"] for r in result]
+    hashes = await get_hashes_for_paths(session, current_user.email, paths)
+    for r in result:
+        if r["path"] in hashes:
+            r["hash"] = hashes[r["path"]]
     log.info("list_files user=%s count=%d", current_user.email, len(result))
     return result
 
@@ -41,9 +49,11 @@ async def list_files(
 async def upload_file(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """
     Upload a file. Query param: path (relative path). Body: raw file bytes.
+    Stores content hash so clients can skip re-download when unchanged.
     """
     path_param = _normalize_path_param(request.query_params.get("path"))
     if not path_param or not path_param.strip():
@@ -62,11 +72,13 @@ async def upload_file(
     target.parent.mkdir(parents=True, exist_ok=True)
     body = await request.body()
     target.write_bytes(body)
+    content_hash = compute_hash(body)
+    await set_hash(session, current_user.email, path_param, content_hash)
     if not target.exists():
         log.error("upload_file wrote but file missing: %s", target)
     else:
         log.info("upload_file user=%s path=%s size=%d resolved=%s", current_user.email, path_param, len(body), target)
-    return {"path": path_param, "size": len(body)}
+    return {"path": path_param, "size": len(body), "hash": content_hash}
 
 
 @router.get("/download")
@@ -110,6 +122,7 @@ async def download_file(
 async def delete_file(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """
     Delete a file. Query param: path (relative path).
@@ -134,5 +147,6 @@ async def delete_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
+    await delete_hash(session, current_user.email, path_param)
     log.info("delete_file user=%s path=%s", current_user.email, path_param)
     return {"path": path_param, "deleted": True}

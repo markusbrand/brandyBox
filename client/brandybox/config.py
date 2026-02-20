@@ -46,7 +46,10 @@ def get_sync_state_path() -> Path:
 
 def clear_sync_state() -> None:
     """Clear persisted sync state so next sync treats server as source of truth (e.g. after folder change)."""
-    get_sync_state_path().write_text('{"paths": []}', encoding="utf-8")
+    get_sync_state_path().write_text(
+        '{"paths": [], "downloaded_paths": [], "file_hashes": {}}',
+        encoding="utf-8",
+    )
 
 
 def get_default_sync_folder() -> Path:

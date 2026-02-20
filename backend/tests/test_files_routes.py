@@ -11,10 +11,10 @@ def test_normalize_path_param_empty() -> None:
     assert _normalize_path_param("") == ""
 
 
-def test_normalize_path_param_plus_to_space() -> None:
-    """Plus signs (URL-encoded space) are converted to space."""
-    assert _normalize_path_param("foo+bar") == "foo bar"
-    assert _normalize_path_param("a+b+c") == "a b c"
+def test_normalize_path_param_plus_preserved() -> None:
+    """Plus signs are preserved (filenames may contain +, e.g. two+hikers+3d+model.stl)."""
+    assert _normalize_path_param("foo+bar") == "foo+bar"
+    assert _normalize_path_param("a+b+c") == "a+b+c"
 
 
 def test_normalize_path_param_unchanged() -> None:

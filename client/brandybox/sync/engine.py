@@ -1,5 +1,6 @@
 """Sync logic: list local and remote, diff, upload/download, bidirectional deletes."""
 
+import hashlib
 import json
 import logging
 import os
@@ -92,25 +93,62 @@ def _local_to_set(local: List[Tuple[str, float]]) -> Set[Tuple[str, float]]:
     return set(local)
 
 
-def _load_last_synced_paths() -> Set[str]:
-    """Load set of paths that were in sync at end of last successful run."""
+def _load_sync_state() -> dict:
+    """Load full sync state (paths, downloaded_paths, file_hashes). Backward compatible."""
     path = get_sync_state_path()
     if not path.exists():
-        return set()
+        return {"paths": [], "downloaded_paths": [], "file_hashes": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        paths = data.get("paths")
-        return set(paths) if isinstance(paths, list) else set()
+        return {
+            "paths": data.get("paths") if isinstance(data.get("paths"), list) else [],
+            "downloaded_paths": data.get("downloaded_paths") if isinstance(data.get("downloaded_paths"), list) else [],
+            "file_hashes": data.get("file_hashes") if isinstance(data.get("file_hashes"), dict) else {},
+        }
     except (json.JSONDecodeError, OSError):
-        return set()
+        return {"paths": [], "downloaded_paths": [], "file_hashes": {}}
 
 
-def _save_last_synced_paths(paths: Set[str]) -> None:
-    """Persist set of paths that are now in sync (after this run)."""
+def _save_sync_state(paths: Optional[Set[str]] = None, downloaded_paths: Optional[List[str]] = None, file_hashes: Optional[dict] = None, clear_downloaded_paths: bool = False) -> None:
+    """Persist sync state. Pass only keys to update; others are preserved. Set clear_downloaded_paths=True to clear downloaded_paths."""
+    state = _load_sync_state()
+    if paths is not None:
+        state["paths"] = sorted(paths)
+    if clear_downloaded_paths:
+        state["downloaded_paths"] = []
+    elif downloaded_paths is not None:
+        state["downloaded_paths"] = downloaded_paths
+    if file_hashes is not None:
+        state["file_hashes"] = file_hashes
     get_sync_state_path().write_text(
-        json.dumps({"paths": sorted(paths)}, indent=2),
+        json.dumps(state, indent=2),
         encoding="utf-8",
     )
+
+
+def _load_last_synced_paths() -> Set[str]:
+    """Load set of paths that were in sync at end of last successful run."""
+    return set(_load_sync_state()["paths"])
+
+
+def _save_last_synced_paths(paths: Set[str], clear_downloaded_paths: bool = False) -> None:
+    """Persist set of paths that are now in sync. On full success set clear_downloaded_paths=True."""
+    _save_sync_state(paths=paths, clear_downloaded_paths=clear_downloaded_paths)
+
+
+def _add_downloaded_path(path: str, lock: Optional[threading.Lock] = None) -> None:
+    """Append path to downloaded_paths in sync state so next run can skip re-downloading. Thread-safe if lock given."""
+    def _do() -> None:
+        state = _load_sync_state()
+        existing = set(state["downloaded_paths"])
+        if path not in existing:
+            state["downloaded_paths"] = list(existing | {path})
+            _save_sync_state(downloaded_paths=state["downloaded_paths"])
+    if lock:
+        with lock:
+            _do()
+    else:
+        _do()
 
 
 def sync_run(
@@ -126,8 +164,9 @@ def sync_run(
     or an error message on failure.
 
     Sync state is saved after the delete phase and after each successful upload so that
-    closing the app mid-sync does not lose progress; the next run only transfers what is
-    still missing or newer.
+    closing the app mid-sync does not lose progress. Downloaded paths and content hashes
+    are persisted so the next run skips re-downloading files that are already present
+    or unchanged (server sends content hash when available).
     """
     def status(msg: str) -> None:
         if on_status:
@@ -162,14 +201,23 @@ def sync_run(
     to_del_list = sorted(to_delete_remote, key=lambda p: -p.count("/"))
     to_del_local_list = sorted(to_delete_local, key=lambda p: -p.count("/"))
 
-    # Build to_download and to_upload so we can compute total work for combined progress bar
-    remote_list_tuples = [(item["path"], item["mtime"]) for item in remote_list]
+    # Build to_download: skip if already downloaded and present, or if content hash matches (server sends hash when available)
+    state = _load_sync_state()
+    prev_downloaded = set(state["downloaded_paths"])
+    file_hashes = state.get("file_hashes") or {}
     to_download = []
-    for path, remote_mtime in remote_list_tuples:
+    for item in remote_list:
+        path = item["path"]
         if _is_ignored(path):
             continue
+        remote_mtime = item["mtime"]
+        server_hash = item.get("hash")
         parts = path.replace("\\", "/").split("/")
         local_path = local_root.joinpath(*parts)
+        if path in prev_downloaded and local_path.exists() and local_path.is_file():
+            continue
+        if local_path.exists() and local_path.is_file() and server_hash and file_hashes.get(path) == server_hash:
+            continue  # content unchanged; skip download
         if not local_path.exists():
             to_download.append(path)
         else:
@@ -239,11 +287,12 @@ def sync_run(
     rate_limiter = _RateLimiter(SYNC_RATE_LIMIT_PER_SEC)
     done_lock = threading.Lock()
 
-    def _download_one(path: str) -> Tuple[str, Optional[object]]:
-        """Returns (path, None) on success, (path, 'skip') on 404/skip, (path, exc) on error."""
+    def _download_one(path: str) -> Tuple[str, Optional[object], Optional[str]]:
+        """Returns (path, None, content_hash) on success, (path, 'skip', None) on skip, (path, exc, None) on error."""
         rate_limiter.acquire()
         try:
             body = api.download_file(path)
+            content_hash = hashlib.sha256(body).hexdigest()
             parts = path.replace("\\", "/").split("/")
             target = local_root.joinpath(*parts)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -260,12 +309,12 @@ def sync_run(
                                 "Download %s: permission denied, skipping: %s",
                                 path, write_err,
                             )
-                            return (path, "skip")
+                            return (path, "skip", None)
                     else:
                         log.warning("Download %s: permission denied, skipping: %s", path, write_err)
-                        return (path, "skip")
-                return (path, write_err)
-            return (path, None)
+                        return (path, "skip", None)
+                return (path, write_err, None)
+            return (path, None, content_hash)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 log.debug("Download %s: 404, file no longer on server", path)
@@ -273,15 +322,15 @@ def sync_run(
                 local_path = local_root.joinpath(*parts)
                 if local_path.exists() and local_path.is_file():
                     local_path.unlink(missing_ok=True)
-                return (path, "skip")
-            return (path, e)
+                return (path, "skip", None)
+            return (path, e, None)
         except Exception as e:
-            return (path, e)
+            return (path, e, None)
 
     with ThreadPoolExecutor(max_workers=SYNC_MAX_WORKERS) as executor:
         download_futures = {executor.submit(_download_one, p): p for p in to_download}
         for fut in as_completed(download_futures):
-            path, result = fut.result()
+            path, result, content_hash = fut.result()
             with done_lock:
                 done += 1
                 progress("download", done, total_work)
@@ -292,6 +341,13 @@ def sync_run(
                 err = result if isinstance(result, Exception) else result
                 log.error("Download %s: %s", path, err)
                 return f"Download {path}: {err}"
+            if result is None:
+                _add_downloaded_path(path, lock=done_lock)
+                if content_hash:
+                    with done_lock:
+                        state = _load_sync_state()
+                        state.setdefault("file_hashes", {})[path] = content_hash
+                        _save_sync_state(file_hashes=state["file_hashes"])
 
     # 3) Upload local additions and newer files to server (concurrent, rate-limited)
     log.info("Uploading %d files to server (%d workers)", len(to_upload), SYNC_MAX_WORKERS)
@@ -329,10 +385,10 @@ def sync_run(
                 completed_uploads.add(path)
                 _save_last_synced_paths(base_synced | completed_uploads)
 
-    # Persist synced paths for next run (remote state after our deletes and uploads)
+    # Persist synced paths for next run; clear downloaded_paths so future runs use normal mtime check
     new_synced = (current_remote_paths - to_delete_remote) | set(to_upload)
     new_synced = {p for p in new_synced if not _is_ignored(p)}
-    _save_last_synced_paths(new_synced)
+    _save_last_synced_paths(new_synced, clear_downloaded_paths=True)
     log.info("Sync cycle completed (synced paths: %d)", len(new_synced))
 
     return None
