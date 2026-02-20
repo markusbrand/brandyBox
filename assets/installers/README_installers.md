@@ -1,10 +1,19 @@
 # Brandy Box installers
 
-**Pre-built assets:** On every [GitHub Release](https://github.com/markusbrand/brandyBox/releases), the CI attaches `BrandyBox-<version>-Windows-x64.zip`, `BrandyBox-<version>-Linux-x64.zip`, and `BrandyBox-<version>-macOS-<arch>.zip` (arm64 or x64). Download the zip for your OS, unzip, then run the executable (Windows: `BrandyBox.exe`; Linux/macOS: run `./BrandyBox` or use the Linux install script on the unzipped folder).
+## Download and run (recommended)
 
-**Linux (Garuda/KDE):** New installs often see a square tray icon and no context menu when using the standalone binary. Use **Option A (venv)** below for the correct tray; see also [Client troubleshooting](../docs/client/troubleshooting.md#linux-tray-shows-square-icon--no-context-menu-recurring-with-new-installs).
+1. Go to [Releases](https://github.com/markusbrand/brandyBox/releases) and download the zip for your system:
+   - **Windows:** `BrandyBox-<version>-Windows-x64.zip` → unzip, double-click `BrandyBox.exe`
+   - **Linux:** `BrandyBox-<version>-Linux-x64.zip` → unzip, run `./BrandyBox` from the folder (or [add a menu entry](#linux) below)
+   - **macOS:** `BrandyBox-<version>-macOS-arm64.zip` or `-macOS-x64.zip` → unzip, run the app (or drag to Applications)
 
-Build the client locally (from repo root):
+**Linux (Garuda/KDE):** If the tray icon is a square and right-click has no menu, use the [venv install](#linux) (Option A) below. See [Client troubleshooting](../docs/client/troubleshooting.md#linux-tray-shows-square-icon--no-context-menu-recurring-with-new-installs).
+
+---
+
+## Build from source
+
+From repo root:
 
 ```bash
 pip install pyinstaller
@@ -26,15 +35,9 @@ cd client && pip install -e . && cd ..
 
 Use `--system-site-packages` so the venv can use the system PyGObject (e.g. `pacman -S python-gobject libappindicator-gtk3`). This installs desktop entries that run `python -m brandybox.main` from the repo venv; the tray then shows the correct icon and right-click menu.
 
-**Option B — Standalone binary (PyInstaller):**
+**Option B — Standalone binary (add to menu):**
 
-```bash
-chmod +x assets/installers/linux_install.sh
-./assets/installers/linux_install.sh
-# Or pass the build folder: ./assets/installers/linux_install.sh dist/BrandyBox
-```
-
-Installs to `~/.local/share/brandybox` and adds desktop entries. On Garuda/KDE the binary may show a square tray icon and no context menu (XOrg fallback); use Option A for the best experience. No sudo.
+From the repo: run `./assets/installers/linux_install.sh` (default: installs `dist/BrandyBox`), or `./assets/installers/linux_install.sh /path/to/unzipped/BrandyBox` to install a downloaded release to `~/.local/share/brandybox` and add desktop entries (Brandy Box, Brandy Box Settings, Quit Brandy Box). If you only have the release zip (no repo), run `./BrandyBox` from the unzipped folder; to add a menu entry, clone the repo and run the script with the path to your unzipped folder. On Garuda/KDE the binary may show a square tray icon and no context menu (XOrg fallback); use Option A for the best experience. No sudo.
 
 ## Windows
 

@@ -13,62 +13,56 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 
 ### Install the service on the Pi
 
+The backend image is published to [GitHub Container Registry (GHCR)](https://github.com/markusbrand/brandyBox/pkgs/container/brandybox-backend). You can run it with a single Docker command—no need to clone the repository.
+
 1. **Prerequisites on the Pi**
-   - Docker and Docker Compose installed (e.g. `curl -fsSL https://get.docker.com | sh` then `sudo usermod -aG docker $USER`; log out and back in).
+   - Docker installed (e.g. `curl -fsSL https://get.docker.com | sh` then `sudo usermod -aG docker $USER`; log out and back in).
    - Your HDD/storage mounted so that `/mnt/shared_storage/brandyBox` exists (create it if needed: `sudo mkdir -p /mnt/shared_storage/brandyBox && sudo chown pi:pi /mnt/shared_storage/brandyBox` or your Pi user).
    - Cloudflare tunnel (or another way) pointing at the Pi, e.g. to port 8081.
 
-2. **Get the code on the Pi**
+2. **Create a config directory and `.env`** (no clone: download the example from the repo):
    ```bash
-   cd ~
-   git clone https://github.com/markusbrand/brandyBox.git
-   cd brandyBox/backend
+   mkdir -p ~/brandybox-backend && cd ~/brandybox-backend
+   curl -sL https://raw.githubusercontent.com/markusbrand/brandyBox/master/backend/.env.example -o .env
+   # Edit .env and set BRANDYBOX_JWT_SECRET, SMTP, admin, etc. (no quotes needed for values)
    ```
+   Set at least: `BRANDYBOX_JWT_SECRET` (e.g. `openssl rand -hex 32`), SMTP vars, `BRANDYBOX_ADMIN_EMAIL`, `BRANDYBOX_ADMIN_INITIAL_PASSWORD`, and `BRANDYBOX_CORS_ORIGINS` (e.g. `https://brandybox.brandstaetter.rocks`). Bcrypt limits passwords to 72 bytes.
 
-3. **Create a `.env` file** in `backend/` with your secrets (copy from `backend/.env.example`; no quotes needed for values):
+3. **Run the backend** (one Docker command):
    ```bash
-   cp backend/.env.example backend/.env
-   # Edit backend/.env and set BRANDYBOX_JWT_SECRET, SMTP, admin, etc.
-   BRANDYBOX_JWT_SECRET=<generate-a-long-random-string>
-   BRANDYBOX_SMTP_HOST=smtp.example.com
-   BRANDYBOX_SMTP_PORT=587
-   BRANDYBOX_SMTP_USER=your-smtp-user
-   BRANDYBOX_SMTP_PASSWORD=your-smtp-password
-   BRANDYBOX_SMTP_FROM=brandybox@yourdomain.com
-   BRANDYBOX_ADMIN_EMAIL=admin@yourdomain.com
-   BRANDYBOX_ADMIN_INITIAL_PASSWORD=<choose-initial-admin-password>
-   BRANDYBOX_CORS_ORIGINS=https://brandybox.brandstaetter.rocks
+   docker run -d \
+     --name brandybox-backend \
+     --restart unless-stopped \
+     -p 8081:8080 \
+     -v brandybox_data:/data \
+     -v /mnt/shared_storage/brandyBox:/mnt/shared_storage/brandyBox \
+     --env-file .env \
+     ghcr.io/markusbrand/brandybox-backend:latest
    ```
-   Bcrypt limits passwords to 72 bytes; longer values are truncated when hashed.
-   Generate a secret with e.g. `openssl rand -hex 32`.
+   The service listens on **port 8081**. If the image is private, run `docker login ghcr.io` first (username: GitHub user, password: PAT with `read:packages`). To use port 8080 instead, change `-p 8081:8080` to `-p 8080:8080`.
 
-4. **Build and start the container** (run from `backend/` so Docker finds `docker-compose.yml` and `.env`)
+4. **Check it's running**
    ```bash
-   cd ~/brandyBox/backend
-   docker compose up -d --build
-   ```
-   The first run builds the image; later runs start the existing image. The service listens on **port 8081** by default (to avoid conflicts with other apps on 8080) and restarts automatically after a reboot. To use 8080 instead, add `HOST_PORT=8080` to `backend/.env`.
-   - If you see **“address already in use”**, add `HOST_PORT=8082` (or another free port) to `backend/.env`, run `docker compose down`, then `docker compose up -d` again. Point your Cloudflare tunnel and client at that port.
-
-5. **Check it’s running**
-   ```bash
-   docker compose ps
+   docker ps
    curl http://localhost:8081/health
    ```
-   You should see `{"status":"ok"}`. From another machine on the LAN use `http://<pi-ip>:8081/health`. Via the tunnel, use `https://brandybox.brandstaetter.rocks/health`.
-   - If the container is **Exited** or curl fails, check logs: `docker compose logs` or `docker logs brandybox-backend`. Common causes: missing `BRANDYBOX_JWT_SECRET` in `.env`, or (on older compose) wrong `BRANDYBOX_DB_PATH`. The DB must use the `/data` volume (default `/data/brandybox.db`); do not set `BRANDYBOX_DB_PATH` to a path outside the container.
-   - After **pulling updates**, rebuild so the new code and dependencies are used: `docker compose build --no-cache && docker compose up -d`. Then wait ~15 s before `curl …/health`.
-   - If you get **"Empty reply from server"**, wait 10–15 seconds after `docker compose up` (startup runs DB init and admin bootstrap), then try `curl` again. If it still fails, run `docker compose logs` to see if the app is crashing on the first request.
+   You should see `{"status":"ok"}`. From another machine use `http://<pi-ip>:8081/health`; via the tunnel, `https://brandybox.brandstaetter.rocks/health`.
+   - If the container is **Exited** or curl fails, check logs: `docker logs brandybox-backend`. Common cause: missing `BRANDYBOX_JWT_SECRET` in `.env`.
+   - If you get **"Empty reply from server"**, wait 10–15 seconds after starting (startup runs DB init and admin bootstrap), then try again.
+   - **Updates:** `docker pull ghcr.io/markusbrand/brandybox-backend:latest`, then `docker stop brandybox-backend && docker rm brandybox-backend` and run the `docker run` command again (your `brandybox_data` volume and `.env` are preserved).
 
-6. **Optional: Use the image from GitHub Container Registry**  
-   The backend image is built and published to [GitHub Container Registry](https://github.com/markusbrand/brandyBox/pkgs/container/brandybox-backend) on every push to `master`/`main` and on releases. To pull and run that image instead of building locally (same `.env` and `docker-compose.yml`):
+5. **Optional: Install from clone (build from source)**  
+   If you prefer to build the image locally or use the webhook listener:
    ```bash
-   cd ~/brandyBox/backend
-   docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+   git clone https://github.com/markusbrand/brandyBox.git
+   cd brandyBox/backend
+   cp .env.example .env
+   # Edit .env, then:
+   docker compose up -d --build
    ```
-   Image: `ghcr.io/markusbrand/brandybox-backend:latest`. If the package is private, run `docker login ghcr.io` first (username: your GitHub user, password: a PAT with `read:packages`). To make the package public, open the package page on GitHub → Package settings → Change visibility.
+   To use the GHCR image from the clone instead of building: `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d`.
 
-7. **Optional: Automatic updates via GitHub webhook**  
+6. **Optional: Automatic updates via GitHub webhook**  
    When GitHub Actions finishes building the backend image, a webhook can trigger an update on the Pi so the new image is pulled and the container restarted without manual SSH.
 
    - **On the Pi:** A small Flask app (`backend/webhook_listener.py`) listens for GitHub webhook POSTs (e.g. on port 9000). It verifies the request with `X-Hub-Signature-256` using a secret, and on successful `workflow_run` completion it runs `backend/update_brandybox.sh`, which runs `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull && … up -d`.
@@ -84,7 +78,7 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 
 ### Storage on the Pi
 
-User files are stored under `BRANDYBOX_STORAGE_BASE_PATH` (default `/mnt/shared_storage/brandyBox`). Each user gets a subfolder (e.g. `admin@example.com`). Ensure that path exists on the host and is writable by the container; `docker-compose.yml` mounts it into the container. If sync fails (red tray icon), check backend logs and ensure the mount is correct.
+User files are stored under `BRANDYBOX_STORAGE_BASE_PATH` (default `/mnt/shared_storage/brandyBox`). Each user gets a subfolder (e.g. `admin@example.com`). Ensure that path exists on the host and is writable by the container; the `docker run` command above (or `docker-compose.yml` when using the clone) mounts it into the container. If sync fails (red tray icon), check backend logs and ensure the mount is correct.
 
 ### First admin
 
@@ -92,7 +86,23 @@ On first start, the backend creates an admin user from `BRANDYBOX_ADMIN_EMAIL` a
 
 ## Client (Desktop)
 
-### Development
+### Install (download pre-built)
+
+1. Open **[Releases](https://github.com/markusbrand/brandyBox/releases)** and download the zip for your system:
+   - **Windows:** `BrandyBox-<version>-Windows-x64.zip`
+   - **Linux:** `BrandyBox-<version>-Linux-x64.zip`
+   - **macOS:** `BrandyBox-<version>-macOS-arm64.zip` or `-macOS-x64.zip`
+2. Unzip the file.
+3. Run the app:
+   - **Windows:** Double-click `BrandyBox.exe` in the unzipped folder.
+   - **macOS:** Open the folder and run the app (or drag it to Applications).
+   - **Linux:** Open a terminal in the unzipped folder and run `./BrandyBox`. To add a menu entry, see [Installers](assets/installers/README_installers.md#linux).
+
+**Linux (Garuda/KDE):** If the tray icon appears as a square and right-click has no menu, use the [venv-based install](#linux-venv-install-optional-if-tray-is-broken) instead. See [Client troubleshooting](docs/client/troubleshooting.md) for more.
+
+### Other install options
+
+**Development** (run from source):
 
 ```bash
 cd client
@@ -102,31 +112,12 @@ cd ..
 python -m brandybox.main
 ```
 
-### Install on Linux (venv — recommended; avoids tray icon/menu issues)
+#### Linux venv install (optional; if tray is broken)
 
-On Linux (e.g. Garuda, KDE), **use the venv-based install** so the tray shows the correct icon and right-click menu. The standalone PyInstaller binary on Linux often shows a square icon, no context menu, and can show a persistent popup; this is a known, recurring issue with new installs — the venv install avoids it.
+On Linux (e.g. Garuda, KDE) the standalone binary may show a square tray icon and no context menu. For the correct icon and menu, use the venv install: prerequisites `sudo pacman -S python-gobject libappindicator-gtk3` (Arch/Garuda), then from repo root: `python -m venv .venv --system-site-packages`, `source .venv/bin/activate`, `cd client && pip install -e . && cd ..`, and `./assets/installers/linux_install.sh --venv`. Start from the app menu; enable "Start when I log in" in Settings. See [Client troubleshooting](docs/client/troubleshooting.md).
 
-1. **Prerequisites** (Arch/Garuda):  
-   `sudo pacman -S python-gobject libappindicator-gtk3`
-2. **Create venv and install client** (from repo root):  
-   `python -m venv .venv --system-site-packages`  
-   Then `source .venv/bin/activate`, `cd client && pip install -e . && cd ..`
-3. **Install desktop entries** (from repo root, venv can be activated or not):  
-   `chmod +x scripts/install_desktop_venv.sh && ./scripts/install_desktop_venv.sh`  
-   Or: `./assets/installers/linux_install.sh --venv`
-4. Start **Brandy Box** from the app menu, then in **Settings** enable **“Start when I log in”**.
-
-No sudo (except for the pacman packages). The autostart entry is written to `~/.config/autostart/brandybox.desktop` when you enable it in Settings.
-
-See [Client troubleshooting](docs/client/troubleshooting.md) if you see a square tray icon or no context menu.
-
-### Build (installers)
-
-1. Generate logos (optional, from repo root): `python scripts/generate_logos.py`
-2. Build: `pip install pyinstaller && pyinstaller client/brandybox.spec`
-3. Output: `dist/BrandyBox/` (run the app with `dist/BrandyBox/BrandyBox`). See [assets/installers/README_installers.md](assets/installers/README_installers.md) for Linux/Windows/macOS installer steps. **On Linux**, the standalone binary often has tray issues (square icon, no menu); use the venv install above instead for the application menu.
-
-   **Pre-built assets:** For each [GitHub Release](https://github.com/markusbrand/brandyBox/releases) (e.g. [v0.1.0](https://github.com/markusbrand/brandyBox/releases/tag/v0.1.0)), the CI builds the client and attaches `BrandyBox-<version>-Windows-x64.zip`, `BrandyBox-<version>-Linux-x64.zip`, and `BrandyBox-<version>-macOS-<arch>.zip` (arm64 or x64) as downloadable assets. Unzip and run the executable (or use the Linux install script on the unzipped folder).
+**Build from source** (create your own zip):  
+Generate logos (optional): `python scripts/generate_logos.py`. Then `pip install pyinstaller && pyinstaller client/brandybox.spec`. Output: `dist/BrandyBox/`. See [Installers](assets/installers/README_installers.md) for Linux/Windows/macOS steps.
 
 ### Usage
 
