@@ -27,6 +27,10 @@ On Linux the tray icon is drawn at 32 px so it stays crisp when the panel uses ~
 
 See [Client troubleshooting](troubleshooting.md) for common issues (Linux tray, permission denied when syncing on Windows).
 
+## Multiple devices
+
+You can run the Brandy Box client on several machines at once (e.g. Windows laptop, Linux desktop, macOS) with the same account and sync folder. Each device has its own config and sync state (per user, per machine). **Last change wins:** if you delete a file on one client, the next sync deletes it on the server, and other clients then remove it locally on their next sync; if you edit a file, the version with the newer modification time is kept. There is no conflict merge — if two devices edit the same file offline, the one that syncs later (by mtime) overwrites the other.
+
 ## Sync performance
 
 Sync uses **concurrent transfers** for downloads and uploads: up to 8 workers run in parallel so the client can use available bandwidth on the local network. A **rate limiter** caps how often new transfers start (10 per second) so the backend’s 600 requests/minute limit is not exceeded. Deletes still run sequentially (deepest first). If you see 429 (Too Many Requests), the client will retry after the indicated delay.

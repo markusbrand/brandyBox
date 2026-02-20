@@ -1,4 +1,11 @@
-"""Sync logic: list local and remote, diff, upload/download, bidirectional deletes."""
+"""Sync logic: list local and remote, diff, upload/download, bidirectional deletes.
+
+Multi-client design: any number of clients (Windows, Linux, macOS) can use the same
+account and sync folder; each has its own per-machine sync state (config dir).
+Last change wins: deletions propagate (delete on one client → server → other clients
+delete locally); file content uses mtime (newer overwrites older). No conflict
+merge — concurrent edits to the same file resolve by timestamp.
+"""
 
 import hashlib
 import json
@@ -163,6 +170,10 @@ def sync_run(
     (4) upload local additions and newer files to server. Returns None on success,
     or an error message on failure.
 
+    Safe for multiple clients on different machines/OS: each client has its own
+    sync state; deletions and updates propagate so last change wins (by mtime for
+    content, and delete-on-one-client becomes delete-on-server then delete-on-others).
+
     Sync state is saved after the delete phase and after each successful upload so that
     closing the app mid-sync does not lose progress. Downloaded paths and content hashes
     are persisted so the next run skips re-downloading files that are already present
@@ -198,7 +209,7 @@ def sync_run(
     # should mean "in sync on both sides"). Otherwise a new/empty client would mark all remote paths
     # as in-sync before downloading and then delete them on the next run.
     to_delete_remote = {p for p in (last_synced - current_local_paths) if not _is_ignored(p)}
-    to_delete_local = last_synced - current_remote_paths  # gone from remote (e.g. other client)
+    to_delete_local = last_synced - current_remote_paths  # gone from remote → delete locally (other client deleted it)
     log.debug("Deletions: %d from server, %d from local", len(to_delete_remote), len(to_delete_local))
 
     # Safety: never delete more files on server than we have locally when the number is large.
