@@ -201,10 +201,13 @@ def sync_run(
     to_del_list = sorted(to_delete_remote, key=lambda p: -p.count("/"))
     to_del_local_list = sorted(to_delete_local, key=lambda p: -p.count("/"))
 
-    # Build to_download: skip if already downloaded and present, or if content hash matches (server sends hash when available)
+    # Build to_download: skip if already downloaded and present, or if content hash matches (server sends hash when available).
+    # When state has no hash for a path but local file exists and server sends hash, compute local hash and skip if equal
+    # so we don't re-download after a folder change or state clear.
     state = _load_sync_state()
     prev_downloaded = set(state["downloaded_paths"])
-    file_hashes = state.get("file_hashes") or {}
+    file_hashes = dict(state.get("file_hashes") or {})
+    verified_hashes: dict = {}  # path -> hash for files we verified locally this run (to persist)
     to_download = []
     for item in remote_list:
         path = item["path"]
@@ -217,16 +220,29 @@ def sync_run(
         if path in prev_downloaded and local_path.exists() and local_path.is_file():
             continue
         if local_path.exists() and local_path.is_file() and server_hash and file_hashes.get(path) == server_hash:
-            continue  # content unchanged; skip download
+            continue  # content unchanged (from state); skip download
         if not local_path.exists():
             to_download.append(path)
         else:
             try:
                 local_mtime = local_path.stat().st_mtime
                 if remote_mtime > local_mtime:
+                    # Before re-downloading, check if local content already matches server (e.g. after folder change or state clear)
+                    if server_hash:
+                        try:
+                            local_hash = hashlib.sha256(local_path.read_bytes()).hexdigest()
+                            if local_hash == server_hash:
+                                verified_hashes[path] = server_hash
+                                continue
+                        except OSError:
+                            pass
                     to_download.append(path)
             except OSError:
                 to_download.append(path)
+    if verified_hashes:
+        file_hashes.update(verified_hashes)
+        _save_sync_state(file_hashes=file_hashes)
+        log.info("Skipped %d downloads (local content matches server hash); updated file_hashes", len(verified_hashes))
 
     to_upload = []
     for path, local_mtime in local_list:
@@ -236,6 +252,13 @@ def sync_run(
             to_upload.append(path)
         elif local_mtime > remote_by_path[path]:
             to_upload.append(path)
+
+    # Warn if we're about to download a huge number of files (possible sync-folder mismatch, e.g. brandyBox vs brandybox on Linux)
+    if len(to_download) > 1000 and len(to_download) > 10 * max(len(to_upload), 1) and len(last_synced) > 0:
+        log.warning(
+            "Sync would download %d files but only upload %d; sync folder may be wrong (e.g. check case: brandyBox vs brandybox). Current folder: %s",
+            len(to_download), len(to_upload), local_root,
+        )
 
     total_work = len(to_del_list) + len(to_del_local_list) + len(to_download) + len(to_upload)
     done = 0

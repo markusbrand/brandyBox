@@ -981,11 +981,9 @@ def show_settings(
 
     def on_close() -> None:
         global _current_settings_window
-        if not app_config.user_has_set_sync_folder():
-            try:
-                app_config.set_sync_folder_path(Path(path_var.get()).resolve())
-            except (OSError, ValueError):
-                pass
+        # Do not auto-save the displayed path on close: only persist when the user clicks "Choose folder".
+        # Otherwise we would persist the default ~/brandyBox (capital B) and on Linux that can be the wrong
+        # folder (e.g. user's files are in ~/brandybox lowercase), causing repeated full re-downloads.
         try:
             app_config.set_settings_window_geometry(win.geometry())
         except Exception:

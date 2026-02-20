@@ -1,5 +1,6 @@
 """Entry point: auth, login or tray, sync loop."""
 
+import atexit
 import logging
 import os
 import queue
@@ -107,7 +108,26 @@ def _try_acquire_single_instance_lock() -> bool:
             ctypes.windll.kernel32.CloseHandle(_instance_mutex_handle)  # type: ignore[attr-defined]
             _instance_mutex_handle = None
         return False
+    atexit.register(_release_single_instance_lock)
     return True
+
+
+def _release_single_instance_lock() -> None:
+    """Release the single-instance lock so the next start can acquire it. Idempotent."""
+    global _instance_lock_file, _instance_mutex_handle
+    if _instance_lock_file is not None:
+        try:
+            _instance_lock_file.close()
+        except OSError:
+            pass
+        _instance_lock_file = None
+    if _instance_mutex_handle is not None and os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.CloseHandle(_instance_mutex_handle)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        _instance_mutex_handle = None
 
 
 def _setup_logging() -> None:
@@ -244,6 +264,7 @@ def main() -> None:
         root = Tk()
         root.withdraw()
         show_settings()
+        _release_single_instance_lock()
         sys.exit(0)
 
     # Single instance per user: only one tray/sync process
@@ -269,6 +290,7 @@ def main() -> None:
             should_show_login = _run_tray_with_ui(api, access_token, creds)
             if not should_show_login:
                 log.info("User quit from tray; exiting.")
+                _release_single_instance_lock()
                 sys.exit(0)
             # Tray exited with Log out; creds cleared, show login again.
             continue
@@ -297,6 +319,7 @@ def main() -> None:
             # Don't start tray here; loop will pick up token and run tray
 
         def on_cancel() -> None:
+            _release_single_instance_lock()
             sys.exit(0)
 
         show_login(on_success=on_success, on_cancel=on_cancel)

@@ -1,5 +1,13 @@
 # Client troubleshooting
 
+## Sync keeps re-downloading thousands of files after it "completed"
+
+**Symptom:** Sync finishes, but on the next run (or after a short wait) it starts downloading again (e.g. "Downloading: 1125 / 14967 files") as if the files weren’t there.
+
+**Likely cause:** **Wrong sync folder** – on Linux, paths are case-sensitive. If your real files are in e.g. `/home/you/brandybox` (lowercase) but Settings has `/home/you/brandyBox` (capital B), the client uses the wrong folder. It only sees the few files in that folder and treats all server files as missing, so it re-downloads them every time.
+
+**Fix:** In Brandy Box **Settings**, open the sync folder setting and choose the folder where your synced files actually are (same path and **exact same spelling**, including capital/lowercase letters). Then run sync again. After that, the client will see the existing files and won’t re-download everything.
+
 ## "Brandy Box is already running" but I don't see the tray icon
 
 **Symptom:** You get a popup saying Brandy Box is already running, but there is no system tray icon (or it disappeared).
