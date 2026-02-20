@@ -355,8 +355,8 @@ def sync_run(
     completed_uploads: Set[str] = set()  # persist after each so mid-sync close can resume
     upload_save_lock = threading.Lock()
 
-    def _upload_one(path: str) -> Tuple[str, Optional[Exception]]:
-        """Returns (path, None) on success, (path, exc) on error."""
+    def _upload_one(path: str) -> Tuple[str, Optional[object]]:
+        """Returns (path, None) on success, (path, 'skip') if file missing, (path, exc) on error."""
         rate_limiter.acquire()
         try:
             parts = path.replace("\\", "/").split("/")
@@ -364,6 +364,11 @@ def sync_run(
             body = full.read_bytes()
             api.upload_file(path, body)
             return (path, None)
+        except (FileNotFoundError, OSError) as e:
+            if getattr(e, "errno", None) == 2 or isinstance(e, FileNotFoundError):
+                log.warning("Upload %s: file no longer present, skipping: %s", path, e)
+                return (path, "skip")
+            return (path, e)
         except Exception as e:
             return (path, e)
 
@@ -375,15 +380,16 @@ def sync_run(
                 done += 1
                 progress("upload", done, total_work)
             status(f"Uploading… ({done - done_after_downloads}/{len(to_upload)})")
-            if result is not None:
+            if result is not None and result != "skip":
                 for f in upload_futures:
                     f.cancel()
                 log.error("Upload %s: %s", path, result)
                 return f"Upload {path}: {result}"
-            # Persist so closing the app mid-upload lets the next run pick up where we left off
-            with upload_save_lock:
-                completed_uploads.add(path)
-                _save_last_synced_paths(base_synced | completed_uploads)
+            if result is None:
+                # Persist so closing the app mid-upload lets the next run pick up where we left off
+                with upload_save_lock:
+                    completed_uploads.add(path)
+                    _save_last_synced_paths(base_synced | completed_uploads)
 
     # Persist synced paths for next run; clear downloaded_paths so future runs use normal mtime check
     new_synced = (current_remote_paths - to_delete_remote) | set(to_upload)
