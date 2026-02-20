@@ -142,10 +142,13 @@ def _setup_logging() -> None:
     root = logging.getLogger("brandybox")
     root.setLevel(logging.DEBUG)
     root.handlers.clear()
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(fmt)
-    root.addHandler(fh)
+    try:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(fmt)
+        root.addHandler(fh)
+    except (OSError, PermissionError):
+        pass  # e.g. permission denied; continue with stderr only
     ch = logging.StreamHandler(sys.stderr)
     ch.setLevel(logging.INFO)
     ch.setFormatter(fmt)
