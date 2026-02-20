@@ -1,5 +1,20 @@
 # Client troubleshooting
 
+## "Brandy Box is already running" but I don't see the tray icon
+
+**Symptom:** You get a popup saying Brandy Box is already running, but there is no system tray icon (or it disappeared).
+
+**What to do:**
+
+1. **Quit from the application menu**  
+   Open your app launcher (e.g. KDE application menu), search for **"Quit Brandy Box"**, and run it. Then start **Brandy Box** again from the menu.
+2. **Or quit from a terminal**  
+   Run:  
+   `pkill -f brandybox.main`  
+   Then start Brandy Box again.
+
+After that, the tray icon should appear when you start Brandy Box. If the tray still doesn’t show, see [Linux: tray shows square icon / no context menu](#linux-tray-shows-square-icon--no-context-menu-recurring-with-new-installs).
+
 ## Linux: tray shows square icon / no context menu (recurring with new installs)
 
 **Symptom:** On Linux (e.g. Garuda, KDE) the tray icon appears as a **square** instead of the Brandy Box “B” icon, **right-click does not open a context menu** (or a circle/indicator appears), and sometimes a settings popup stays on screen.

@@ -253,7 +253,9 @@ def main() -> None:
         root.withdraw()
         messagebox.showinfo(
             "Brandy Box",
-            "Brandy Box is already running. Use the system tray icon to open Settings or quit.",
+            "Brandy Box is already running.\n\n"
+            "If you don't see the tray icon: open the application menu and run \"Quit Brandy Box\", "
+            "then start Brandy Box again. Or in a terminal run: pkill -f brandybox.main",
         )
         sys.exit(0)
 
