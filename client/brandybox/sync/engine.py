@@ -201,9 +201,9 @@ def sync_run(
     to_delete_local = last_synced - current_remote_paths  # gone from remote (e.g. other client)
     log.debug("Deletions: %d from server, %d from local", len(to_delete_remote), len(to_delete_local))
 
-    # Safety: never delete a large number of files on server when local is empty or tiny (new device
-    # or wrong folder). Prevents wiping server when sync state is from another machine or corrupted.
-    if len(to_delete_remote) > 100 and len(current_local_paths) < max(100, len(to_delete_remote) // 10):
+    # Safety: never delete more files on server than we have locally when the number is large.
+    # Prevents wiping server when sync state is wrong (new device, wrong folder, or corrupted state).
+    if len(to_delete_remote) > 50 and len(to_delete_remote) > len(current_local_paths):
         log.warning(
             "Skipping server deletes: would delete %d on server but only %d files locally; "
             "likely new device or wrong sync folder. Downloading from server instead.",
