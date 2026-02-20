@@ -203,6 +203,14 @@ def sync_run(
     current_remote_paths = set(remote_by_path)
     last_synced = _load_last_synced_paths()
     log.info("Listed %d local files, %d remote files, %d in last_synced", len(current_local_paths), len(current_remote_paths), len(last_synced))
+    only_remote = current_remote_paths - current_local_paths
+    only_local = current_local_paths - current_remote_paths
+    if only_remote:
+        ignored_remote = sum(1 for p in only_remote if _is_ignored(p))
+        if ignored_remote == len(only_remote):
+            log.debug("All %d paths only on server are ignored (.git, .directory, etc.); no download needed", len(only_remote))
+        else:
+            log.debug("%d paths only on server (%d ignored); %d paths only local", len(only_remote), ignored_remote, len(only_local))
 
     # 1) Propagate deletions: local deletes → server, server deletes → local
     # Only treat "missing locally" as "delete on server" for paths we actually had locally (last_synced
