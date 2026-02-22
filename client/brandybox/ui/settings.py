@@ -557,13 +557,16 @@ def show_settings(
         log.info("show_settings: Tk() created")
     win.title("Brandy Box – Settings")
     win.resizable(True, True)
-    win.minsize(500, 560)
+    # Minimum size so all sections (Server, Sync, Startup, Account + storage bar, Admin) fit without scrolling
+    win.minsize(520, 680)
     saved_geom = app_config.get_settings_window_geometry()
     if saved_geom:
         try:
             win.geometry(saved_geom)
         except tk.TclError:
-            pass
+            win.geometry("520x680")
+    else:
+        win.geometry("520x680")
     win.configure(bg=COLOR_BACKGROUND)
     _apply_theme(win)
     log.info("show_settings: theme applied")
@@ -708,7 +711,7 @@ def show_settings(
         sec4, r4 = _section(frame, "Account", row)
         row += 2
 
-        # Storage space (transparent background; load async)
+        # Storage space: used and maximum for logged-in user (load async)
         storage_sec = ttk.Frame(sec4)
         storage_sec.grid(row=r4, column=0, columnspan=2, sticky="ew", pady=(0, PAD_ROW))
         r4 += 1
@@ -717,36 +720,41 @@ def show_settings(
         )
         storage_text_var = tk.StringVar(value="Loading…")
         storage_text_label = ttk.Label(
-            storage_sec, textvariable=storage_text_var, style="Caption.TLabel", wraplength=420
+            storage_sec, textvariable=storage_text_var, style="Caption.TLabel", wraplength=480
         )
-        storage_text_label.grid(row=1, column=0, sticky="w", pady=(0, 4))
-        # Progress bar: canvas so track can match background (transparent look)
-        _storage_canvas_container = ttk.Frame(storage_sec)
+        storage_text_label.grid(row=1, column=0, sticky="w", pady=(0, 6))
+        # Progress bar: tk.Frame container so canvas is visible on all themes
+        _bar_height = 10
+        _bar_width = 480
+        _storage_canvas_container = tk.Frame(storage_sec, height=_bar_height, bg=COLOR_SURFACE)
         _storage_canvas_container.grid(row=2, column=0, sticky="ew", pady=(0, PAD_SECTION))
+        _storage_canvas_container.grid_propagate(False)
         storage_sec.columnconfigure(0, weight=1)
         _storage_canvas = tk.Canvas(
             _storage_canvas_container,
-            width=420,
-            height=12,
+            width=_bar_width,
+            height=_bar_height,
             highlightthickness=0,
             bg=COLOR_SURFACE,
         )
-        _storage_canvas.pack(anchor="w")
+        _storage_canvas.pack(fill="both", expand=True)
 
         def _draw_storage_bar(used: int, limit: Optional[int]) -> None:
-            w = 420
-            h = 12
-            _storage_canvas.configure(bg=COLOR_SURFACE)
-            # Track (full width, transparent background = same as surface)
-            _rounded_rect(_storage_canvas, 0, 0, w, h, 4, fill=COLOR_OUTLINE, outline=COLOR_OUTLINE)
+            w = _bar_width
+            h = _bar_height
+            _storage_canvas.delete("all")
+            _storage_canvas.configure(bg=COLOR_SURFACE, width=w, height=h)
+            # Track (full width)
+            _rounded_rect(_storage_canvas, 0, 0, w, h, 3, fill=COLOR_OUTLINE, outline=COLOR_OUTLINE)
             if limit is not None and limit > 0:
                 pct = min(1.0, used / limit)
-                fill_w = max(0, int(w * pct))
+                fill_w = max(0, min(w, int(w * pct)))
                 if fill_w > 0:
                     _rounded_rect(
-                        _storage_canvas, 0, 0, fill_w, h, 4,
+                        _storage_canvas, 0, 0, fill_w, h, 3,
                         fill=COLOR_PRIMARY, outline=COLOR_PRIMARY,
                     )
+            _storage_canvas.update_idletasks()
 
         def _load_storage_async() -> None:
             if not api:
@@ -761,9 +769,11 @@ def show_settings(
             used = data.get("used_bytes") or 0
             limit = data.get("limit_bytes")
             if limit is not None:
-                storage_text_var.set(f"{_format_storage_bytes(used)} of {_format_storage_bytes(limit)} used")
+                storage_text_var.set(
+                    f"Used: {_format_storage_bytes(used)} — Maximum: {_format_storage_bytes(limit)}"
+                )
             else:
-                storage_text_var.set(f"{_format_storage_bytes(used)} used (no limit)")
+                storage_text_var.set(f"Used: {_format_storage_bytes(used)} (no maximum)")
             _draw_storage_bar(used, limit)
 
         def change_password_dialog() -> None:
