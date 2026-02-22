@@ -91,6 +91,17 @@ class BrandyBoxAPI:
             )
             r.raise_for_status()
 
+    def get_storage(self) -> Dict[str, Any]:
+        """GET /api/files/storage. Returns {used_bytes, limit_bytes} for current user."""
+        log.debug("GET /api/files/storage")
+        with httpx.Client(timeout=30.0) as client:
+            r = client.get(
+                f"{self._base_url}/api/files/storage",
+                headers=self._headers(),
+            )
+            r.raise_for_status()
+            return r.json()
+
     def list_files(self) -> List[Dict[str, Any]]:
         """GET /api/files/list. Returns [{path, mtime}, ...]."""
         log.debug("GET /api/files/list")
@@ -218,6 +229,21 @@ class BrandyBoxAPI:
                 f"{self._base_url}/api/users",
                 json={"email": email, "first_name": first_name, "last_name": last_name},
                 headers=headers,
+            )
+            r.raise_for_status()
+            return r.json()
+
+    def update_user_storage_limit(
+        self, email: str, storage_limit_bytes: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """PATCH /api/users/{email}. Set storage limit for user (admin only). None = use server default."""
+        log.debug("update_user_storage_limit email=%s limit=%s", email, storage_limit_bytes)
+        encoded = quote(email, safe="")
+        with httpx.Client(timeout=30.0) as client:
+            r = client.patch(
+                f"{self._base_url}/api/users/{encoded}",
+                json={"storage_limit_bytes": storage_limit_bytes},
+                headers={**self._headers(), "Content-Type": "application/json"},
             )
             r.raise_for_status()
             return r.json()

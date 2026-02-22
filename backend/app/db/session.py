@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
@@ -19,10 +20,21 @@ _async_session = async_sessionmaker(
 )
 
 
+def _add_storage_limit_column_if_missing(conn) -> None:
+    """Add users.storage_limit_bytes if the column does not exist (migration)."""
+    cursor = conn.execute(text("PRAGMA table_info(users)"))
+    rows = cursor.fetchall()
+    # SQLite returns (cid, name, type, notnull, dflt_value, pk)
+    if any(row[1] == "storage_limit_bytes" for row in rows):
+        return
+    conn.execute(text("ALTER TABLE users ADD COLUMN storage_limit_bytes INTEGER"))
+
+
 async def init_db() -> None:
-    """Create tables if they do not exist."""
+    """Create tables if they do not exist, then run migrations."""
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_storage_limit_column_if_missing)
 
 
 @asynccontextmanager

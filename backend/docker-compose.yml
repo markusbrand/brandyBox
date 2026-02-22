@@ -16,6 +16,8 @@ services:
       - "${HOST_PORT:-8081}:8080"
     environment:
       - BRANDYBOX_STORAGE_BASE_PATH=/mnt/shared_storage/brandyBox
+      # Max storage for all users: e.g. 70% (default), 500GB, 1TB
+      # BRANDYBOX_STORAGE_LIMIT=70%
       # DB lives in /data (mounted volume); default /data/brandybox.db
       # Set in .env: JWT_SECRET, SMTP_*, ADMIN_*
       - BRANDYBOX_JWT_SECRET=${BRANDYBOX_JWT_SECRET}

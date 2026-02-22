@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr
-from sqlalchemy import Boolean, DateTime, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -23,6 +23,8 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Optional per-user storage limit (bytes). None = use server limit only.
+    storage_limit_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
 
 # Pydantic schemas for API
@@ -44,6 +46,8 @@ class UserResponse(BaseModel):
     last_name: str
     is_admin: bool
     created_at: datetime
+    storage_used_bytes: Optional[int] = None
+    storage_limit_bytes: Optional[int] = None
 
 
 class UserCreateResponse(UserResponse):
@@ -79,3 +83,9 @@ class ChangePassword(BaseModel):
 
     current_password: str
     new_password: str
+
+
+class UserStorageLimitUpdate(BaseModel):
+    """Request body for admin to set a user's storage limit (bytes). None = no per-user limit."""
+
+    storage_limit_bytes: Optional[int] = None
