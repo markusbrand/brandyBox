@@ -21,7 +21,7 @@
    `pkill -f brandybox.main`  
    Then start Brandy Box again.
 
-After that, the tray icon should appear when you start Brandy Box. If the tray still doesn’t show, see [Linux: tray shows square icon / no context menu](#linux-tray-shows-square-icon--no-context-menu-recurring-with-new-installs).
+After that, the tray icon should appear when you start Brandy Box. If the tray still doesn’t show, see [Linux: tray shows square icon / no context menu](#linux-tray-shows-square-icon-no-context-menu-recurring-with-new-installs).
 
 ## Linux: tray shows square icon / no context menu (recurring with new installs)
 
