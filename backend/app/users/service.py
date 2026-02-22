@@ -68,9 +68,11 @@ async def create_user(
     session: AsyncSession,
     payload: UserCreate,
     is_admin: bool = False,
+    skip_email: bool = False,
 ) -> tuple[User, str]:
     """
-    Create a new user: store in DB and send temp password by email.
+    Create a new user: store in DB and optionally send temp password by email.
+    When skip_email=True (e.g. E2E request with X-E2E-Return-Temp-Password), no email is sent.
     Returns (user, temporary_password). Caller must commit session.
     """
     existing = await get_user_by_email(session, payload.email)
@@ -87,21 +89,24 @@ async def create_user(
     )
     session.add(user)
     await session.flush()
-    settings = get_settings()
-    if settings.smtp_host and settings.smtp_from:
-        try:
-            await send_password_email(payload.email, temp_password, payload.first_name)
-        except RuntimeError:
-            raise
-        except Exception as e:
-            log.warning("Failed to send password email to %s: %s", payload.email, e)
-            raise RuntimeError("Email could not be sent. Check SMTP configuration.") from e
+    if skip_email:
+        log.info("User %s created (E2E/skip_email); temp password returned in response", payload.email)
     else:
-        log.info(
-            "User %s created; SMTP not configured. Temporary password: %s",
-            payload.email,
-            temp_password,
-        )
+        settings = get_settings()
+        if settings.smtp_host and settings.smtp_from:
+            try:
+                await send_password_email(payload.email, temp_password, payload.first_name)
+            except RuntimeError:
+                raise
+            except Exception as e:
+                log.warning("Failed to send password email to %s: %s", payload.email, e)
+                raise RuntimeError("Email could not be sent. Check SMTP configuration.") from e
+        else:
+            log.info(
+                "User %s created; SMTP not configured. Temporary password: %s",
+                payload.email,
+                temp_password,
+            )
     return user, temp_password
 
 

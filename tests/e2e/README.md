@@ -4,13 +4,9 @@ End-to-end scenarios (sync, large file) that run the client and verify behaviour
 
 ## Autonomous setup (recommended, no manual login)
 
-The runner creates a **test user** and **test folder** automatically, runs the scenario(s), then **deletes the test user** and cleans up. You only need **admin** credentials.
+The runner creates a **test user** and **test folder** automatically, runs the scenario(s), then **deletes the test user** and cleans up. You only need **admin** credentials. The runner sends the `X-E2E-Return-Temp-Password` header when creating the test user so the backend returns the temp password and **does not send email** (SMTP can remain configured).
 
-### 1. Backend without SMTP
-
-The backend must **not** have SMTP configured (do not set `BRANDYBOX_SMTP_HOST`). Then the admin “create user” API returns `temp_password` in the response so the E2E runner can log in as the new user and seed the keyring.
-
-### 2. Repo-root `.env`
+### 1. Repo-root `.env`
 
 Create or edit `.env` at the **repository root**:
 

@@ -4,7 +4,7 @@ Run all discovered E2E scenarios (BaseScenario subclasses in tests.e2e).
 
 Usage (from repo root) — autonomous (no manual login):
   Set admin credentials: BRANDYBOX_ADMIN_EMAIL=... BRANDYBOX_ADMIN_PASSWORD=...
-  Backend without SMTP so create_user returns temp_password. Optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER.
+  Optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER.
   python -m tests.e2e.run_all_e2e
 
 Legacy: set BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD (see tests/e2e/README.md).

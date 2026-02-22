@@ -43,19 +43,19 @@ def create_test_user(
 ) -> Tuple[str, str, str]:
     """
     Create a test user via admin API and return (test_email, temp_password, refresh_token).
-    Backend must have SMTP unconfigured so create_user returns temp_password.
+    Sends X-E2E-Return-Temp-Password so the backend returns temp_password and skips email (SMTP not required).
     """
     from brandybox.api.client import BrandyBoxAPI
 
     api = BrandyBoxAPI(base_url=base_url)
     api.login(admin_email, admin_password)
     test_email = f"e2e-{uuid.uuid4().hex[:12]}@example.com"
-    data = api.create_user(test_email, "E2E", "Test")
+    data = api.create_user(test_email, "E2E", "Test", e2e_return_temp_password=True)
     temp_password = data.get("temp_password")
     if not temp_password:
         raise RuntimeError(
-            "Backend did not return temp_password. For E2E, run the backend without SMTP "
-            "(do not set BRANDYBOX_SMTP_HOST) so new users get temp_password in the response."
+            "Backend did not return temp_password. Ensure the backend supports the "
+            "X-E2E-Return-Temp-Password header (admin create user)."
         )
     api2 = BrandyBoxAPI(base_url=base_url)
     login_data = api2.login(test_email, temp_password)

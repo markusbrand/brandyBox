@@ -201,14 +201,23 @@ class BrandyBoxAPI:
             r.raise_for_status()
             return r.json()
 
-    def create_user(self, email: str, first_name: str, last_name: str) -> Dict[str, Any]:
-        """POST /api/users. Create a new user (admin only). Password is sent by email."""
+    def create_user(
+        self,
+        email: str,
+        first_name: str,
+        last_name: str,
+        e2e_return_temp_password: bool = False,
+    ) -> Dict[str, Any]:
+        """POST /api/users. Create a new user (admin only). Password is sent by email, or returned when e2e_return_temp_password=True."""
         log.debug("create_user email=%s", email)
+        headers = {**self._headers(), "Content-Type": "application/json"}
+        if e2e_return_temp_password:
+            headers["X-E2E-Return-Temp-Password"] = "true"
         with httpx.Client(timeout=30.0) as client:
             r = client.post(
                 f"{self._base_url}/api/users",
                 json={"email": email, "first_name": first_name, "last_name": last_name},
-                headers={**self._headers(), "Content-Type": "application/json"},
+                headers=headers,
             )
             r.raise_for_status()
             return r.json()

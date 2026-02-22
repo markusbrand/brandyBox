@@ -127,20 +127,28 @@ async def change_password(
     return {"detail": "Password updated"}
 
 
+# Header sent by E2E runner so backend returns temp_password and skips sending email (SMTP not required).
+E2E_RETURN_TEMP_PASSWORD_HEADER = "X-E2E-Return-Temp-Password"
+
+
 @router.post("/users", response_model=UserCreateResponse)
 async def admin_create_user(
+    request: Request,
     payload: UserCreate,
     current_user: Annotated[User, Depends(get_current_admin)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserCreateResponse:
-    """Create a new user (admin only). Password is sent by email, or returned when SMTP not configured (e.g. E2E)."""
+    """Create a new user (admin only). Password is sent by email, or returned when E2E header is set or SMTP not configured."""
+    e2e_return_password = (request.headers.get(E2E_RETURN_TEMP_PASSWORD_HEADER) or "").strip().lower() in ("true", "1")
     try:
-        user, temp_password = await do_create_user(session, payload, is_admin=False)
+        user, temp_password = await do_create_user(
+            session, payload, is_admin=False, skip_email=e2e_return_password
+        )
         await session.refresh(user)
         log.info("Admin %s created user email=%s", current_user.email, user.email)
         data = UserResponse.model_validate(user).model_dump()
-        # Return temp_password only when SMTP is not configured (E2E / dev); never in production with SMTP
-        if not get_settings().smtp_host or not get_settings().smtp_from:
+        # Return temp_password when E2E requested it, or when SMTP is not configured
+        if e2e_return_password or not get_settings().smtp_host or not get_settings().smtp_from:
             data["temp_password"] = temp_password
         return UserCreateResponse(**data)
     except ValueError as e:

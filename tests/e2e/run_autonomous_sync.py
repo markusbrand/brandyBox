@@ -5,8 +5,7 @@ Autonomous E2E sync test: create test user and folders, run sync scenario, clean
 Usage (from repo root) — autonomous (no manual login):
   Set admin credentials so the runner can create a test user and cleanup after:
     .env: BRANDYBOX_ADMIN_EMAIL=... BRANDYBOX_ADMIN_PASSWORD=...
-  Backend must run without SMTP (do not set BRANDYBOX_SMTP_HOST) so create_user
-  returns temp_password. Optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER.
+  Optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER.
   python -m tests.e2e.run_autonomous_sync
 
 Legacy (manual test user): set BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD
