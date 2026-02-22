@@ -477,6 +477,11 @@ class TrayApp:
                 if new_token:
                     self._api.set_access_token(new_token)
                     err = engine.run()
+                elif self._on_logout:
+                    # Refresh failed (e.g. 401): credentials cleared; show login again
+                    log.info("Token invalid, triggering logout so you can sign in again")
+                    self._on_logout()
+                    return
             self._sync_phase = ""
             self._sync_current = 0
             self._sync_total = 0

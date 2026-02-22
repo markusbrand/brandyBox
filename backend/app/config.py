@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    refresh_token_expire_days: int = 7
+    # Long-lived refresh token (Dropbox-style): user stays logged in without re-login.
+    # Override with BRANDYBOX_REFRESH_TOKEN_EXPIRE_DAYS (e.g. 3650 for ~10 years).
+    refresh_token_expire_days: int = 365
 
     # SMTP (for sending passwords to new users)
     smtp_host: str = ""

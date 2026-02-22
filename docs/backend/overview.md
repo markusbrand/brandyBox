@@ -44,5 +44,6 @@ Configure the webhook in GitHub (repo → Settings → Webhooks): Payload URL po
 ## Security
 
 - Passwords hashed with bcrypt; JWT for access/refresh.
+- Access tokens are short-lived (default 30 minutes); refresh tokens are long-lived (default 365 days, configurable via `BRANDYBOX_REFRESH_TOKEN_EXPIRE_DAYS`) so clients stay logged in without re-entering credentials (Dropbox-style).
 - File paths sanitized (no `..`); user scope by email.
 - Rate limits on login/refresh and file endpoints; CORS from config.

@@ -4,6 +4,7 @@ import logging
 import os
 from typing import Optional, Tuple
 
+import httpx
 import keyring
 
 from brandybox.api.client import BrandyBoxAPI
@@ -80,6 +81,13 @@ class CredentialsStore:
             self.set_stored(email, data["refresh_token"])
             log.debug("Token refresh successful for %s", email)
             return data["access_token"]
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                log.warning("Token refresh returned 401 (session invalid); clearing stored credentials")
+                self.clear_stored()
+            else:
+                log.warning("Token refresh failed: %s", e)
+            return None
         except Exception as e:
             log.warning("Token refresh failed: %s", e)
             return None
