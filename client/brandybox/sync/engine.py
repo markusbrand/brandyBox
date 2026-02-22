@@ -194,7 +194,11 @@ def sync_run(
         local_list = _list_local(local_root)
         remote_list = api.list_files()
     except Exception as e:
-        log.exception("Sync failed at list: %s", e)
+        # Connection refused / unreachable is expected when local backend is down; we retry with remote.
+        if isinstance(e, httpx.ConnectError) or "connection refused" in str(e).lower():
+            log.warning("Backend unreachable at list: %s (will retry with other URL or later)", e)
+        else:
+            log.exception("Sync failed at list: %s", e)
         return str(e)
 
     local_by_path = {p: m for p, m in local_list}
