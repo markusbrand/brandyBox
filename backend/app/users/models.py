@@ -46,6 +46,12 @@ class UserResponse(BaseModel):
     created_at: datetime
 
 
+class UserCreateResponse(UserResponse):
+    """Response for admin create user. Includes temp_password only when SMTP is not configured (e.g. E2E)."""
+
+    temp_password: Optional[str] = None
+
+
 class UserLogin(BaseModel):
     """Login request body."""
 

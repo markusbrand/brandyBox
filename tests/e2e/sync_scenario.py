@@ -188,10 +188,9 @@ class SyncE2EScenario(BaseScenario):
                     return StepResult("wait_sync_create", True)
             time.sleep(SYNC_POLL_INTERVAL)
         hint = (
-            "E2E client may not be syncing. Do the one-time setup: run the client with "
-            "BRANDYBOX_CONFIG_DIR=<repo>/tests/e2e/e2e_client_config, log in as the test user "
-            "(BRANDYBOX_TEST_EMAIL), and set the sync folder to the same path as BRANDYBOX_SYNC_FOLDER. "
-            "See tests/e2e/README.md."
+            "E2E client may not be syncing. With autonomous setup (BRANDYBOX_ADMIN_*) config and "
+            "keyring are set automatically. With legacy (BRANDYBOX_TEST_*), run the client once "
+            "with BRANDYBOX_CONFIG_DIR and set sync folder to BRANDYBOX_SYNC_FOLDER. See tests/e2e/README.md."
         )
         return StepResult(
             "wait_sync_create",

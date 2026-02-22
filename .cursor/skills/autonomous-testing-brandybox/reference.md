@@ -41,7 +41,7 @@ Use this structure at the end of an autonomous test run:
 ## E2E environment
 
 - **.env file for E2E**: E2E runners load variables from a **`.env` file at the repository root** (the directory that contains `client/`, `backend/`, `tests/`). Create it by copying `.env.example` and setting your values: `cp .env.example .env` then edit `.env`. The file is gitignored; never commit it.
-- **BRANDYBOX_TEST_EMAIL**, **BRANDYBOX_TEST_PASSWORD**: Required for API login. Set them in repo-root `.env` or in the environment. If unset, the runner exits immediately with a hint. **PowerShell**: `$env:BRANDYBOX_TEST_EMAIL = "you@example.com"; $env:BRANDYBOX_TEST_PASSWORD = "..."`
+- **Autonomous (recommended)**: **BRANDYBOX_ADMIN_EMAIL**, **BRANDYBOX_ADMIN_PASSWORD**; backend without SMTP so create_user returns temp_password; runner creates test user and cleans up. **Legacy**: **BRANDYBOX_TEST_EMAIL**, **BRANDYBOX_TEST_PASSWORD** (one-time client setup). Set them in repo-root `.env` or in the environment. If unset, the runner exits immediately with a hint. **PowerShell**: `$env:BRANDYBOX_TEST_EMAIL = "you@example.com"; $env:BRANDYBOX_TEST_PASSWORD = "..."`
 - **BRANDYBOX_E2E_CLIENT_RUNNING**: Set to `1` (or `true`/`yes`) to skip starting the client; assume it is already running (e.g. started manually or in tray). Use when client start fails or you run client separately.
 - **BRANDYBOX_BASE_URL**, **BRANDYBOX_SYNC_FOLDER**, **BRANDYBOX_E2E_MAX_ATTEMPTS**: Optional (in `.env` or env). **BRANDYBOX_SYNC_FOLDER** must be a path the test process can write to and should match the folder the Brandy Box client is syncing (e.g. repo `tests/e2e/sync_test_dir`; create with `mkdir -p` and set in `.env`). **BRANDYBOX_LARGE_FILE_SIZE_MB**: For large-file scenario (default 2).
 

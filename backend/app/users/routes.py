@@ -23,6 +23,7 @@ from app.users.models import (
     TokenPair,
     User,
     UserCreate,
+    UserCreateResponse,
     UserResponse,
     UserLogin,
 )
@@ -126,18 +127,22 @@ async def change_password(
     return {"detail": "Password updated"}
 
 
-@router.post("/users", response_model=UserResponse)
+@router.post("/users", response_model=UserCreateResponse)
 async def admin_create_user(
     payload: UserCreate,
     current_user: Annotated[User, Depends(get_current_admin)],
     session: Annotated[AsyncSession, Depends(get_db)],
-) -> UserResponse:
-    """Create a new user (admin only). Password is sent by email."""
+) -> UserCreateResponse:
+    """Create a new user (admin only). Password is sent by email, or returned when SMTP not configured (e.g. E2E)."""
     try:
-        user, _ = await do_create_user(session, payload, is_admin=False)
+        user, temp_password = await do_create_user(session, payload, is_admin=False)
         await session.refresh(user)
         log.info("Admin %s created user email=%s", current_user.email, user.email)
-        return UserResponse.model_validate(user)
+        data = UserResponse.model_validate(user).model_dump()
+        # Return temp_password only when SMTP is not configured (E2E / dev); never in production with SMTP
+        if not get_settings().smtp_host or not get_settings().smtp_from:
+            data["temp_password"] = temp_password
+        return UserCreateResponse(**data)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except RuntimeError as e:
