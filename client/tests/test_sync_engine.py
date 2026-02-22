@@ -178,6 +178,8 @@ def test_sync_run_safety_skips_mass_server_deletes_when_local_tiny(
 
     state_path = tmp_path / "sync_state.json"
     monkeypatch.setattr(engine, "get_sync_state_path", lambda: state_path)
+    # Avoid real rate limiting (10/sec) so 200 downloads don't take ~20s; test only asserts safety.
+    monkeypatch.setattr(engine, "SYNC_RATE_LIMIT_PER_SEC", 500.0)
     # Prime state as if we had 200 paths "in sync" (e.g. corrupted or from another machine)
     remote_paths = [f"file_{i}.txt" for i in range(200)]
     state_path.write_text(

@@ -60,6 +60,9 @@ def _e2e_config_dir() -> Path:
     return _repo_root() / "tests" / "e2e" / "e2e_client_config"
 
 
+E2E_CLIENT_PID_FILE = "e2e_client.pid"
+
+
 def _start_client() -> bool:
     """Start Brandy Box client from repo root. Returns True if started or already running.
     When using E2E config (BRANDYBOX_SYNC_FOLDER set), starts client with BRANDYBOX_CONFIG_DIR
@@ -77,6 +80,8 @@ def _start_client() -> bool:
     env = os.environ.copy()
     if use_e2e_config:
         env["BRANDYBOX_CONFIG_DIR"] = str(e2e_config)
+        from tests.e2e.e2e_setup import stop_e2e_client
+        stop_e2e_client()
         log.info("Starting client with E2E config dir: %s", e2e_config)
     # Ensure we can import brandybox when client is started from repo
     if "PYTHONPATH" in env:
@@ -84,7 +89,7 @@ def _start_client() -> bool:
     else:
         env["PYTHONPATH"] = str(root / "client")
     try:
-        subprocess.Popen(
+        proc = subprocess.Popen(
             [sys.executable, "-m", "brandybox.main"],
             cwd=root,
             env=env,
@@ -92,6 +97,12 @@ def _start_client() -> bool:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
+        if use_e2e_config:
+            try:
+                pid_file = e2e_config / E2E_CLIENT_PID_FILE
+                pid_file.write_text(str(proc.pid), encoding="utf-8")
+            except OSError as e:
+                log.warning("Could not write E2E client PID file: %s", e)
         # Give process time to start
         for _ in range(CLIENT_START_TIMEOUT):
             time.sleep(1)

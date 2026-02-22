@@ -28,7 +28,7 @@ python -m tests.e2e.run_autonomous_sync
 python -m tests.e2e.run_all_e2e
 ```
 
-The runner will: create a unique test user via the admin API, create the E2E config dir and sync folder, seed the keyring (BrandyBox-E2E), start the client, run the scenario(s), then delete the test user and clear keyring/config. No manual login or one-time client setup.
+The runner will: create a unique test user via the admin API, create the E2E config dir and sync folder, seed the keyring (BrandyBox-E2E), start the client, run the scenario(s), then **stop the client process**, delete the test user, clear keyring/config, and wipe the sync folder contents. No manual login or one-time client setup; no leftover processes or test data.
 
 ---
 

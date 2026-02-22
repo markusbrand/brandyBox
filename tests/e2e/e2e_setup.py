@@ -9,11 +9,16 @@ import json
 import logging
 import os
 import shutil
+import signal
+import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Optional, Tuple
 
 log = logging.getLogger(__name__)
+
+E2E_CLIENT_PID_FILE = "e2e_client.pid"
 
 # Keyring keys must match client/brandybox/auth/credentials.py
 E2E_KEYRING_SERVICE = "BrandyBox-E2E"
@@ -27,6 +32,59 @@ def _repo_root() -> Path:
 
 def _e2e_config_dir() -> Path:
     return _repo_root() / "tests" / "e2e" / "e2e_client_config"
+
+
+def stop_e2e_client() -> None:
+    """
+    Stop the E2E Brandy Box client if we started it (pid in e2e_client_config/e2e_client.pid).
+    Call after test run so no client instances are left running. Safe to call if file missing.
+    """
+    pid_path = _e2e_config_dir() / E2E_CLIENT_PID_FILE
+    if not pid_path.exists():
+        return
+    try:
+        pid = int(pid_path.read_text(encoding="utf-8").strip())
+    except (ValueError, OSError) as e:
+        log.warning("Could not read E2E client PID from %s: %s", pid_path, e)
+        try:
+            pid_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(10):
+            time.sleep(0.5)
+            try:
+                os.kill(pid, 0)
+            except (ProcessLookupError, OSError):
+                break
+        else:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, OSError):
+                pass
+        log.info("E2E cleanup: stopped client process %s", pid)
+    except ProcessLookupError:
+        log.debug("E2E client process %s already gone", pid)
+    except OSError as e:
+        if sys.platform == "win32":
+            try:
+                import subprocess
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", str(pid)],
+                    capture_output=True,
+                    timeout=5,
+                )
+                log.info("E2E cleanup: sent taskkill for client PID %s", pid)
+            except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e2:
+                log.warning("E2E cleanup: could not stop client %s: %s", pid, e2)
+        else:
+            log.warning("E2E cleanup: could not stop client %s: %s", pid, e)
+    try:
+        pid_path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _default_sync_folder() -> Path:
@@ -125,14 +183,13 @@ def cleanup_e2e(
     except Exception as e:
         log.warning("E2E cleanup: keyring clear failed: %s", e)
 
-    # Config dir: leave in place so next run can reuse; optional wipe
+    # Config dir: remove config and pid file so next run starts clean
     if e2e_config_dir and e2e_config_dir.exists():
         try:
-            config_file = e2e_config_dir / "config.json"
-            if config_file.exists():
-                config_file.unlink()
+            (e2e_config_dir / "config.json").unlink(missing_ok=True)
+            (e2e_config_dir / E2E_CLIENT_PID_FILE).unlink(missing_ok=True)
         except OSError as e:
-            log.warning("E2E cleanup: config unlink failed: %s", e)
+            log.warning("E2E cleanup: config dir cleanup failed: %s", e)
 
     # Sync folder: only remove contents if we want a clean slate; do not remove the dir
     if sync_folder and sync_folder.exists():
@@ -180,6 +237,7 @@ def run_with_autonomous_setup(
         log.exception("Autonomous setup failed: %s", e)
         return False, str(e)
     finally:
+        stop_e2e_client()
         if test_email:
             cleanup_e2e(
                 test_email,
