@@ -70,3 +70,55 @@ def notify_error(title: str, message: str) -> None:
             log.debug("Desktop notifications not implemented for %s", sys.platform)
     except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
         log.debug("Desktop notification failed: %s", e)
+
+
+def notify_sync_complete(downloaded: int, uploaded: int) -> None:
+    """
+    Show a desktop notification when a sync completed with downloads and/or uploads.
+    Only notifies when at least one file was downloaded or uploaded.
+    Downloaded: another client uploaded, so this PC received files. Uploaded: local
+    files were successfully synced to the server.
+    """
+    if downloaded <= 0 and uploaded <= 0:
+        return
+    if downloaded > 0 and uploaded > 0:
+        body = f"{downloaded} file(s) downloaded, {uploaded} file(s) uploaded."
+    elif downloaded > 0:
+        body = f"{downloaded} file(s) downloaded from server."
+    else:
+        body = f"{uploaded} file(s) uploaded to server."
+    title = "Brandy Box – Sync complete"
+    try:
+        if sys.platform == "linux":
+            subprocess.run(
+                [
+                    "notify-send",
+                    "-u", "normal",
+                    "-t", str(_NOTIFY_EXPIRE_MS),
+                    "-a", "Brandy Box",
+                    title,
+                    body,
+                ],
+                check=False,
+                timeout=5,
+                capture_output=True,
+            )
+        elif sys.platform == "darwin":
+            esc = body.replace("\\", "\\\\").replace('"', '\\"')
+            tit = title.replace("\\", "\\\\").replace('"', '\\"')
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    f'display notification "{esc}" with title "{tit}"',
+                ],
+                check=False,
+                timeout=5,
+                capture_output=True,
+            )
+        elif sys.platform == "win32":
+            log.debug("Sync complete notification skipped on Windows (use tray tooltip)")
+        else:
+            log.debug("Desktop notifications not implemented for %s", sys.platform)
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
+        log.debug("Desktop notification failed: %s", e)

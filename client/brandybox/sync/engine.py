@@ -163,12 +163,14 @@ def sync_run(
     local_root: Path,
     on_status: Optional[Callable[[str], None]] = None,
     on_progress: Optional[ProgressCallback] = None,
+    on_complete: Optional[Callable[[int, int], None]] = None,
 ) -> Optional[str]:
     """
     Run one sync cycle: (1) list server and local; (2) propagate deletions (local→server,
     server→local); (3) download from server to local (server is source of truth);
     (4) upload local additions and newer files to server. Returns None on success,
-    or an error message on failure.
+    or an error message on failure. On success, calls on_complete(downloaded, uploaded)
+    with the number of files actually downloaded and uploaded.
 
     Safe for multiple clients on different machines/OS: each client has its own
     sync state; deletions and updates propagate so last change wins (by mtime for
@@ -349,6 +351,8 @@ def sync_run(
     log.info("Downloading %d files from server (%d workers)", len(to_download), SYNC_MAX_WORKERS)
     rate_limiter = _RateLimiter(SYNC_RATE_LIMIT_PER_SEC)
     done_lock = threading.Lock()
+    n_downloaded = 0
+    n_uploaded = 0  # set in upload phase
 
     def _download_one(path: str) -> Tuple[str, Optional[object], Optional[str]]:
         """Returns (path, None, content_hash) on success, (path, 'skip', None) on skip, (path, exc, None) on error."""
@@ -405,6 +409,7 @@ def sync_run(
                 log.error("Download %s: %s", path, err)
                 return f"Download {path}: {err}"
             if result is None:
+                n_downloaded += 1
                 _add_downloaded_path(path, lock=done_lock)
                 if content_hash:
                     with done_lock:
@@ -449,6 +454,7 @@ def sync_run(
                 log.error("Upload %s: %s", path, result)
                 return f"Upload {path}: {result}"
             if result is None:
+                n_uploaded += 1
                 # Persist so closing the app mid-upload lets the next run pick up where we left off
                 with upload_save_lock:
                     completed_uploads.add(path)
@@ -460,6 +466,8 @@ def sync_run(
     _save_last_synced_paths(new_synced, clear_downloaded_paths=True)
     log.info("Sync cycle completed (synced paths: %d)", len(new_synced))
 
+    if on_complete and (n_downloaded > 0 or n_uploaded > 0):
+        on_complete(n_downloaded, n_uploaded)
     return None
 
 
@@ -474,11 +482,13 @@ class SyncEngine:
         local_root: Path,
         on_status: Optional[Callable[[str], None]] = None,
         on_progress: Optional[ProgressCallback] = None,
+        on_complete: Optional[Callable[[int, int], None]] = None,
     ) -> None:
         self._api = api
         self._local_root = local_root
         self._on_status = on_status
         self._on_progress = on_progress
+        self._on_complete = on_complete
 
     def run(self) -> Optional[str]:
         """Run one sync cycle. Returns None on success, error message on failure."""
@@ -487,4 +497,5 @@ class SyncEngine:
             self._local_root,
             on_status=self._on_status,
             on_progress=self._on_progress,
+            on_complete=self._on_complete,
         )

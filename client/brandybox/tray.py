@@ -40,7 +40,7 @@ from brandybox.api.client import BrandyBoxAPI
 from brandybox.config import get_base_url_mode, get_sync_folder_path, user_has_set_sync_folder
 from brandybox.network import get_base_url
 from brandybox.sync.engine import SyncEngine
-from brandybox.ui.notify import notify_error
+from brandybox.ui.notify import notify_error, notify_sync_complete
 from brandybox.ui.settings import show_settings
 
 log = logging.getLogger(__name__)
@@ -468,6 +468,7 @@ class TrayApp:
                 sync_path,
                 on_status=lambda _: None,
                 on_progress=on_progress,
+                on_complete=notify_sync_complete,
             )
             err = engine.run()
             # If 401, try refreshing the access token and sync once more
