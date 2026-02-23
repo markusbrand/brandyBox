@@ -15,12 +15,17 @@ class Settings(BaseSettings):
     # Storage
     storage_base_path: Path = Path("/mnt/shared_storage/brandyBox")
     db_path: Path = Path("/data/brandybox.db")
+    # Maximum storage for all users: fixed size (e.g. "500GB", "1TB") or percentage of drive (e.g. "70%").
+    # Default: use 70% of the available space on the drive containing storage_base_path.
+    storage_limit: str = "70%"
 
     # JWT
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
-    refresh_token_expire_days: int = 7
+    # Long-lived refresh token (Dropbox-style): user stays logged in without re-login.
+    # Override with BRANDYBOX_REFRESH_TOKEN_EXPIRE_DAYS (e.g. 3650 for ~10 years).
+    refresh_token_expire_days: int = 365
 
     # SMTP (for sending passwords to new users)
     smtp_host: str = ""

@@ -24,6 +24,21 @@ log = logging.getLogger(__name__)
 # When showing Settings as a Toplevel (parent is not None), reuse one window: raise if already open.
 _current_settings_window: Optional[tk.Toplevel] = None
 
+
+def _format_storage_bytes(n: int) -> str:
+    """Format byte count as e.g. '430.5 GiB' or '1.8 TiB'."""
+    if n < 0:
+        return "0 B"
+    if n >= 1024**4:
+        return f"{n / 1024**4:.1f} TiB"
+    if n >= 1024**3:
+        return f"{n / 1024**3:.1f} GiB"
+    if n >= 1024**2:
+        return f"{n / 1024**2:.1f} MiB"
+    if n >= 1024:
+        return f"{n / 1024:.1f} KiB"
+    return f"{n} B"
+
 # Spacing (logical pixels)
 PAD_WINDOW = 24
 PAD_SECTION = 20
@@ -542,13 +557,16 @@ def show_settings(
         log.info("show_settings: Tk() created")
     win.title("Brandy Box – Settings")
     win.resizable(True, True)
-    win.minsize(500, 560)
+    # Minimum size so all sections (Server, Sync, Startup, Account + storage bar, Admin) fit without scrolling
+    win.minsize(520, 680)
     saved_geom = app_config.get_settings_window_geometry()
     if saved_geom:
         try:
             win.geometry(saved_geom)
         except tk.TclError:
-            pass
+            win.geometry("520x680")
+    else:
+        win.geometry("520x680")
     win.configure(bg=COLOR_BACKGROUND)
     _apply_theme(win)
     log.info("show_settings: theme applied")
@@ -688,10 +706,75 @@ def show_settings(
     ).grid(row=r3, column=0, columnspan=2, sticky="w", pady=(0, 0))
     sec3.columnconfigure(0, weight=1)
 
-    # --- Change password (any logged-in user) ---
+    # --- Account (storage, change password, logout) ---
     if api:
         sec4, r4 = _section(frame, "Account", row)
         row += 2
+
+        # Storage space: used and maximum for logged-in user (load async)
+        storage_sec = ttk.Frame(sec4)
+        storage_sec.grid(row=r4, column=0, columnspan=2, sticky="ew", pady=(0, PAD_ROW))
+        r4 += 1
+        ttk.Label(storage_sec, text="Storage space", style="Title.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 2)
+        )
+        storage_text_var = tk.StringVar(value="Loading…")
+        storage_text_label = ttk.Label(
+            storage_sec, textvariable=storage_text_var, style="Caption.TLabel", wraplength=480
+        )
+        storage_text_label.grid(row=1, column=0, sticky="w", pady=(0, 6))
+        # Progress bar: tk.Frame container so canvas is visible on all themes
+        _bar_height = 10
+        _bar_width = 480
+        _storage_canvas_container = tk.Frame(storage_sec, height=_bar_height, bg=COLOR_SURFACE)
+        _storage_canvas_container.grid(row=2, column=0, sticky="ew", pady=(0, PAD_SECTION))
+        _storage_canvas_container.grid_propagate(False)
+        storage_sec.columnconfigure(0, weight=1)
+        _storage_canvas = tk.Canvas(
+            _storage_canvas_container,
+            width=_bar_width,
+            height=_bar_height,
+            highlightthickness=0,
+            bg=COLOR_SURFACE,
+        )
+        _storage_canvas.pack(fill="both", expand=True)
+
+        def _draw_storage_bar(used: int, limit: Optional[int]) -> None:
+            w = _bar_width
+            h = _bar_height
+            _storage_canvas.delete("all")
+            _storage_canvas.configure(bg=COLOR_SURFACE, width=w, height=h)
+            # Track (full width)
+            _rounded_rect(_storage_canvas, 0, 0, w, h, 3, fill=COLOR_OUTLINE, outline=COLOR_OUTLINE)
+            if limit is not None and limit > 0:
+                pct = min(1.0, used / limit)
+                fill_w = max(0, min(w, int(w * pct)))
+                if fill_w > 0:
+                    _rounded_rect(
+                        _storage_canvas, 0, 0, fill_w, h, 3,
+                        fill=COLOR_PRIMARY, outline=COLOR_PRIMARY,
+                    )
+            _storage_canvas.update_idletasks()
+
+        def _load_storage_async() -> None:
+            if not api:
+                return
+            try:
+                data = api.get_storage()
+            except Exception as e:
+                log.warning("Could not load storage: %s", e)
+                storage_text_var.set("Storage: unavailable")
+                _draw_storage_bar(0, None)
+                return
+            used = data.get("used_bytes") or 0
+            limit = data.get("limit_bytes")
+            if limit is not None:
+                storage_text_var.set(
+                    f"Used: {_format_storage_bytes(used)} — Maximum: {_format_storage_bytes(limit)}"
+                )
+            else:
+                storage_text_var.set(f"Used: {_format_storage_bytes(used)} (no maximum)")
+            _draw_storage_bar(used, limit)
 
         def change_password_dialog() -> None:
             dlg = tk.Toplevel(win)
@@ -971,11 +1054,113 @@ def show_settings(
             except Exception as e:
                 messagebox.showerror("Error", f"Could not delete user: {e}", parent=win)
 
+        def set_storage_limit_dialog() -> None:
+            sel = users_listbox.curselection()
+            if not sel:
+                messagebox.showinfo("Info", "Select a user to set storage limit.", parent=win)
+                return
+            idx = int(sel[0])
+            if idx >= len(user_data):
+                return
+            u = user_data[idx]
+            email = u.get("email", "")
+            used = u.get("storage_used_bytes") or 0
+            limit = u.get("storage_limit_bytes")
+            dlg = tk.Toplevel(win)
+            dlg.title("Set storage limit")
+            dlg.transient(win)
+            dlg.resizable(False, False)
+            dlg.minsize(360, 220)
+            dlg.geometry("360x220")
+            dlg.configure(bg=COLOR_SURFACE)
+            _apply_theme(dlg)
+            f = ttk.Frame(dlg, padding=PAD_WINDOW)
+            f.grid(row=0, column=0, sticky="nsew")
+            dlg.columnconfigure(0, weight=1)
+            dlg.rowconfigure(0, weight=1)
+            r = 0
+            ttk.Label(f, text=f"User: {email}", style="Caption.TLabel").grid(
+                row=r, column=0, sticky="w", pady=(0, 2)
+            )
+            r += 1
+            limit_str = _format_storage_bytes(limit) if limit is not None else "Server default"
+            ttk.Label(f, text=f"Current: {_format_storage_bytes(used)} used, limit {limit_str}", style="Caption.TLabel").grid(
+                row=r, column=0, sticky="w", pady=(0, PAD_ROW))
+            r += 1
+            no_limit_var = tk.BooleanVar(value=limit is None)
+            ttk.Checkbutton(
+                f, text="No per-user limit (use server default)",
+                variable=no_limit_var,
+            ).grid(row=r, column=0, sticky="w", pady=(PAD_ROW, 2))
+            r += 1
+            limit_entry_frame = ttk.Frame(f)
+            limit_entry_frame.grid(row=r, column=0, sticky="w", pady=(0, PAD_ROW))
+            limit_num_var = tk.StringVar(value=str(int(limit / (1024**3))) if limit is not None else "10")
+            limit_entry = ttk.Entry(limit_entry_frame, textvariable=limit_num_var, width=10)
+            limit_entry.pack(side="left", padx=(0, 4))
+            unit_var = tk.StringVar(value="GiB")
+            unit_combo = ttk.Combobox(limit_entry_frame, textvariable=unit_var, width=6, state="readonly")
+            unit_combo["values"] = ("GiB", "TiB")
+            unit_combo.pack(side="left")
+            r += 1
+
+            def do_set_limit() -> None:
+                if no_limit_var.get():
+                    try:
+                        api.update_user_storage_limit(email, None)
+                        messagebox.showinfo("Done", "Storage limit cleared (server default).", parent=dlg)
+                        dlg.destroy()
+                        refresh_users_list()
+                    except Exception as e:
+                        messagebox.showerror("Error", str(e), parent=dlg)
+                    return
+                try:
+                    num = float(limit_num_var.get().strip())
+                except ValueError:
+                    messagebox.showerror("Error", "Enter a valid number.", parent=dlg)
+                    return
+                if num <= 0:
+                    messagebox.showerror("Error", "Limit must be positive.", parent=dlg)
+                    return
+                unit = unit_var.get()
+                mult = 1024**4 if unit == "TiB" else 1024**3
+                limit_bytes = int(num * mult)
+                try:
+                    api.update_user_storage_limit(email, limit_bytes)
+                    messagebox.showinfo("Done", f"Storage limit set to {_format_storage_bytes(limit_bytes)}.", parent=dlg)
+                    dlg.destroy()
+                    refresh_users_list()
+                except Exception as e:
+                    msg = str(e)
+                    try:
+                        from httpx import HTTPStatusError
+                        if isinstance(e, HTTPStatusError) and e.response is not None:
+                            try:
+                                msg = e.response.json().get("detail", msg)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    messagebox.showerror("Error", msg, parent=dlg)
+
+            btn_f = ttk.Frame(f)
+            btn_f.grid(row=r, column=0, sticky="w", pady=(PAD_ROW, 0))
+            _primary_btn(btn_f, "Set limit", do_set_limit, side="left", padx=(0, PAD_ROW))
+            _secondary_btn(btn_f, "Cancel", dlg.destroy, side="left")
+            f.columnconfigure(0, weight=1)
+            dlg.update_idletasks()
+            _center(dlg)
+            try:
+                dlg.grab_set()
+            except tk.TclError:
+                pass
+
         btn_frame = ttk.Frame(admin_sec)
         btn_frame.grid(row=r5, column=0, columnspan=2, sticky="w", pady=(0, 0))
         _secondary_btn(btn_frame, "Refresh list", refresh_users_list, side="left", padx=(0, PAD_ROW))
         _primary_btn(btn_frame, "Create user…", create_user_dialog, side="left", padx=(0, PAD_ROW))
-        _secondary_btn(btn_frame, "Delete selected", delete_selected_user, side="left")
+        _secondary_btn(btn_frame, "Delete selected", delete_selected_user, side="left", padx=(0, PAD_ROW))
+        _secondary_btn(btn_frame, "Set storage limit…", set_storage_limit_dialog, side="left")
         admin_sec.columnconfigure(0, weight=1)
         refresh_users_list()
 
@@ -1011,9 +1196,13 @@ def show_settings(
         )
         if api and admin_sec is not None:
             win.after(0, _load_admin_section_async)
+        if api:
+            win.after(0, _load_storage_async)
     else:
         log.info("show_settings: entering mainloop")
     if parent is None and api and admin_sec is not None:
         win.after(0, _load_admin_section_async)
+    if parent is None and api:
+        win.after(0, _load_storage_async)
     if parent is None:
         win.mainloop()

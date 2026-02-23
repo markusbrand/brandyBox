@@ -29,7 +29,9 @@ Apply this skill when running tests autonomously, extending test scenarios, or p
    - If either fails, report failures and fix or document before proceeding.
 
 2. **Run E2E tests**
-   - Set env: `BRANDYBOX_TEST_EMAIL`, `BRANDYBOX_TEST_PASSWORD` (required); optional: `BRANDYBOX_BASE_URL`, `BRANDYBOX_SYNC_FOLDER`, `BRANDYBOX_E2E_MAX_ATTEMPTS`
+   - **Autonomous (recommended)**: Set `BRANDYBOX_ADMIN_EMAIL` and `BRANDYBOX_ADMIN_PASSWORD` in repo-root `.env`. The runner sends `X-E2E-Return-Temp-Password` when creating the test user so the backend returns the temp password and skips sending email (SMTP can stay configured). Creates test user and folders, runs the scenario(s), then **cleans up**: stops the E2E client process, deletes the test user, clears keyring and config, wipes sync folder contents. No manual login; no leftover client or test data.
+   - **Legacy**: Set `BRANDYBOX_TEST_EMAIL` and `BRANDYBOX_TEST_PASSWORD` (one-time client login + sync folder setup; see tests/e2e/README.md).
+   - Optional env: `BRANDYBOX_BASE_URL`, `BRANDYBOX_SYNC_FOLDER`, `BRANDYBOX_E2E_MAX_ATTEMPTS`
    - Run: `python -m tests.e2e.run_autonomous_sync` (single scenario) or `python -m tests.e2e.run_all_e2e` (all discovered scenarios)
    - On failure: cleanup runs automatically; retry up to `BRANDYBOX_E2E_MAX_ATTEMPTS` (default 5). Do not retry on 401 or "client could not start".
 
@@ -64,7 +66,7 @@ Apply this skill when running tests autonomously, extending test scenarios, or p
 cd backend && pytest
 cd client && pytest
 
-# E2E (set BRANDYBOX_TEST_EMAIL, BRANDYBOX_TEST_PASSWORD first)
+# E2E — autonomous: set BRANDYBOX_ADMIN_EMAIL, BRANDYBOX_ADMIN_PASSWORD in .env
 python -m tests.e2e.run_autonomous_sync
 # Or all scenarios:
 python -m tests.e2e.run_all_e2e

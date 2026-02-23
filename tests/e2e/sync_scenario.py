@@ -60,6 +60,9 @@ def _e2e_config_dir() -> Path:
     return _repo_root() / "tests" / "e2e" / "e2e_client_config"
 
 
+E2E_CLIENT_PID_FILE = "e2e_client.pid"
+
+
 def _start_client() -> bool:
     """Start Brandy Box client from repo root. Returns True if started or already running.
     When using E2E config (BRANDYBOX_SYNC_FOLDER set), starts client with BRANDYBOX_CONFIG_DIR
@@ -77,6 +80,8 @@ def _start_client() -> bool:
     env = os.environ.copy()
     if use_e2e_config:
         env["BRANDYBOX_CONFIG_DIR"] = str(e2e_config)
+        from tests.e2e.e2e_setup import stop_e2e_client
+        stop_e2e_client()
         log.info("Starting client with E2E config dir: %s", e2e_config)
     # Ensure we can import brandybox when client is started from repo
     if "PYTHONPATH" in env:
@@ -84,7 +89,7 @@ def _start_client() -> bool:
     else:
         env["PYTHONPATH"] = str(root / "client")
     try:
-        subprocess.Popen(
+        proc = subprocess.Popen(
             [sys.executable, "-m", "brandybox.main"],
             cwd=root,
             env=env,
@@ -92,6 +97,12 @@ def _start_client() -> bool:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
+        if use_e2e_config:
+            try:
+                pid_file = e2e_config / E2E_CLIENT_PID_FILE
+                pid_file.write_text(str(proc.pid), encoding="utf-8")
+            except OSError as e:
+                log.warning("Could not write E2E client PID file: %s", e)
         # Give process time to start
         for _ in range(CLIENT_START_TIMEOUT):
             time.sleep(1)
@@ -188,10 +199,9 @@ class SyncE2EScenario(BaseScenario):
                     return StepResult("wait_sync_create", True)
             time.sleep(SYNC_POLL_INTERVAL)
         hint = (
-            "E2E client may not be syncing. Do the one-time setup: run the client with "
-            "BRANDYBOX_CONFIG_DIR=<repo>/tests/e2e/e2e_client_config, log in as the test user "
-            "(BRANDYBOX_TEST_EMAIL), and set the sync folder to the same path as BRANDYBOX_SYNC_FOLDER. "
-            "See tests/e2e/README.md."
+            "E2E client may not be syncing. With autonomous setup (BRANDYBOX_ADMIN_*) config and "
+            "keyring are set automatically. With legacy (BRANDYBOX_TEST_*), run the client once "
+            "with BRANDYBOX_CONFIG_DIR and set sync folder to BRANDYBOX_SYNC_FOLDER. See tests/e2e/README.md."
         )
         return StepResult(
             "wait_sync_create",

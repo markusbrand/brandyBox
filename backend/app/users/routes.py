@@ -17,14 +17,21 @@ from app.auth.jwt import (
 )
 from app.config import get_settings
 from app.db.session import get_db
+from app.files.quota import (
+    get_server_storage_limit_bytes,
+    get_user_storage_limit_bytes,
+    get_user_used_bytes,
+)
 from app.users.models import (
     ChangePassword,
     RefreshRequest,
     TokenPair,
     User,
     UserCreate,
+    UserCreateResponse,
     UserResponse,
     UserLogin,
+    UserStorageLimitUpdate,
 )
 from app.limiter import limiter
 from app.users.service import create_user as do_create_user, get_user_by_email
@@ -96,8 +103,14 @@ async def refresh(
 async def me(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserResponse:
-    """Return current authenticated user."""
-    return UserResponse.model_validate(current_user)
+    """Return current authenticated user with storage used/limit."""
+    data = UserResponse.model_validate(current_user).model_dump()
+    data["storage_used_bytes"] = get_user_used_bytes(current_user.email)
+    server_limit = get_server_storage_limit_bytes()
+    data["storage_limit_bytes"] = get_user_storage_limit_bytes(
+        server_limit, current_user.storage_limit_bytes
+    )
+    return UserResponse(**data)
 
 
 @router.post("/auth/change-password")
@@ -126,18 +139,30 @@ async def change_password(
     return {"detail": "Password updated"}
 
 
-@router.post("/users", response_model=UserResponse)
+# Header sent by E2E runner so backend returns temp_password and skips sending email (SMTP not required).
+E2E_RETURN_TEMP_PASSWORD_HEADER = "X-E2E-Return-Temp-Password"
+
+
+@router.post("/users", response_model=UserCreateResponse)
 async def admin_create_user(
+    request: Request,
     payload: UserCreate,
     current_user: Annotated[User, Depends(get_current_admin)],
     session: Annotated[AsyncSession, Depends(get_db)],
-) -> UserResponse:
-    """Create a new user (admin only). Password is sent by email."""
+) -> UserCreateResponse:
+    """Create a new user (admin only). Password is sent by email, or returned when E2E header is set or SMTP not configured."""
+    e2e_return_password = (request.headers.get(E2E_RETURN_TEMP_PASSWORD_HEADER) or "").strip().lower() in ("true", "1")
     try:
-        user, _ = await do_create_user(session, payload, is_admin=False)
+        user, temp_password = await do_create_user(
+            session, payload, is_admin=False, skip_email=e2e_return_password
+        )
         await session.refresh(user)
         log.info("Admin %s created user email=%s", current_user.email, user.email)
-        return UserResponse.model_validate(user)
+        data = UserResponse.model_validate(user).model_dump()
+        # Return temp_password when E2E requested it, or when SMTP is not configured
+        if e2e_return_password or not get_settings().smtp_host or not get_settings().smtp_from:
+            data["temp_password"] = temp_password
+        return UserCreateResponse(**data)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except RuntimeError as e:
@@ -152,11 +177,48 @@ async def admin_list_users(
     current_user: Annotated[User, Depends(get_current_admin)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[UserResponse]:
-    """List all users (admin only)."""
+    """List all users (admin only) with storage used/limit per user."""
     result = await session.execute(select(User).order_by(User.email))
     users = result.scalars().all()
     log.info("Admin %s listed users count=%d", current_user.email, len(users))
-    return [UserResponse.model_validate(u) for u in users]
+    server_limit = get_server_storage_limit_bytes()
+    out = []
+    for u in users:
+        data = UserResponse.model_validate(u).model_dump()
+        data["storage_used_bytes"] = get_user_used_bytes(u.email)
+        data["storage_limit_bytes"] = get_user_storage_limit_bytes(
+            server_limit, u.storage_limit_bytes
+        )
+        out.append(UserResponse(**data))
+    return out
+
+
+@router.patch("/users/{email}", response_model=UserResponse)
+async def admin_update_user_storage_limit(
+    email: str,
+    payload: UserStorageLimitUpdate,
+    current_user: Annotated[User, Depends(get_current_admin)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> UserResponse:
+    """Update a user's storage limit (admin only). storage_limit_bytes: max bytes or null for server default."""
+    user = await get_user_by_email(session, email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if payload.storage_limit_bytes is not None and payload.storage_limit_bytes < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="storage_limit_bytes must be non-negative",
+        )
+    user.storage_limit_bytes = payload.storage_limit_bytes
+    await session.commit()
+    await session.refresh(user)
+    log.info("Admin %s set storage_limit for %s to %s", current_user.email, email, payload.storage_limit_bytes)
+    data = UserResponse.model_validate(user).model_dump()
+    data["storage_used_bytes"] = get_user_used_bytes(user.email)
+    data["storage_limit_bytes"] = get_user_storage_limit_bytes(
+        get_server_storage_limit_bytes(), user.storage_limit_bytes
+    )
+    return UserResponse(**data)
 
 
 @router.delete("/users/{email}")

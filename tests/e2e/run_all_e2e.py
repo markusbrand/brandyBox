@@ -2,19 +2,14 @@
 """
 Run all discovered E2E scenarios (BaseScenario subclasses in tests.e2e).
 
-Usage (from repo root):
-  Set credentials via repo-root .env (recommended) or environment:
-    .env at repo root: BRANDYBOX_TEST_EMAIL=... BRANDYBOX_TEST_PASSWORD=...
-  Or: export BRANDYBOX_TEST_EMAIL=... BRANDYBOX_TEST_PASSWORD=...
+Usage (from repo root) — autonomous (no manual login):
+  Set admin credentials: BRANDYBOX_ADMIN_EMAIL=... BRANDYBOX_ADMIN_PASSWORD=...
+  Optional: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER.
   python -m tests.e2e.run_all_e2e
 
-Optional in .env or env: BRANDYBOX_BASE_URL, BRANDYBOX_SYNC_FOLDER, BRANDYBOX_E2E_MAX_ATTEMPTS.
+Legacy: set BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD (see tests/e2e/README.md).
 
-On Windows PowerShell, set env vars with: $env:BRANDYBOX_TEST_EMAIL = "you@example.com"
-
-Scenarios are discovered by loading all modules under tests.e2e whose name
-matches *_scenario.py and collecting subclasses of BaseScenario (excluding
-BaseScenario itself). New scenarios are picked up automatically when added.
+Scenarios are discovered from *_scenario.py modules (BaseScenario subclasses).
 """
 
 import importlib.util
@@ -104,39 +99,30 @@ def _discover_scenarios() -> list[type[BaseScenario]]:
     return scenarios
 
 
-def main() -> int:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    # Fail fast if credentials are not set (avoids 5 retries per scenario)
-    email = os.environ.get("BRANDYBOX_TEST_EMAIL", "").strip()
-    password = os.environ.get("BRANDYBOX_TEST_PASSWORD", "").strip()
-    if not email or not password:
-        log.error("BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD must be set.")
-        log.error("Set them in repo-root .env (see .env.example) or in the environment.")
-        log.error("PowerShell: $env:BRANDYBOX_TEST_EMAIL = \"you@example.com\"; $env:BRANDYBOX_TEST_PASSWORD = \"...\"")
-        log.error("CMD: set BRANDYBOX_TEST_EMAIL=you@example.com && set BRANDYBOX_TEST_PASSWORD=...")
-        log.error("Bash: export BRANDYBOX_TEST_EMAIL=you@example.com BRANDYBOX_TEST_PASSWORD=...")
-        return 1
+def _get_base_url() -> str:
+    base = os.environ.get("BRANDYBOX_BASE_URL", "").strip()
+    if base:
+        return base.rstrip("/")
+    from brandybox.network import get_base_url as _get
+    return _get()
 
-    scenario_classes = _discover_scenarios()
-    if not scenario_classes:
-        log.error("No E2E scenarios found (expected *_scenario.py with BaseScenario subclasses)")
-        return 1
 
-    max_attempts = int(os.environ.get("BRANDYBOX_E2E_MAX_ATTEMPTS", str(DEFAULT_MAX_ATTEMPTS)))
+def _run_all_scenarios_legacy(
+    scenario_classes: list,
+    max_attempts: int,
+) -> tuple[list[tuple[str, bool, str | None, float]], int]:
+    """Run all scenarios with legacy TEST_EMAIL/TEST_PASSWORD (already in env)."""
     total_failures = 0
     results: list[tuple[str, bool, str | None, float]] = []
-
     for cls in scenario_classes:
         scenario = cls()
         name = scenario.name
         start = time.monotonic()
+        last_error = None
         for attempt in range(1, max_attempts + 1):
             log.info("=== %s — Attempt %d/%d ===", name, attempt, max_attempts)
             success, error = scenario.run()
+            last_error = error
             if success:
                 duration = time.monotonic() - start
                 results.append((name, True, None, duration))
@@ -144,36 +130,86 @@ def main() -> int:
                 break
             log.warning("%s failed: %s", name, error)
             if _is_credentials_missing(error or ""):
-                log.error("Credentials not set (see start of run). Skipping remaining scenarios.")
                 results.append((name, False, error, time.monotonic() - start))
                 total_failures += 1
                 break
             if _is_auth_error(error or ""):
-                log.error("Login failed (401). Check credentials. Skipping remaining scenarios.")
                 results.append((name, False, error, time.monotonic() - start))
                 total_failures += 1
                 break
             if _is_client_not_started(error or ""):
-                log.error("Client did not start. Skipping remaining scenarios.")
                 results.append((name, False, error, time.monotonic() - start))
                 total_failures += 1
                 break
             if _is_rate_limited(error or "") and attempt < max_attempts:
-                log.info("Rate limited. Waiting %ds...", RATE_LIMIT_WAIT_SECONDS)
                 time.sleep(RATE_LIMIT_WAIT_SECONDS)
             if attempt < max_attempts:
                 scenario.cleanup()
         else:
-            duration = time.monotonic() - start
-            results.append((name, False, error, duration))
+            results.append((name, False, last_error, time.monotonic() - start))
             total_failures += 1
+    return results, total_failures
 
-    # Summary
+
+def main() -> int:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    admin_email = os.environ.get("BRANDYBOX_ADMIN_EMAIL", "").strip()
+    admin_password = os.environ.get("BRANDYBOX_ADMIN_PASSWORD", "").strip()
+    test_email = os.environ.get("BRANDYBOX_TEST_EMAIL", "").strip()
+    test_password = os.environ.get("BRANDYBOX_TEST_PASSWORD", "").strip()
+    use_autonomous = bool(admin_email and admin_password)
+    use_legacy = bool(test_email and test_password)
+
+    scenario_classes = _discover_scenarios()
+    if not scenario_classes:
+        log.error("No E2E scenarios found (expected *_scenario.py with BaseScenario subclasses)")
+        return 1
+    max_attempts = int(os.environ.get("BRANDYBOX_E2E_MAX_ATTEMPTS", str(DEFAULT_MAX_ATTEMPTS)))
+
+    if use_autonomous:
+        from tests.e2e.e2e_setup import run_with_autonomous_setup
+        sync_folder_env = os.environ.get("BRANDYBOX_SYNC_FOLDER", "").strip()
+        sync_folder = Path(sync_folder_env).resolve() if sync_folder_env else None
+        base_url = _get_base_url()
+
+        def run_all():
+            results, total_failures = _run_all_scenarios_legacy(scenario_classes, max_attempts)
+            log.info("--- E2E summary ---")
+            for name, ok, err, dur in results:
+                status = "PASS" if ok else "FAIL"
+                log.info("  %s: %s (%.1fs)%s", name, status, dur, f" — {err}" if err else "")
+            success = total_failures == 0
+            err = None if success else f"{total_failures} scenario(s) failed"
+            return success, err
+
+        success, error = run_with_autonomous_setup(
+            admin_email,
+            admin_password,
+            base_url,
+            sync_folder=sync_folder,
+            scenario_runner=run_all,
+        )
+        if not success:
+            log.error("E2E failed: %s", error)
+            return 1
+        return 0
+    if use_legacy:
+        results, total_failures = _run_all_scenarios_legacy(scenario_classes, max_attempts)
+    else:
+        log.error(
+            "Set either BRANDYBOX_ADMIN_EMAIL and BRANDYBOX_ADMIN_PASSWORD (autonomous), "
+            "or BRANDYBOX_TEST_EMAIL and BRANDYBOX_TEST_PASSWORD (legacy). See tests/e2e/README.md"
+        )
+        return 1
+
     log.info("--- E2E summary ---")
     for name, ok, err, dur in results:
         status = "PASS" if ok else "FAIL"
         log.info("  %s: %s (%.1fs)%s", name, status, dur, f" — {err}" if err else "")
-
     return 0 if total_failures == 0 else 1
 
 

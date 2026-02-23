@@ -23,7 +23,7 @@ def _mock_settings(monkeypatch):
     mock.jwt_secret = "test-secret-at-least-32-characters-long"
     mock.jwt_algorithm = "HS256"
     mock.access_token_expire_minutes = 30
-    mock.refresh_token_expire_days = 7
+    mock.refresh_token_expire_days = 365
     monkeypatch.setattr(jwt_mod, "get_settings", lambda: mock)
 
 

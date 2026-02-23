@@ -16,6 +16,9 @@ _tray_fallback_xorg = False
 # Qt (e.g. file dialogs, some tray backends) uses QT_QPA_PLATFORM; GTK uses GDK_BACKEND.
 # Tk windows still run via XWayland when the session is Wayland (Tk has no native Wayland support).
 if sys.platform == "linux":
+    # Avoid "Failed to load module appmenu-gtk-module" when the optional module is not installed.
+    if "GTK_MODULES" not in os.environ:
+        os.environ["GTK_MODULES"] = ""
     # Tray backend: if PyGObject (gi) is available, let pystray use AppIndicator (icon + menu).
     # If gi is missing (e.g. venv without system gobject), force xorg so the app still runs
     # (xorg has no context menu; we show a quick-access window instead).

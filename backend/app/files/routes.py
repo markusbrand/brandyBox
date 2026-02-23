@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
 from app.files.hash_store import compute_hash, get_hashes_for_paths, set_hash, delete_hash
+from app.files.quota import (
+    get_server_storage_limit_bytes,
+    get_user_storage_limit_bytes,
+    get_user_used_bytes,
+    get_total_used_bytes,
+)
 from app.files.storage import delete_file as storage_delete_file
 from app.files.storage import list_files_recursive, resolve_user_path, user_base_path
 from app.limiter import limiter
@@ -22,6 +28,19 @@ log = logging.getLogger(__name__)
 def _normalize_path_param(path: Optional[str]) -> str:
     """Return path from query string. Do not replace + with space: filenames may contain +."""
     return path or ""
+
+
+@router.get("/storage")
+@limiter.limit("60/minute")
+async def get_storage(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Return current user's storage used and limit in bytes (for settings UI)."""
+    used = get_user_used_bytes(current_user.email)
+    server_limit = get_server_storage_limit_bytes()
+    effective_limit = get_user_storage_limit_bytes(server_limit, current_user.storage_limit_bytes)
+    return {"used_bytes": used, "limit_bytes": effective_limit}
 
 
 @router.get("/list", response_model=List[dict])
@@ -69,8 +88,31 @@ async def upload_file(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-    target.parent.mkdir(parents=True, exist_ok=True)
     body = await request.body()
+    # Enforce storage quota: server total and per-user limit (account for overwrite)
+    old_size = 0
+    if target.exists() and target.is_file():
+        try:
+            old_size = target.stat().st_size
+        except OSError:
+            pass
+    server_limit = get_server_storage_limit_bytes()
+    user_limit = get_user_storage_limit_bytes(server_limit, current_user.storage_limit_bytes)
+    if server_limit is not None:
+        total_used = get_total_used_bytes()
+        if total_used - old_size + len(body) > server_limit:
+            raise HTTPException(
+                status_code=507,  # Insufficient Storage
+                detail="Server storage limit reached",
+            )
+    if user_limit is not None:
+        current_user_used = get_user_used_bytes(current_user.email)
+        if current_user_used - old_size + len(body) > user_limit:
+            raise HTTPException(
+                status_code=507,  # Insufficient Storage
+                detail="Your storage limit has been reached",
+            )
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(body)
     content_hash = compute_hash(body)
     await set_hash(session, current_user.email, path_param, content_hash)
