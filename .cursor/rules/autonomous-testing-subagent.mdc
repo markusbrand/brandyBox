@@ -8,7 +8,7 @@ alwaysApply: false
 
 When the user asks for **automatic tests**, **autonomous testing**, **extending test cases**, or a **test summary**, apply the **autonomous-testing-brandybox** skill.
 
-- Run unit tests (backend + client pytest), then E2E (`run_autonomous_sync` or `run_all_e2e`).
+- Run unit tests: **backend** (`cd backend && pytest`) and **client-tauri** (`cd client-tauri/src-tauri && cargo test`), then E2E (`run_autonomous_sync` or `run_all_e2e`). E2E starts the **client-tauri** desktop app; build it first with `cd client-tauri && npm run tauri build`.
 - New E2E scenarios: add `tests/e2e/<name>_scenario.py` with a `BaseScenario` subclass; they are discovered automatically by `run_all_e2e.py`.
-- After runs: identify bottlenecks (e.g. `pytest --durations=10`), suggest or apply optimizations, then **always produce a test summary** (see skill reference).
+- After runs: identify bottlenecks (e.g. `pytest --durations=10` for backend, Rust test output for client-tauri), suggest or apply optimizations, then **always produce a test summary** (see skill reference).
 - The agent may extend test cases on its own by adding new scenario files following the existing pattern (create file → sync → verify → delete → verify).

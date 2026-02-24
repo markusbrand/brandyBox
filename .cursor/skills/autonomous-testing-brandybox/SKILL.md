@@ -15,21 +15,23 @@ Apply this skill when running tests autonomously, extending test scenarios, or p
 
 ## Test layout (existing)
 
-- **Unit tests**: `client/` (pytest, `cd client && pytest`) and `backend/` (pytest, `cd backend && pytest`)
-- **E2E scenarios**: `tests/e2e/` — extensible framework:
+- **Unit tests**: **client-tauri** (Rust, `cd client-tauri/src-tauri && cargo test`) and **backend** (pytest, `cd backend && pytest`). Testing focuses on the Tauri desktop client; the Python client in `client/` is not the primary test target.
+- **E2E scenarios**: `tests/e2e/` — extensible framework; the **client under test is the client-tauri** desktop app (built binary). Framework:
   - `scenario_base.py`: `BaseScenario`, `ScenarioStep`, `StepResult` — subclass to add scenarios
-  - `sync_scenario.py`: `SyncE2EScenario` — create file/folder in sync dir, verify on server, delete, verify removed
+  - `sync_scenario.py`: `SyncE2EScenario` — starts Tauri client, create file/folder in sync dir, verify on server, delete, verify removed
   - `run_autonomous_sync.py`: runs sync scenario with retries and cleanup
   - `run_all_e2e.py`: discovers and runs all scenario classes in `tests/e2e/` (if present)
+  - **Before E2E**: build the Tauri client from repo root: `cd client-tauri && npm run tauri build` (or `tauri build`; binary at `client-tauri/src-tauri/target/release/brandybox`).
 
 ## Autonomous run workflow
 
 1. **Run unit tests**
-   - From repo root: `cd backend && pytest` then `cd client && pytest`
+   - From repo root: `cd backend && pytest` then `cd client-tauri/src-tauri && cargo test`
    - If either fails, report failures and fix or document before proceeding.
 
 2. **Run E2E tests**
-   - **Autonomous (recommended)**: Set `BRANDYBOX_ADMIN_EMAIL` and `BRANDYBOX_ADMIN_PASSWORD` in repo-root `.env`. The runner sends `X-E2E-Return-Temp-Password` when creating the test user so the backend returns the temp password and skips sending email (SMTP can stay configured). Creates test user and folders, runs the scenario(s), then **cleans up**: stops the E2E client process, deletes the test user, clears keyring and config, wipes sync folder contents. No manual login; no leftover client or test data.
+   - **Build client-tauri first**: From repo root run `cd client-tauri && npm run tauri build` so the E2E runner can start the Tauri binary (`client-tauri/src-tauri/target/release/brandybox` or `target/debug/brandybox`).
+   - **Autonomous (recommended)**: Set `BRANDYBOX_ADMIN_EMAIL` and `BRANDYBOX_ADMIN_PASSWORD` in repo-root `.env`. The runner sends `X-E2E-Return-Temp-Password` when creating the test user so the backend returns the temp password and skips sending email (SMTP can stay configured). Creates test user and folders, **starts the client-tauri app** with E2E config, runs the scenario(s), then **cleans up**: stops the E2E client process, deletes the test user, clears keyring and config, wipes sync folder contents. No manual login; no leftover client or test data.
    - **Legacy**: Set `BRANDYBOX_TEST_EMAIL` and `BRANDYBOX_TEST_PASSWORD` (one-time client login + sync folder setup; see tests/e2e/README.md).
    - Optional env: `BRANDYBOX_BASE_URL`, `BRANDYBOX_SYNC_FOLDER`, `BRANDYBOX_E2E_MAX_ATTEMPTS`
    - Run: `python -m tests.e2e.run_autonomous_sync` (single scenario) or `python -m tests.e2e.run_all_e2e` (all discovered scenarios)
@@ -43,7 +45,7 @@ Apply this skill when running tests autonomously, extending test scenarios, or p
 
 4. **Identify performance bottlenecks**
    - Add timing to E2E steps (e.g. `time.monotonic()` around sync wait loops) and log or attach to `StepResult.details`.
-   - Run backend/client unit tests with pytest timing: `pytest --durations=10` to see slow tests.
+   - Run backend unit tests with pytest timing: `cd backend && pytest --durations=10`. For client-tauri use `cargo test` (Rust test output includes timing).
    - If the user wants deeper profiling, run backend or client under a profiler (e.g. `python -m cProfile -o profile.stats`) and summarize hot paths.
 
 5. **Optimize and re-verify**
@@ -64,9 +66,10 @@ Apply this skill when running tests autonomously, extending test scenarios, or p
 ```bash
 # Unit
 cd backend && pytest
-cd client && pytest
+cd client-tauri/src-tauri && cargo test
 
-# E2E — autonomous: set BRANDYBOX_ADMIN_EMAIL, BRANDYBOX_ADMIN_PASSWORD in .env
+# E2E — build Tauri client first, then autonomous: set BRANDYBOX_ADMIN_EMAIL, BRANDYBOX_ADMIN_PASSWORD in .env
+cd client-tauri && npm run tauri build
 python -m tests.e2e.run_autonomous_sync
 # Or all scenarios:
 python -m tests.e2e.run_all_e2e

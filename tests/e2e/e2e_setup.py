@@ -36,7 +36,7 @@ def _e2e_config_dir() -> Path:
 
 def stop_e2e_client() -> None:
     """
-    Stop the E2E Brandy Box client if we started it (pid in e2e_client_config/e2e_client.pid).
+    Stop the E2E Brandy Box (Tauri) client if we started it (pid in e2e_client_config/e2e_client.pid).
     Call after test run so no client instances are left running. Safe to call if file missing.
     """
     pid_path = _e2e_config_dir() / E2E_CLIENT_PID_FILE

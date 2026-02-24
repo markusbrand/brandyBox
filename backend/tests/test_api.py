@@ -7,8 +7,10 @@ from app.main import app
 
 
 @pytest.fixture
-def client():
-    """TestClient for the FastAPI app. Use as context manager so lifespan runs (init_db, admin bootstrap)."""
+def client(tmp_path, monkeypatch):
+    """TestClient for the FastAPI app. Use as context manager so lifespan runs (init_db, admin bootstrap).
+    Override storage path so /me and other routes do not touch /mnt/shared_storage in CI."""
+    monkeypatch.setenv("BRANDYBOX_STORAGE_BASE_PATH", str(tmp_path))
     with TestClient(app) as c:
         yield c
 

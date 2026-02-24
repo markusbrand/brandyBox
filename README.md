@@ -7,7 +7,7 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 ## Architecture
 
 - **Backend**: Python (FastAPI) in Docker on Raspberry Pi. Storage under `/mnt/shared_storage/brandyBox/<email>/`. JWT auth, user CRUD (admin), file list/upload/download.
-- **Client**: Python desktop app (Windows, Linux, Mac) with system tray, sync engine, and keyring-backed login. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8081` when on LAN **brandstaetter**.
+- **Client**: Python desktop app (Windows, Linux, Mac) with system tray, sync engine, and keyring-backed login. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8081` when on LAN **brandstaetter**. Optional: **Tauri + React** client in `client-tauri/` (moderne Oberfläche, gleiche Features; unter Linux nutzt Tauri die korrekten Tray-Schnittstellen für Wayland).
 
 ## Backend (Raspberry Pi)
 
@@ -119,6 +119,9 @@ On Linux (e.g. Garuda, KDE) the standalone binary may show a square tray icon an
 **Build from source** (create your own zip):  
 Generate logos (optional): `python scripts/generate_logos.py`. Then `pip install pyinstaller && pyinstaller client/brandybox.spec`. Output: `dist/BrandyBox/`. See [Installers](assets/installers/README_installers.md) for Linux/Windows/macOS steps.
 
+**Tauri + React client** (moderne Oberfläche, gleiche Funktionalität):  
+Siehe [client-tauri/README.md](client-tauri/README.md). Voraussetzungen: Node.js, Rust (`rustup default stable`). Entwicklung: `cd client-tauri && npm install && npm run tauri dev`. Build: `npm run tauri build`. Unter Linux funktionieren Tray-Icon und Kontextmenü mit Tauri out of the box (kein venv nötig).
+
 ### Usage
 
 - Run the app; log in with email and password (or use stored credentials).
@@ -133,8 +136,9 @@ Generate logos (optional): `python scripts/generate_logos.py`. Then `pip install
 ## Documentation
 
 - [Installers](assets/installers/README_installers.md)
-- [E2E autonomous sync test](tests/e2e/README.md) – run `python -m tests.e2e.run_autonomous_sync` (requires test credentials and backend).
+- [E2E autonomous sync test](tests/e2e/README.md) – runs the **client-tauri** app; build first with `cd client-tauri && npm run tauri build`, then `python -m tests.e2e.run_autonomous_sync` (requires test credentials and backend).
 - Development docs: `pip install mkdocs && mkdocs serve` then open http://127.0.0.1:8000, or `mkdocs build` for `site/`
+- **Full QA**: From repo root run `./scripts/run-qa.sh` (client-tauri tests, backend pytest, mkdocs build). Requires `.venv` with `pytest` and `mkdocs` (e.g. `pip install -r backend/requirements.txt mkdocs`).
 
 ## Security
 

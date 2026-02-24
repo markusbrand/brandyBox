@@ -9,9 +9,10 @@ Apply this skill when performing QA, code review, or validating changes in the B
 
 ## Project layout (conventions to verify)
 
-- **Client**: `client/brandybox/` — packages `api`, `auth`, `sync`, `ui`. No global mutable state.
+- **Client (primary)**: `client-tauri/` — Tauri desktop app (Rust + frontend). No global mutable state.
+- **Client (legacy)**: `client/brandybox/` — Python packages `api`, `auth`, `sync`, `ui`.
 - **Backend**: `backend/app/` — `auth`, `users`, `files`, `db`. No global mutable state.
-- **Tests**: Client tests under `client/tests/` (pytest). Backend tests under `backend/tests/` (pytest).
+- **Tests**: Client-tauri unit tests in `client-tauri/src-tauri/` (Rust, `cargo test`). Backend tests under `backend/tests/` (pytest). E2E in `tests/e2e/` runs the **client-tauri** app.
 
 ## QA checklist
 
@@ -26,21 +27,16 @@ Use this checklist when reviewing or validating code:
 
 ## Commands (run from repo root)
 
-**Client tests:**
+**Full QA (one command):**
 ```bash
-cd client && pytest
+./scripts/run-qa.sh
 ```
+Runs client-tauri tests, backend pytest, and `mkdocs build`. Uses `.venv` for Python when present; ensure `pytest` and `mkdocs` are installed (e.g. `pip install -r backend/requirements.txt mkdocs`).
 
-**Backend tests:**
-```bash
-cd backend && pytest
-```
-
-**Documentation:**
-```bash
-mkdocs build
-# or: mkdocs serve
-```
+**Individual steps:**
+- Client-tauri: `cd client-tauri/src-tauri && cargo test`
+- Backend: `cd backend && pytest`
+- Documentation: `mkdocs build` or `mkdocs serve`
 
 ## Feedback format
 

@@ -28,25 +28,20 @@ def _repo_root() -> Path:
 
 
 def _client_running() -> bool:
-    """True if Brandy Box client process is running."""
+    """True if Brandy Box (Tauri) client process is running."""
     try:
         if sys.platform == "win32":
-            # tasklist does not show command line; use PowerShell to get CommandLine
-            ps = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
-                    "Get-CimInstance Win32_Process -Filter \"name='python.exe'\" -ErrorAction SilentlyContinue | ForEach-Object { $_.CommandLine }",
-                ],
+            # Tauri binary is brandybox.exe
+            out = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq brandybox.exe", "/NH"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=5,
             )
-            stdout = (ps.stdout or "").lower()
-            return "brandybox.main" in stdout or "-m brandybox" in stdout
+            return "brandybox.exe" in (out.stdout or "").lower()
+        # Linux/macOS: process name is typically "brandybox" (Tauri binary)
         out = subprocess.run(
-            ["pgrep", "-f", "brandybox.main"],
+            ["pgrep", "-x", "brandybox"],
             capture_output=True,
             timeout=5,
         )
@@ -63,10 +58,27 @@ def _e2e_config_dir() -> Path:
 E2E_CLIENT_PID_FILE = "e2e_client.pid"
 
 
+def _tauri_binary() -> Optional[Path]:
+    """Path to the built Tauri (client-tauri) binary. Prefer release, fallback to debug."""
+    root = _repo_root()
+    tauri_target = root / "client-tauri" / "src-tauri" / "target"
+    if sys.platform == "win32":
+        release = tauri_target / "release" / "brandybox.exe"
+        debug = tauri_target / "debug" / "brandybox.exe"
+    else:
+        release = tauri_target / "release" / "brandybox"
+        debug = tauri_target / "debug" / "brandybox"
+    if release.exists():
+        return release
+    if debug.exists():
+        return debug
+    return None
+
+
 def _start_client() -> bool:
-    """Start Brandy Box client from repo root. Returns True if started or already running.
+    """Start Brandy Box (Tauri) client. Returns True if started or already running.
     When using E2E config (BRANDYBOX_SYNC_FOLDER set), starts client with BRANDYBOX_CONFIG_DIR
-    so it uses the test user and test folder; does not skip start just because another client is running."""
+    so it uses the test user and test folder. Requires client-tauri to be built (npm run tauri build)."""
     # Allow skipping start when client is run manually (e.g. BRANDYBOX_E2E_CLIENT_RUNNING=1)
     if os.environ.get("BRANDYBOX_E2E_CLIENT_RUNNING", "").strip().lower() in ("1", "true", "yes"):
         log.info("BRANDYBOX_E2E_CLIENT_RUNNING set; assuming client is already running")
@@ -77,20 +89,21 @@ def _start_client() -> bool:
     if not use_e2e_config and _client_running():
         log.info("Client already running")
         return True
+    binary = _tauri_binary()
+    if not binary:
+        log.error(
+            "Tauri client not built. From repo root run: cd client-tauri && npm run tauri build"
+        )
+        return False
     env = os.environ.copy()
     if use_e2e_config:
         env["BRANDYBOX_CONFIG_DIR"] = str(e2e_config)
         from tests.e2e.e2e_setup import stop_e2e_client
         stop_e2e_client()
-        log.info("Starting client with E2E config dir: %s", e2e_config)
-    # Ensure we can import brandybox when client is started from repo
-    if "PYTHONPATH" in env:
-        env["PYTHONPATH"] = str(root / "client") + os.pathsep + env["PYTHONPATH"]
-    else:
-        env["PYTHONPATH"] = str(root / "client")
+        log.info("Starting Tauri client with E2E config dir: %s", e2e_config)
     try:
         proc = subprocess.Popen(
-            [sys.executable, "-m", "brandybox.main"],
+            [str(binary)],
             cwd=root,
             env=env,
             stdout=subprocess.DEVNULL,
@@ -107,12 +120,12 @@ def _start_client() -> bool:
         for _ in range(CLIENT_START_TIMEOUT):
             time.sleep(1)
             if _client_running():
-                log.info("Client started")
+                log.info("Tauri client started")
                 return True
         log.warning("Client start timeout")
         return False
     except Exception as e:
-        log.exception("Failed to start client: %s", e)
+        log.exception("Failed to start Tauri client: %s", e)
         return False
 
 

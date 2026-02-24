@@ -1,6 +1,14 @@
 # E2E tests — Brandy Box
 
-End-to-end scenarios (sync, large file) that run the client and verify behaviour against the API.
+End-to-end scenarios (sync, large file) that run the **client-tauri** desktop app and verify behaviour against the API. The Python client in `client/` is not used for E2E.
+
+**Build the Tauri client before running E2E** (from repo root):
+
+```bash
+cd client-tauri && npm run tauri build
+```
+
+The runner starts the binary at `client-tauri/src-tauri/target/release/brandybox` (or `target/debug/brandybox` if release is not present).
 
 ## Autonomous setup (recommended, no manual login)
 
@@ -38,7 +46,7 @@ If you prefer to use an existing test user and run the client once yourself:
 
 1. **.env**: set **BRANDYBOX_TEST_EMAIL** and **BRANDYBOX_TEST_PASSWORD** (and optionally **BRANDYBOX_SYNC_FOLDER**).
 2. Create the test user on the backend (e.g. via admin API or UI).
-3. Run the client **once** with `BRANDYBOX_CONFIG_DIR="$(pwd)/tests/e2e/e2e_client_config"`, log in as the test user, and in Settings set the sync folder to the same path as **BRANDYBOX_SYNC_FOLDER** (e.g. `tests/e2e/sync_test_dir`).
+3. Run the **client-tauri** app **once** with `BRANDYBOX_CONFIG_DIR="$(pwd)/tests/e2e/e2e_client_config"`, log in as the test user, and in Settings set the sync folder to the same path as **BRANDYBOX_SYNC_FOLDER** (e.g. `tests/e2e/sync_test_dir`).
 4. Run `python -m tests.e2e.run_autonomous_sync` or `run_all_e2e`; the runner will use the existing credentials and config.
 
 ## Optional env vars
