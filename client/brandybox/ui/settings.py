@@ -5,8 +5,10 @@ Uses a clean sans-serif font and flat buttons (no scrollbar, no legacy 3D look).
 """
 
 import logging
+import queue
 import shutil
 import sys
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import font as tkfont, ttk, filedialog, messagebox
@@ -68,7 +70,9 @@ COLOR_ON_SURFACE_VARIANT = "#5f6368"
 COLOR_OUTLINE = "#e0e0e0"
 COLOR_BTN_SECONDARY_BG = "#e8eaed"
 COLOR_BTN_SECONDARY_FG = "#202124"
+COLOR_CARD = "#f0f0f0"  # light grey section cards (rounded, slightly raised)
 BTN_RADIUS = 8  # rounded corner radius (pixels)
+CARD_RADIUS = 12  # section card corner radius
 
 
 def _rounded_rect(canvas: tk.Canvas, x0: int, y0: int, x1: int, y1: int, r: int, **kw: object) -> None:
@@ -115,6 +119,25 @@ def _apply_theme(root: tk.Tk | tk.Toplevel) -> None:
         foreground=COLOR_ON_SURFACE_VARIANT,
         font=(FONT_FAMILY, FONT_SIZE_CAPTION),
     )
+    style.configure("Card.TFrame", background=COLOR_CARD)
+    style.configure(
+        "Card.TLabel",
+        background=COLOR_CARD,
+        foreground=COLOR_ON_SURFACE,
+        font=(FONT_FAMILY, FONT_SIZE),
+    )
+    style.configure(
+        "Card.Title.TLabel",
+        background=COLOR_CARD,
+        foreground=COLOR_ON_SURFACE,
+        font=(FONT_FAMILY, FONT_SIZE_TITLE, "bold"),
+    )
+    style.configure(
+        "Card.Caption.TLabel",
+        background=COLOR_CARD,
+        foreground=COLOR_ON_SURFACE_VARIANT,
+        font=(FONT_FAMILY, FONT_SIZE_CAPTION),
+    )
     style.configure(
         "TEntry",
         fieldbackground=COLOR_SURFACE,
@@ -125,6 +148,12 @@ def _apply_theme(root: tk.Tk | tk.Toplevel) -> None:
     style.configure(
         "TRadiobutton",
         background=COLOR_SURFACE,
+        foreground=COLOR_ON_SURFACE,
+        font=(FONT_FAMILY, FONT_SIZE),
+    )
+    style.configure(
+        "Card.TRadiobutton",
+        background=COLOR_CARD,
         foreground=COLOR_ON_SURFACE,
         font=(FONT_FAMILY, FONT_SIZE),
     )
@@ -261,6 +290,137 @@ def _section(parent: tk.Widget, title: str, row: int) -> tuple[ttk.Frame, int]:
     content.grid(row=1, column=0, sticky="ew")
     content.columnconfigure(0, weight=1)
     return content, 0
+
+
+def _section_card(parent: tk.Widget, title: str, row: int) -> tuple[tk.Frame, int, tk.Frame]:
+    """Create a section inside a light grey rounded card. Returns (content frame, start row, outer frame)."""
+    outer = tk.Frame(parent, bg=COLOR_SURFACE)
+    outer.grid(row=row, column=0, sticky="ew", pady=(0, 6))
+    parent.columnconfigure(0, weight=1)
+    outer.columnconfigure(0, weight=1)
+    outer.rowconfigure(0, weight=0)
+
+    canvas = tk.Canvas(
+        outer,
+        highlightthickness=0,
+        bg=COLOR_SURFACE,
+    )
+    canvas.grid(row=0, column=0, sticky="nsew")
+
+    inner = tk.Frame(outer, bg=COLOR_CARD)
+    inner.grid(row=0, column=0, sticky="nsew")
+    inner.columnconfigure(0, weight=1)
+
+    def _on_configure(ev: tk.Event) -> None:
+        w, h = ev.width, ev.height
+        if w <= 0 or h <= 0:
+            return
+        canvas.delete("all")
+        _rounded_rect(canvas, 0, 0, w, h, CARD_RADIUS, fill=COLOR_CARD, outline=COLOR_CARD)
+
+    canvas.bind("<Configure>", _on_configure)
+
+    lbl = ttk.Label(inner, text=title, style="Card.Title.TLabel")
+    lbl.grid(row=0, column=0, sticky="w", pady=(0, 4))
+    content = tk.Frame(inner, bg=COLOR_CARD)
+    content.grid(row=1, column=0, sticky="ew", pady=(0, 0))
+    content.columnconfigure(0, weight=1)
+    return content, 0, outer
+
+
+def _section_card_collapsible(
+    parent: tk.Widget,
+    title: str,
+    row: int,
+    on_collapsed: Optional[Callable[[bool], None]] = None,
+    on_toggle: Optional[Callable[[], None]] = None,
+    initial_expanded: bool = True,
+) -> tuple[tk.Frame, tk.Frame]:
+    """Create a collapsible card with title and toggle. Returns (content frame, outer frame).
+    When collapsed, the entire grey card body is removed from the layout (grid_remove).
+    on_collapsed(expanded) is called when toggled so the caller can hide/show e.g. buttons below.
+    on_toggle() is called after every toggle so the caller can e.g. resize the window to fit."""
+    outer = tk.Frame(parent, bg=COLOR_SURFACE)
+    outer.grid(row=row, column=0, sticky="ew", pady=(0, 6))
+    parent.columnconfigure(0, weight=1)
+    outer.columnconfigure(0, weight=1)
+    outer.rowconfigure(0, weight=0, minsize=0)
+    outer.rowconfigure(1, weight=0, minsize=0)
+
+    # Row 0: header bar only (always visible; no grey box)
+    header = tk.Frame(outer, bg=COLOR_CARD, cursor="hand2")
+    header.grid(row=0, column=0, sticky="ew")
+    header.columnconfigure(1, weight=1)
+    collapse_lbl = tk.Label(
+        header,
+        text="\u25bc",
+        font=(FONT_FAMILY, 10),
+        fg=COLOR_ON_SURFACE_VARIANT,
+        bg=COLOR_CARD,
+        cursor="hand2",
+    )
+    collapse_lbl.pack(side="left", padx=(0, 4))
+    title_lbl = ttk.Label(header, text=title, style="Card.Title.TLabel")
+    title_lbl.pack(side="left", fill="x", expand=True, anchor="w")
+
+    # Row 1: entire grey card body (canvas + content); removed from layout when collapsed
+    content_wrapper = tk.Frame(outer, bg=COLOR_SURFACE)
+    content_wrapper.grid(row=1, column=0, sticky="ew")
+    content_wrapper.columnconfigure(0, weight=1)
+    content_wrapper.rowconfigure(0, weight=0)
+
+    canvas = tk.Canvas(
+        content_wrapper,
+        highlightthickness=0,
+        bg=COLOR_SURFACE,
+    )
+    canvas.grid(row=0, column=0, sticky="nsew")
+
+    content_inner = tk.Frame(content_wrapper, bg=COLOR_CARD)
+    content_inner.grid(row=0, column=0, sticky="nsew")
+    content_inner.columnconfigure(0, weight=1)
+
+    def _on_configure(ev: tk.Event) -> None:
+        w, h = ev.width, ev.height
+        if w <= 0 or h <= 0:
+            return
+        canvas.delete("all")
+        _rounded_rect(canvas, 0, 0, w, h, CARD_RADIUS, fill=COLOR_CARD, outline=COLOR_CARD)
+
+    canvas.bind("<Configure>", _on_configure)
+
+    content = tk.Frame(content_inner, bg=COLOR_CARD)
+    content.grid(row=0, column=0, sticky="ew", pady=(0, 0))
+    content.columnconfigure(0, weight=1)
+
+    expanded: List[bool] = [initial_expanded]
+
+    def _toggle() -> None:
+        expanded[0] = not expanded[0]
+        if expanded[0]:
+            content_wrapper.grid()
+            collapse_lbl.config(text="\u25bc")
+        else:
+            content_wrapper.grid_remove()
+            collapse_lbl.config(text="\u25b6")
+        if on_collapsed:
+            on_collapsed(expanded[0])
+        if on_toggle:
+            on_toggle()
+
+    def _on_header_click(_e: tk.Event) -> None:
+        _toggle()
+
+    if not initial_expanded:
+        content_wrapper.grid_remove()
+        collapse_lbl.config(text="\u25b6")
+        if on_collapsed:
+            on_collapsed(False)
+
+    collapse_lbl.bind("<Button-1>", _on_header_click)
+    title_lbl.bind("<Button-1>", _on_header_click)
+    header.bind("<Button-1>", _on_header_click)
+    return content, outer
 
 
 def _center(win: tk.Tk | tk.Toplevel) -> None:
@@ -557,35 +717,76 @@ def show_settings(
         log.info("show_settings: Tk() created")
     win.title("Brandy Box – Settings")
     win.resizable(True, True)
-    # Minimum size so all sections (Server, Sync, Startup, Account + storage bar, Admin) fit without scrolling
-    win.minsize(520, 680)
+    # Minimum size: width for layout; height low so window shrinks when sections are collapsed
+    _min_w, _min_h = 680, 320
+    _default_h = 800  # initial height when all sections expanded (no saved geometry)
+    win.minsize(_min_w, _min_h)
     saved_geom = app_config.get_settings_window_geometry()
     if saved_geom:
+        # Parse "WxH" or "WxH+X+Y" and clamp to minimum so window can shrink when collapsed
+        parts = saved_geom.split("+")
+        size_part = parts[0]
+        pos_part = "+" + "+".join(parts[1:]) if len(parts) > 1 else ""
+        if "x" in size_part:
+            try:
+                ws, hs = size_part.split("x", 1)
+                w, h = int(ws.strip()), int(hs.strip())
+                w = max(_min_w, w)
+                h = max(_min_h, h)
+                saved_geom = f"{w}x{h}{pos_part}"
+            except (ValueError, TypeError):
+                saved_geom = f"{_min_w}x{_default_h}"
+        else:
+            saved_geom = f"{_min_w}x{_default_h}"
         try:
             win.geometry(saved_geom)
         except tk.TclError:
-            win.geometry("520x680")
+            win.geometry(f"{_min_w}x{_default_h}")
     else:
-        win.geometry("520x680")
-    win.configure(bg=COLOR_BACKGROUND)
+        win.geometry(f"{_min_w}x{_default_h}")
+    win.configure(bg=COLOR_SURFACE)
     _apply_theme(win)
     log.info("show_settings: theme applied")
 
     frame = ttk.Frame(win, padding=PAD_WINDOW)
     frame.grid(row=0, column=0, sticky="nsew")
     win.columnconfigure(0, weight=1)
-    win.rowconfigure(0, weight=1)
+    win.rowconfigure(0, weight=0)  # no expand: window shrinks when sections are collapsed
+
+    # Resize window to fit content (call after any section collapse/expand)
+    _win_geom_extra_w = 16
+    _win_geom_extra_h = 70  # title bar + borders
+
+    def _fit_window_to_content() -> None:
+        def _do_fit() -> None:
+            try:
+                win.update_idletasks()
+                frame.update_idletasks()
+                rw = frame.winfo_reqwidth()
+                rh = frame.winfo_reqheight()
+                w = max(_min_w, rw + _win_geom_extra_w)
+                h = max(_min_h, rh + _win_geom_extra_h)
+                win.geometry(f"{w}x{h}")
+            except tk.TclError:
+                pass
+
+        win.after(10, _do_fit)
 
     row = 0
 
-    # --- Server / base URL ---
-    sec, r = _section(frame, "Server", row)
-    row += 2
+    # --- Server / base URL (collapsible card) ---
+    sec, _ = _section_card_collapsible(
+        frame, "Server", row, on_collapsed=None, on_toggle=_fit_window_to_content, initial_expanded=False
+    )
+    row += 1
+    r = 0
     current_url_text = "Current: " + get_base_url()
     url_mode_var = tk.StringVar(value=app_config.get_base_url_mode())
-    manual_url_var = tk.StringVar(value=app_config.get_manual_base_url())
-    current_url_label = ttk.Label(sec, text=current_url_text, style="Caption.TLabel", wraplength=420)
-    current_url_label.grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, PAD_ROW))
+    manual_url_var = tk.StringVar(
+        value=app_config.get_manual_base_url() or app_config.DEFAULT_REMOTE_BASE_URL
+    )
+    current_url_label = ttk.Label(sec, text=current_url_text, style="Card.Caption.TLabel", wraplength=420)
+    current_url_label.grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, 4))
     r += 1
 
     def _update_url_from_mode() -> None:
@@ -611,6 +812,7 @@ def show_settings(
         variable=url_mode_var,
         value="automatic",
         command=on_mode_change,
+        style="Card.TRadiobutton",
     ).grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, 2))
     r += 1
     ttk.Radiobutton(
@@ -619,10 +821,11 @@ def show_settings(
         variable=url_mode_var,
         value="manual",
         command=on_mode_change,
+        style="Card.TRadiobutton",
     ).grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, 2))
     r += 1
     manual_entry = ttk.Entry(sec, textvariable=manual_url_var, width=52)
-    manual_entry.grid(row=r, column=0, columnspan=2, sticky="ew", pady=(0, PAD_ROW))
+    manual_entry.grid(row=r, column=0, columnspan=2, sticky="ew", pady=(0, 2))
     if url_mode_var.get() != "manual":
         manual_entry.config(state="disabled")
     r += 1
@@ -642,13 +845,16 @@ def show_settings(
 
     manual_url_var.trace_add("write", _on_manual_url_trace)
 
-    # --- Sync folder ---
-    sec2, r2 = _section(frame, "Sync folder", row)
-    row += 2
+    # --- Sync folder (collapsible card) ---
+    sec2, _ = _section_card_collapsible(
+        frame, "Sync folder", row, on_collapsed=None, on_toggle=_fit_window_to_content, initial_expanded=False
+    )
+    row += 1
+    r2 = 0
     sync_path = app_config.get_sync_folder_path()
     path_var = tk.StringVar(value=str(sync_path))
-    path_label = ttk.Label(sec2, textvariable=path_var, style="Caption.TLabel", wraplength=420)
-    path_label.grid(row=r2, column=0, columnspan=2, sticky="w", pady=(0, PAD_ROW))
+    path_label = ttk.Label(sec2, textvariable=path_var, style="Card.Caption.TLabel", wraplength=420)
+    path_label.grid(row=r2, column=0, columnspan=2, sticky="w", pady=(0, 4))
     r2 += 1
 
     def _clear_folder_contents(path: Path) -> None:
@@ -684,13 +890,16 @@ def show_settings(
             on_choose_folder()
 
     choose_btn = _secondary_btn(sec2, "Choose folder…", choose_folder)
-    choose_btn.grid(row=r2, column=0, columnspan=2, sticky="w", pady=(0, 0))
+    choose_btn.grid(row=r2, column=0, columnspan=2, sticky="w", pady=(0, 2))
     sec2.columnconfigure(0, weight=1)
     log.info("show_settings: sync folder section done")
 
-    # --- Autostart ---
-    sec3, r3 = _section(frame, "Startup", row)
-    row += 2
+    # --- Startup (collapsible card) ---
+    sec3, _ = _section_card_collapsible(
+        frame, "Startup", row, on_collapsed=None, on_toggle=_fit_window_to_content, initial_expanded=False
+    )
+    row += 1
+    r3 = 0
     autostart_var = tk.BooleanVar(value=app_config.get_autostart())
 
     def on_autostart_change() -> None:
@@ -706,75 +915,132 @@ def show_settings(
     ).grid(row=r3, column=0, columnspan=2, sticky="w", pady=(0, 0))
     sec3.columnconfigure(0, weight=1)
 
-    # --- Account (storage, change password, logout) ---
+    # --- Account (card): storage, change password, logout ---
     if api:
-        sec4, r4 = _section(frame, "Account", row)
-        row += 2
+        sec4, _ = _section_card_collapsible(
+            frame, "Account", row, on_collapsed=None, on_toggle=_fit_window_to_content
+        )
+        row += 1
+        r4 = 0
 
-        # Storage space: used and maximum for logged-in user (load async)
-        storage_sec = ttk.Frame(sec4)
-        storage_sec.grid(row=r4, column=0, columnspan=2, sticky="ew", pady=(0, PAD_ROW))
+        # Storage space: circular progress + "Used: X GiB" and "Available: Y GiB"
+        storage_sec = tk.Frame(sec4, bg=COLOR_CARD)
+        storage_sec.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        storage_sec.columnconfigure(1, minsize=200)
         r4 += 1
-        ttk.Label(storage_sec, text="Storage space", style="Title.TLabel").grid(
-            row=0, column=0, sticky="w", pady=(0, 2)
-        )
-        storage_text_var = tk.StringVar(value="Loading…")
-        storage_text_label = ttk.Label(
-            storage_sec, textvariable=storage_text_var, style="Caption.TLabel", wraplength=480
-        )
-        storage_text_label.grid(row=1, column=0, sticky="w", pady=(0, 6))
-        # Progress bar: tk.Frame container so canvas is visible on all themes
-        _bar_height = 10
-        _bar_width = 480
-        _storage_canvas_container = tk.Frame(storage_sec, height=_bar_height, bg=COLOR_SURFACE)
-        _storage_canvas_container.grid(row=2, column=0, sticky="ew", pady=(0, PAD_SECTION))
+        _storage_circle_size = 64
+        _storage_canvas_container = tk.Frame(storage_sec, width=_storage_circle_size, height=_storage_circle_size, bg=COLOR_CARD)
+        _storage_canvas_container.grid(row=0, column=0, sticky="nw", padx=(0, 12), pady=(0, 2))
         _storage_canvas_container.grid_propagate(False)
-        storage_sec.columnconfigure(0, weight=1)
         _storage_canvas = tk.Canvas(
             _storage_canvas_container,
-            width=_bar_width,
-            height=_bar_height,
+            width=_storage_circle_size,
+            height=_storage_circle_size,
             highlightthickness=0,
-            bg=COLOR_SURFACE,
+            bg=COLOR_CARD,
         )
         _storage_canvas.pack(fill="both", expand=True)
+        storage_used_var = tk.StringVar(value="…")
+        storage_available_var = tk.StringVar(value="…")
+        ttk.Label(storage_sec, text="Storage space", style="Card.Title.TLabel").grid(
+            row=0, column=1, sticky="w", pady=(0, 2)
+        )
+        ttk.Label(storage_sec, text="Used:", style="Card.Caption.TLabel").grid(
+            row=1, column=1, sticky="w", pady=(0, 0)
+        )
+        storage_used_label = ttk.Label(
+            storage_sec, textvariable=storage_used_var, style="Card.TLabel", wraplength=400
+        )
+        storage_used_label.grid(row=2, column=1, sticky="w", pady=(0, 0))
+        ttk.Label(storage_sec, text="Available:", style="Card.Caption.TLabel").grid(
+            row=3, column=1, sticky="w", pady=(4, 0)
+        )
+        storage_available_label = ttk.Label(
+            storage_sec, textvariable=storage_available_var, style="Card.TLabel", wraplength=400
+        )
+        storage_available_label.grid(row=4, column=1, sticky="w", pady=(0, 2))
+        _last_storage_used: List[int] = [0]
+        _last_storage_limit: List[Optional[int]] = [None]
 
-        def _draw_storage_bar(used: int, limit: Optional[int]) -> None:
-            w = _bar_width
-            h = _bar_height
+        def _draw_storage_circle(used: int, limit: Optional[int]) -> None:
+            _last_storage_used[0] = used
+            _last_storage_limit[0] = limit
+            sz = _storage_circle_size
             _storage_canvas.delete("all")
-            _storage_canvas.configure(bg=COLOR_SURFACE, width=w, height=h)
-            # Track (full width)
-            _rounded_rect(_storage_canvas, 0, 0, w, h, 3, fill=COLOR_OUTLINE, outline=COLOR_OUTLINE)
+            _storage_canvas.configure(bg=COLOR_CARD, width=sz, height=sz)
+            cx, cy = sz / 2, sz / 2
+            r = (sz / 2) - 4
+            # Background circle (grey track)
+            _storage_canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill="#e0e0e0", outline="#e0e0e0")
             if limit is not None and limit > 0:
                 pct = min(1.0, used / limit)
-                fill_w = max(0, min(w, int(w * pct)))
-                if fill_w > 0:
-                    _rounded_rect(
-                        _storage_canvas, 0, 0, fill_w, h, 3,
-                        fill=COLOR_PRIMARY, outline=COLOR_PRIMARY,
+                # Pie slice for used portion (blue): from top (-90°) clockwise
+                if pct >= 1.0:
+                    _storage_canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill=COLOR_PRIMARY, outline=COLOR_PRIMARY)
+                elif pct > 0:
+                    _storage_canvas.create_arc(
+                        cx - r, cy - r, cx + r, cy + r,
+                        start=-90, extent=-360 * pct, fill=COLOR_PRIMARY, outline=COLOR_PRIMARY, style=tk.PIESLICE,
                     )
             _storage_canvas.update_idletasks()
+
+        _storage_result_queue: "queue.Queue[Optional[dict]]" = queue.Queue()
+
+        def _apply_storage_data(data: Optional[dict]) -> None:
+            """Update storage labels and circle on the main thread. data is None on error."""
+            try:
+                if not storage_used_label.winfo_exists():
+                    return
+                if data is None:
+                    storage_used_var.set("unavailable")
+                    storage_available_var.set("—")
+                    _draw_storage_circle(0, None)
+                    return
+                used = int(data.get("used_bytes") or 0)
+                limit_raw = data.get("limit_bytes")
+                limit = int(limit_raw) if limit_raw is not None else None
+                storage_used_var.set(_format_storage_bytes(used))
+                if limit is not None:
+                    available = max(0, limit - used)
+                    storage_available_var.set(_format_storage_bytes(available))
+                else:
+                    storage_available_var.set("No maximum")
+                _draw_storage_circle(used, limit)
+                def _redraw_later() -> None:
+                    try:
+                        if _storage_canvas.winfo_exists():
+                            _draw_storage_circle(_last_storage_used[0], _last_storage_limit[0])
+                    except tk.TclError:
+                        pass
+                win.after(200, _redraw_later)
+            except (tk.TclError, ValueError) as e:
+                log.debug("Storage UI update skipped: %s", e)
+
+        def _poll_storage_queue() -> None:
+            """Run on main thread: consume storage result from queue and update UI."""
+            try:
+                data = _storage_result_queue.get_nowait()
+                _apply_storage_data(data)
+            except queue.Empty:
+                if storage_used_label.winfo_exists():
+                    win.after(100, _poll_storage_queue)
+            except (tk.TclError, ValueError) as e:
+                log.debug("Storage poll skipped: %s", e)
 
         def _load_storage_async() -> None:
             if not api:
                 return
-            try:
-                data = api.get_storage()
-            except Exception as e:
-                log.warning("Could not load storage: %s", e)
-                storage_text_var.set("Storage: unavailable")
-                _draw_storage_bar(0, None)
-                return
-            used = data.get("used_bytes") or 0
-            limit = data.get("limit_bytes")
-            if limit is not None:
-                storage_text_var.set(
-                    f"Used: {_format_storage_bytes(used)} — Maximum: {_format_storage_bytes(limit)}"
-                )
-            else:
-                storage_text_var.set(f"Used: {_format_storage_bytes(used)} (no maximum)")
-            _draw_storage_bar(used, limit)
+
+            def _fetch() -> None:
+                try:
+                    data = api.get_storage()
+                except Exception as e:
+                    log.warning("Could not load storage: %s", e)
+                    data = None
+                _storage_result_queue.put(data)
+
+            threading.Thread(target=_fetch, daemon=True).start()
+            win.after(100, _poll_storage_queue)
 
         def change_password_dialog() -> None:
             dlg = tk.Toplevel(win)
@@ -869,8 +1135,7 @@ def show_settings(
             dlg.after(50, set_grab_chpwd)
 
         chpwd_btn = _secondary_btn(sec4, "Change password…", change_password_dialog)
-        chpwd_btn.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, PAD_ROW))
-        r4 += 1
+        chpwd_btn.grid(row=r4, column=0, sticky="w", pady=(0, 2))
         sec4.columnconfigure(0, weight=1)
 
         if on_logout:
@@ -885,23 +1150,43 @@ def show_settings(
                     win.destroy()
                     on_logout()
 
-            logout_btn = _secondary_btn(sec4, "Log out / Switch account", do_logout)
-            logout_btn.grid(row=r4, column=0, columnspan=2, sticky="w", pady=(0, 0))
-            sec4.columnconfigure(0, weight=1)
+            logout_btn = _secondary_btn(sec4, "Log out", do_logout)
+            logout_btn.grid(row=r4, column=1, sticky="w", padx=(PAD_ROW, 0), pady=(0, 2))
 
-    # --- Admin: user management (deferred so window shows quickly; avoids blocking on api.me/list_users) ---
-    admin_sec: Optional[ttk.Frame] = None
+    # --- Admin: user management (collapsible card); buttons below card; visible only for admins ---
+    admin_sec: Optional[tk.Frame] = None
+    admin_buttons_row: Optional[int] = None
+    admin_card_outer: Optional[tk.Frame] = None
+    admin_buttons_ref: List[Optional[tk.Frame]] = [None]
+
+    def _on_admin_collapsed(expanded: bool) -> None:
+        if admin_buttons_ref[0] is None:
+            return
+        if expanded:
+            admin_buttons_ref[0].grid(row=admin_buttons_row, column=0, sticky="w", pady=(8, 0))
+        else:
+            admin_buttons_ref[0].grid_remove()
+
     if api:
-        sec5, r5 = _section(frame, "User management (admin)", row)
-        row += 2
+        sec5, admin_card_outer = _section_card_collapsible(
+            frame,
+            "User management (admin)",
+            row,
+            on_collapsed=_on_admin_collapsed,
+            on_toggle=_fit_window_to_content,
+            initial_expanded=False,
+        )
+        row += 1
+        admin_buttons_row = row
+        row += 1
         admin_sec = sec5
-        admin_placeholder = ttk.Label(sec5, text="Loading…", style="Caption.TLabel")
-        admin_placeholder.grid(row=0, column=0, sticky="w", pady=(0, PAD_ROW))
+        admin_placeholder = ttk.Label(sec5, text="Loading…", style="Card.Caption.TLabel")
+        admin_placeholder.grid(row=0, column=0, sticky="w", pady=(0, 4))
         sec5.columnconfigure(0, weight=1)
 
     def _load_admin_section_async() -> None:
-        """Run after window is shown: fetch is_admin and either show list or 'Only for administrators'."""
-        if not api or admin_sec is None:
+        """Run after window is shown: fetch is_admin; hide section if not admin, else show list."""
+        if not api or admin_sec is None or admin_card_outer is None:
             return
         # Remove placeholder
         for w in admin_sec.grid_slaves():
@@ -914,42 +1199,95 @@ def show_settings(
         except Exception as e:
             log.warning("show_settings: could not fetch /me for admin check: %s", e)
         if not is_admin:
-            ttk.Label(
-                admin_sec, text="Only for administrators.", style="Caption.TLabel"
-            ).grid(row=0, column=0, sticky="w", pady=(0, PAD_ROW))
+            admin_card_outer.grid_remove()
+            _fit_window_to_content()
             return
         r5 = 0
-        users_listbox_frame = ttk.Frame(admin_sec)
-        users_listbox_frame.grid(row=r5, column=0, columnspan=2, sticky="nsew", pady=(0, PAD_ROW))
+        users_listbox_frame = tk.Frame(admin_sec, bg=COLOR_CARD)
+        users_listbox_frame.grid(row=r5, column=0, columnspan=2, sticky="nsew", pady=(0, 2))
+        users_listbox_frame.columnconfigure(0, weight=1)
+        users_listbox_frame.rowconfigure(0, weight=1)
         r5 += 1
-        users_listbox = tk.Listbox(
+        _avatar_size = 28
+        users_canvas = tk.Canvas(
             users_listbox_frame,
-            height=5,
-            width=52,
-            bg=COLOR_SURFACE,
-            fg=COLOR_ON_SURFACE,
-            selectbackground=COLOR_PRIMARY,
-            selectforeground=COLOR_SURFACE,
-            font=(FONT_FAMILY, FONT_SIZE),
             highlightthickness=0,
+            bg=COLOR_CARD,
         )
-        users_listbox.pack(side="left", fill="both", expand=True)
-        scroll = ttk.Scrollbar(users_listbox_frame, orient="vertical", command=users_listbox.yview)
-        scroll.pack(side="right", fill="y")
-        users_listbox.config(yscrollcommand=scroll.set)
+        scroll = ttk.Scrollbar(users_listbox_frame, orient="vertical")
+        users_inner = tk.Frame(users_canvas, bg=COLOR_CARD)
+        def _on_inner_configure(_e: tk.Event) -> None:
+            users_canvas.configure(scrollregion=users_canvas.bbox("all"))
+
+        users_inner.bind("<Configure>", _on_inner_configure)
+        win_id = users_canvas.create_window((0, 0), window=users_inner, anchor="nw")
+        users_canvas.bind(
+            "<Configure>",
+            lambda ev: users_canvas.itemconfigure(win_id, width=ev.width),
+        )
+        users_canvas.configure(yscrollcommand=scroll.set)
+        scroll.configure(command=users_canvas.yview)
+        users_canvas.grid(row=0, column=0, sticky="nsew")
+        scroll.grid(row=0, column=1, sticky="ns")
         user_data: List[dict] = []
+        selected_user_idx: List[Optional[int]] = [None]
+
+        def _draw_avatar(canvas: tk.Canvas, letter: str) -> None:
+            canvas.delete("all")
+            r = _avatar_size / 2 - 2
+            cx, cy = _avatar_size / 2, _avatar_size / 2
+            canvas.create_oval(cx - r, cy - r, cx + r, cy + r, fill=COLOR_OUTLINE, outline=COLOR_ON_SURFACE_VARIANT)
+            canvas.create_text(cx, cy, text=letter.upper(), fill=COLOR_ON_SURFACE, font=(FONT_FAMILY, 11, "bold"))
 
         def refresh_users_list() -> None:
+            selected_user_idx[0] = None
+            for w in users_inner.grid_slaves():
+                w.destroy()
             try:
                 users = api.list_users()
                 user_data.clear()
-                users_listbox.delete(0, tk.END)
-                for u in users:
+                for i, u in enumerate(users):
                     email = u.get("email", "")
+                    name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
+                    display = f"{email} ({name})" if name else email
                     user_data.append(u)
-                    users_listbox.insert(
-                        tk.END, f"{email}  ({u.get('first_name', '')} {u.get('last_name', '')})"
+                    row_f = tk.Frame(users_inner, bg=COLOR_CARD, cursor="hand2")
+                    lbl = tk.Label(
+                        row_f,
+                        text=display,
+                        font=(FONT_FAMILY, FONT_SIZE),
+                        fg=COLOR_ON_SURFACE,
+                        bg=COLOR_CARD,
+                        anchor="w",
                     )
+                    avatar_canvas = tk.Canvas(
+                        row_f,
+                        width=_avatar_size,
+                        height=_avatar_size,
+                        highlightthickness=0,
+                        bg=COLOR_CARD,
+                    )
+                    first = (u.get("first_name") or "?")[0] if u.get("first_name") else (email or "?")[0]
+                    _draw_avatar(avatar_canvas, first)
+                    lbl.pack(side="left", fill="x", expand=True, padx=(0, 8))
+                    avatar_canvas.pack(side="right")
+                    row_f.grid(row=i, column=0, sticky="ew", pady=1)
+                    users_inner.columnconfigure(0, weight=1)
+                    idx = i
+
+                    def _on_row_click(
+                        _e: tk.Event, index: int = idx, rframe: tk.Frame = row_f
+                    ) -> None:
+                        selected_user_idx[0] = index
+                        for rw in users_inner.grid_slaves():
+                            if isinstance(rw, tk.Frame):
+                                rw.configure(bg=COLOR_CARD)
+                        if rframe.winfo_exists():
+                            rframe.configure(bg=COLOR_OUTLINE)
+
+                    row_f.bind("<Button-1>", _on_row_click)
+                    lbl.bind("<Button-1>", _on_row_click)
+                users_canvas.configure(height=min(140, max(80, len(user_data) * 32)))
             except Exception as e:
                 messagebox.showerror("Error", f"Could not load users: {e}", parent=win)
 
@@ -1036,12 +1374,10 @@ def show_settings(
             dlg.after(50, set_grab_create)
 
         def delete_selected_user() -> None:
-            sel = users_listbox.curselection()
-            if not sel:
+            idx = selected_user_idx[0]
+            if idx is None or idx >= len(user_data):
                 messagebox.showinfo("Info", "Select a user to delete.", parent=win)
                 return
-            idx = int(sel[0])
-            if idx >= len(user_data):
                 return
             u = user_data[idx]
             email = u.get("email", "")
@@ -1055,12 +1391,10 @@ def show_settings(
                 messagebox.showerror("Error", f"Could not delete user: {e}", parent=win)
 
         def set_storage_limit_dialog() -> None:
-            sel = users_listbox.curselection()
-            if not sel:
+            idx = selected_user_idx[0]
+            if idx is None or idx >= len(user_data):
                 messagebox.showinfo("Info", "Select a user to set storage limit.", parent=win)
                 return
-            idx = int(sel[0])
-            if idx >= len(user_data):
                 return
             u = user_data[idx]
             email = u.get("email", "")
@@ -1155,13 +1489,14 @@ def show_settings(
             except tk.TclError:
                 pass
 
-        btn_frame = ttk.Frame(admin_sec)
-        btn_frame.grid(row=r5, column=0, columnspan=2, sticky="w", pady=(0, 0))
+        btn_frame = ttk.Frame(frame)
+        admin_buttons_ref[0] = btn_frame
+        btn_frame.grid(row=admin_buttons_row, column=0, sticky="w", pady=(8, 0))
         _secondary_btn(btn_frame, "Refresh list", refresh_users_list, side="left", padx=(0, PAD_ROW))
         _primary_btn(btn_frame, "Create user…", create_user_dialog, side="left", padx=(0, PAD_ROW))
         _secondary_btn(btn_frame, "Delete selected", delete_selected_user, side="left", padx=(0, PAD_ROW))
         _secondary_btn(btn_frame, "Set storage limit…", set_storage_limit_dialog, side="left")
-        admin_sec.columnconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
         refresh_users_list()
 
     def on_close() -> None:

@@ -264,12 +264,21 @@ def main() -> None:
         )
     _ensure_cwd_repo_root()
 
-    # Standalone Settings window (e.g. "Brandy Box Settings" from app menu) – no tray, no login
+    # Standalone Settings window (e.g. "Brandy Box Settings" from app menu)
     if "--settings" in sys.argv:
         log.info("Running in standalone settings mode")
-        root = Tk()
-        root.withdraw()
-        show_settings()
+        api = BrandyBoxAPI()
+        creds = CredentialsStore()
+        access_token = creds.get_valid_access_token(api)
+        if access_token:
+            api.set_access_token(access_token)
+
+            def _on_logout() -> None:
+                creds.clear()
+
+            show_settings(api=api, on_logout=_on_logout)
+        else:
+            show_settings()
         _release_single_instance_lock()
         sys.exit(0)
 

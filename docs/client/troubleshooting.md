@@ -27,13 +27,15 @@ After that, the tray icon should appear when you start Brandy Box. If the tray s
 
 **Symptom:** On Linux (e.g. Garuda, KDE) the tray icon appears as a **square** instead of the Brandy Box “B” icon, **right-click does not open a context menu** (or a circle/indicator appears), and sometimes a settings popup stays on screen.
 
-**Cause:** This happens when the app is run as the **standalone PyInstaller binary** (e.g. from `~/.local/share/brandybox/BrandyBox` or a desktop entry that points to it). The bundled environment cannot use the system PyGObject (AppIndicator) correctly, so the app falls back to the XOrg tray backend, which has these limitations. This is a **known, recurring issue** with new client installs on Linux.
+**Cause:** This happens when the app cannot use the system PyGObject (AppIndicator), so it falls back to the XOrg tray backend. Common cases: (1) the **standalone PyInstaller binary** (e.g. from `~/.local/share/brandybox/BrandyBox`); (2) a **venv created without `--system-site-packages`** (the venv then cannot see the system `gi` module). This is a **known, recurring issue** with new client installs on Linux.
 
-**Fix — use the venv-based install:**
+**Open Settings without the tray menu:** From repo root run `./scripts/run-settings-only.sh` or `python -m brandybox.main --settings` (with the project venv activated). You can also use the **Brandy Box Settings** desktop entry if it was installed with the venv script.
+
+**Fix tray (correct icon + right-click menu) — use a venv with system site-packages:**
 
 1. **Prerequisites** (Arch/Garuda):  
    `sudo pacman -S python-gobject libappindicator-gtk3`
-2. From the **repo root**:  
+2. From the **repo root**, recreate the venv with system site-packages (if you already have a `.venv` that was created without it, remove it first: `rm -rf .venv`):  
    `python -m venv .venv --system-site-packages`  
    `source .venv/bin/activate`  
    `cd client && pip install -e . && cd ..`
