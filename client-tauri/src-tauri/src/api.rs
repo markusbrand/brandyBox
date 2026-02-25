@@ -186,52 +186,89 @@ impl ApiClient {
         r.json().map_err(|e| e.to_string())
     }
 
+    /// Upload file with retries. Large uploads (e.g. MP4) can hit connection resets; retrying often succeeds.
     pub fn upload_file(&self, path: &str, body: &[u8]) -> Result<(), String> {
         let url = format!("{}/api/files/upload", self.base_url.trim_end_matches('/'));
         let url = format!("{}?path={}", url, urlencoding::encode(path));
-        let timeout = 600 + (body.len() as u64 / (1024 * 1024)).min(1200) * 60;
+        let timeout_secs = 600 + (body.len() as u64 / (1024 * 1024)).min(1200) * 60;
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(timeout))
+            .timeout(Duration::from_secs(timeout_secs))
             .build()
-            .expect("client");
-        let r = client
-            .post(&url)
-            .headers(self.headers())
-            .body(body.to_vec())
-            .send()
-            .map_err(|e| e.to_string())?;
-        if !r.status().is_success() {
-            let status = r.status();
-            let body_text = r.text().unwrap_or_default();
-            let detail = body_text.trim();
-            return Err(if detail.is_empty() {
-                format!("{}", status)
-            } else {
-                format!("{}: {}", status, detail)
-            });
+            .expect("http client");
+        let body_copy = body.to_vec();
+        let mut last_err = String::new();
+        for attempt in 0..3 {
+            let mut headers = self.headers();
+            headers.insert(
+                reqwest::header::CONTENT_TYPE,
+                "application/octet-stream".parse().unwrap(),
+            );
+            match client
+                .post(&url)
+                .headers(headers)
+                .body(body_copy.clone())
+                .send()
+            {
+                Ok(r) => {
+                    if !r.status().is_success() {
+                        let status = r.status();
+                        let body_text = r.text().unwrap_or_default();
+                        last_err = if body_text.trim().is_empty() {
+                            format!("{}", status)
+                        } else {
+                            format!("{}: {}", status, body_text.trim())
+                        };
+                    } else {
+                        return Ok(());
+                    }
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                }
+            }
+            if attempt < 2 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1)));
+            }
         }
-        Ok(())
+        Err(last_err)
     }
 
+    /// Download file with retries. Large downloads can hit connection resets; retrying often succeeds.
     pub fn download_file(&self, path: &str) -> Result<Vec<u8>, String> {
         let base = self.base_url.trim_end_matches('/');
         let url = format!("{}/api/files/download?path={}", base, urlencoding::encode(path));
-        let r = self
-            .download_client()
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .map_err(|e| e.to_string())?;
-        if !r.status().is_success() {
-            let status = r.status();
-            let body = r.text().unwrap_or_default();
-            return Err(if body.trim().is_empty() {
-                format!("{}", status)
-            } else {
-                format!("{}: {}", status, body.trim())
-            });
+        let mut last_err = String::new();
+        for attempt in 0..3 {
+            match self
+                .download_client()
+                .get(&url)
+                .headers(self.headers())
+                .send()
+            {
+                Ok(r) => {
+                    if !r.status().is_success() {
+                        let status = r.status();
+                        let resp_body = r.text().unwrap_or_default();
+                        last_err = if resp_body.trim().is_empty() {
+                            format!("{}", status)
+                        } else {
+                            format!("{}: {}", status, resp_body.trim())
+                        };
+                    } else if let Ok(bytes) = r.bytes().map(|b| b.to_vec()) {
+                        return Ok(bytes);
+                    } else {
+                        last_err = "failed to read response body".to_string();
+                    }
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                }
+            }
+            if attempt < 2 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1)));
+            }
         }
-        r.bytes().map(|b| b.to_vec()).map_err(|e| e.to_string())
+        Err(last_err)
     }
 
     pub fn delete_file(&self, path: &str) -> Result<(), String> {
