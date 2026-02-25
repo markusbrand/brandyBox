@@ -56,6 +56,8 @@ Tauri nutzt unter Linux die systemeigenen Tray-APIs; es ist **kein** venv-basier
 - `libayatana-appindicator is deprecated. Please use libayatana-appindicator-glib` – stammt von der System-Tray-Bibliothek (Tauri/tray-icon), verschwindet mit Upstream-Update.
 - `Gtk-Message: Failed to load module "appmenu-gtk-module"` – optionales GTK-Modul für App-Menüleiste; fehlt oft unter Linux und hat keinen Einfluss auf Tray oder Fenster.
 
+**Große Dateien (z. B. MP4):** Bei „request or response body error“ oder „error sending request“ prüfen: Client macht 3 Versuche mit Pause. Wenn alle fehlschlagen, auf dem **Server** (Raspberry Pi) bzw. Proxy Timeouts erhöhen (z. B. uvicorn mit `--timeout-keep-alive 300`, nginx `proxy_read_timeout` / `client_max_body_size`).
+
 ## Projektstruktur
 
 - **Frontend (React)**: `src/` – Login, Settings, Tray-Menü-Setup (Material UI)

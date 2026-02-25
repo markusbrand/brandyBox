@@ -192,15 +192,16 @@ impl ApiClient {
     }
 
     /// Upload file from disk with retries. Streams the file (Content-Length set) to avoid loading
-    /// large files into memory; retries on connection errors (e.g. large MP4 over WiFi).
+    /// large files into memory; retries on connection/body errors (e.g. large MP4 over WiFi).
     pub fn upload_file_from_path(&self, path: &str, local_path: &Path) -> Result<(), String> {
-        let file = File::open(local_path).map_err(|e| e.to_string())?;
-        let file_size = file.metadata().map_err(|e| e.to_string())?.len();
+        let file_size = std::fs::metadata(local_path).map_err(|e| e.to_string())?.len();
         let url = format!("{}/api/files/upload", self.base_url.trim_end_matches('/'));
         let url = format!("{}?path={}", url, urlencoding::encode(path));
-        let timeout_secs = 600 + (file_size / (1024 * 1024)).min(1200) * 60;
+        // Generous timeout: 30 min base + 2 min per MB (cap 100 MB for timeout calc) so slow links succeed.
+        let timeout_secs = 1800 + (file_size / (1024 * 1024)).min(100) * 120;
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
+            .tcp_keepalive(Duration::from_secs(60))
             .build()
             .expect("http client");
         let mut last_err = String::new();
@@ -227,11 +228,16 @@ impl ApiClient {
                     }
                 }
                 Err(e) => {
-                    last_err = e.to_string();
+                    let msg = e.to_string();
+                    last_err = if msg.contains("body error") || msg.contains("connection") {
+                        format!("{} (for large files, ensure server/proxy timeouts are high enough)", msg)
+                    } else {
+                        msg
+                    };
                 }
             }
             if attempt < 2 {
-                std::thread::sleep(Duration::from_secs(2 * (attempt + 1)));
+                std::thread::sleep(Duration::from_secs(3 + attempt as u64 * 4));
             }
         }
         Err(last_err)
