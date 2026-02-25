@@ -52,7 +52,9 @@ Inhalt u. a.: `sync_folder`, `autostart`, `base_url_mode`, `manual_base_url`. Di
 
 Tauri nutzt unter Linux die systemeigenen Tray-APIs; es ist **kein** venv-basierter Workaround mehr nötig. Das Tray-Icon und das Kontextmenü funktionieren mit dem gebauten Tauri-Client out of the box (inkl. Wayland/KDE).
 
-**Hinweis:** Beim Start kann eine Deprecation-Meldung erscheinen: `libayatana-appindicator is deprecated. Please use libayatana-appindicator-glib`. Sie stammt von der System-Tray-Bibliothek (libayatana-appindicator), die Tauri/tray-icon nutzt, ist harmlos und verschwindet, sobald Upstream auf libayatana-appindicator-glib umstellt.
+**Hinweis:** Beim Start können folgende Meldungen erscheinen; sie sind harmlos:
+- `libayatana-appindicator is deprecated. Please use libayatana-appindicator-glib` – stammt von der System-Tray-Bibliothek (Tauri/tray-icon), verschwindet mit Upstream-Update.
+- `Gtk-Message: Failed to load module "appmenu-gtk-module"` – optionales GTK-Modul für App-Menüleiste; fehlt oft unter Linux und hat keinen Einfluss auf Tray oder Fenster.
 
 ## Projektstruktur
 

@@ -1,6 +1,8 @@
 //! HTTP client for Brandy Box backend API. Matches Python client endpoints and behavior.
 
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::path::Path;
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -84,10 +86,13 @@ impl ApiClient {
             .expect("http client")
     }
 
-    /// Client for binary download: long timeout so large files (e.g. MP4) can finish.
+    /// Client for binary download: long timeout, no gzip/deflate so response body is raw bytes
+    /// (avoids "error decoding response body" when server or proxy sends compressed binary).
     fn download_client(&self) -> reqwest::blocking::Client {
         reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(600))
+            .no_gzip()
+            .no_deflate()
             .build()
             .expect("http client")
     }
@@ -186,29 +191,28 @@ impl ApiClient {
         r.json().map_err(|e| e.to_string())
     }
 
-    /// Upload file with retries. Large uploads (e.g. MP4) can hit connection resets; retrying often succeeds.
-    pub fn upload_file(&self, path: &str, body: &[u8]) -> Result<(), String> {
+    /// Upload file from disk with retries. Streams the file (Content-Length set) to avoid loading
+    /// large files into memory; retries on connection errors (e.g. large MP4 over WiFi).
+    pub fn upload_file_from_path(&self, path: &str, local_path: &Path) -> Result<(), String> {
+        let file = File::open(local_path).map_err(|e| e.to_string())?;
+        let file_size = file.metadata().map_err(|e| e.to_string())?.len();
         let url = format!("{}/api/files/upload", self.base_url.trim_end_matches('/'));
         let url = format!("{}?path={}", url, urlencoding::encode(path));
-        let timeout_secs = 600 + (body.len() as u64 / (1024 * 1024)).min(1200) * 60;
+        let timeout_secs = 600 + (file_size / (1024 * 1024)).min(1200) * 60;
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
             .build()
             .expect("http client");
-        let body_copy = body.to_vec();
         let mut last_err = String::new();
         for attempt in 0..3 {
+            let file = File::open(local_path).map_err(|e| e.to_string())?;
+            let body = reqwest::blocking::Body::sized(file, file_size);
             let mut headers = self.headers();
             headers.insert(
                 reqwest::header::CONTENT_TYPE,
                 "application/octet-stream".parse().unwrap(),
             );
-            match client
-                .post(&url)
-                .headers(headers)
-                .body(body_copy.clone())
-                .send()
-            {
+            match client.post(&url).headers(headers).body(body).send() {
                 Ok(r) => {
                     if !r.status().is_success() {
                         let status = r.status();
@@ -231,6 +235,39 @@ impl ApiClient {
             }
         }
         Err(last_err)
+    }
+
+    /// Upload in-memory body (used when caller already has bytes). For large files prefer upload_file_from_path.
+    #[allow(dead_code)]
+    pub fn upload_file(&self, path: &str, body: &[u8]) -> Result<(), String> {
+        let url = format!("{}/api/files/upload", self.base_url.trim_end_matches('/'));
+        let url = format!("{}?path={}", url, urlencoding::encode(path));
+        let timeout_secs = 600 + (body.len() as u64 / (1024 * 1024)).min(1200) * 60;
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(timeout_secs))
+            .build()
+            .expect("http client");
+        let mut headers = self.headers();
+        headers.insert(
+            reqwest::header::CONTENT_TYPE,
+            "application/octet-stream".parse().unwrap(),
+        );
+        let r = client
+            .post(&url)
+            .headers(headers)
+            .body(body.to_vec())
+            .send()
+            .map_err(|e| e.to_string())?;
+        if !r.status().is_success() {
+            let status = r.status();
+            let body_text = r.text().unwrap_or_default();
+            return Err(if body_text.trim().is_empty() {
+                format!("{}", status)
+            } else {
+                format!("{}: {}", status, body_text.trim())
+            });
+        }
+        Ok(())
     }
 
     /// Download file with retries. Large downloads can hit connection resets; retrying often succeeds.

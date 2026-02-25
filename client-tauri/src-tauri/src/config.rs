@@ -149,6 +149,21 @@ pub fn set_manual_base_url(url: String) {
     write_config(|c| c.manual_base_url = Some(url.trim().to_string()));
 }
 
+/// Gets saved settings window geometry as "x,y,width,height" (physical pixels), or None.
+#[allow(dead_code)]
+pub fn get_settings_window_geometry() -> Option<String> {
+    read_config()
+        .settings_window_geometry
+        .filter(|s| !s.trim().is_empty())
+}
+
+/// Saves settings window geometry string "x,y,width,height" (physical pixels).
+#[allow(dead_code)]
+pub fn set_settings_window_geometry(geometry: String) {
+    let s = geometry.trim().to_string();
+    write_config(|c| c.settings_window_geometry = if s.is_empty() { None } else { Some(s) });
+}
+
 fn executable_command() -> Vec<String> {
     if cfg!(windows) {
         vec![std::env::current_exe().unwrap_or_else(|_| PathBuf::from("BrandyBox.exe")).to_string_lossy().to_string()]

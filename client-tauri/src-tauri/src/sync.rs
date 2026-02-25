@@ -246,12 +246,10 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64),
     for path in &to_upload {
         set_progress("upload", done, total_work);
         let full = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
-        let body = match std::fs::read(&full) {
-            Ok(b) => b,
-            Err(e) => return Err(format!("Read {}: {}", path, e)),
-        };
-        bytes_uploaded += body.len() as u64;
-        if let Err(e) = client.upload_file(path, &body) {
+        if let Ok(meta) = std::fs::metadata(&full) {
+            bytes_uploaded += meta.len();
+        }
+        if let Err(e) = client.upload_file_from_path(path, &full) {
             return Err(format!("Upload {}: {}", path, e));
         }
         uploaded_paths.push(path.clone());

@@ -253,9 +253,45 @@ fn quit_app() {
     std::process::exit(0);
 }
 
+const DEFAULT_SETTINGS_WIDTH: u32 = 520;
+const DEFAULT_SETTINGS_HEIGHT: u32 = 640;
+const TRAY_SIDE_MARGIN: i32 = 16;
+
+/// Restore or set main (settings) window position and size, then show it.
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
+        if let Some(geom) = config::get_settings_window_geometry() {
+            if let Some((x, y, w, h)) = parse_geometry(&geom) {
+                let pos = tauri::PhysicalPosition::new(x, y);
+                let size = tauri::PhysicalSize::new(w, h);
+                if win.set_position(pos).is_ok() && win.set_size(size).is_ok() {
+                    log::debug!("Restored settings window geometry: {}", geom);
+                }
+            }
+        } else {
+            if let Ok(Some(monitor)) = win.primary_monitor() {
+                let work = monitor.work_area();
+                let wa_x = work.position.x;
+                let wa_y = work.position.y;
+                let wa_w = work.size.width as i32;
+                let wa_h = work.size.height as i32;
+                let win_w = DEFAULT_SETTINGS_WIDTH as i32;
+                let win_h = DEFAULT_SETTINGS_HEIGHT as i32;
+                let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).max(wa_x);
+                let y = (wa_y + TRAY_SIDE_MARGIN).min(wa_y + wa_h - win_h);
+                let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+                let _ = win.set_size(tauri::PhysicalSize::new(
+                    DEFAULT_SETTINGS_WIDTH,
+                    DEFAULT_SETTINGS_HEIGHT,
+                ));
+                log::debug!(
+                    "Positioned settings window near tray: ({}, {})",
+                    x,
+                    y
+                );
+            }
+        }
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
@@ -267,6 +303,21 @@ fn hide_main_window(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.hide();
     }
+}
+
+fn parse_geometry(s: &str) -> Option<(i32, i32, u32, u32)> {
+    let parts: Vec<&str> = s.split(',').map(str::trim).collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    let x: i32 = parts[0].parse().ok()?;
+    let y: i32 = parts[1].parse().ok()?;
+    let w: u32 = parts[2].parse().ok()?;
+    let h: u32 = parts[3].parse().ok()?;
+    if w == 0 || h == 0 {
+        return None;
+    }
+    Some((x, y, w, h))
 }
 
 #[tauri::command]
@@ -357,11 +408,45 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             spawn_background_sync_loop(app.handle().clone());
+            if let Some(win) = app.get_webview_window("main") {
+                if let Some(geom) = config::get_settings_window_geometry() {
+                    if let Some((x, y, w, h)) = parse_geometry(&geom) {
+                        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+                        let _ = win.set_size(tauri::PhysicalSize::new(w, h));
+                    }
+                } else if let Ok(Some(monitor)) = win.primary_monitor() {
+                    let work = monitor.work_area();
+                    let wa_x = work.position.x;
+                    let wa_y = work.position.y;
+                    let wa_w = work.size.width as i32;
+                    let wa_h = work.size.height as i32;
+                    let win_w = DEFAULT_SETTINGS_WIDTH as i32;
+                    let win_h = DEFAULT_SETTINGS_HEIGHT as i32;
+                    let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).max(wa_x);
+                    let y = (wa_y + TRAY_SIDE_MARGIN).min(wa_y + wa_h - win_h);
+                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+                    let _ = win.set_size(tauri::PhysicalSize::new(
+                        DEFAULT_SETTINGS_WIDTH,
+                        DEFAULT_SETTINGS_HEIGHT,
+                    ));
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
+                    if let (Ok(pos), Ok(sz)) = (window.inner_position(), window.inner_size()) {
+                        let geom = format!(
+                            "{},{},{},{}",
+                            pos.x,
+                            pos.y,
+                            sz.width,
+                            sz.height
+                        );
+                        log::debug!("Saved settings window geometry: {}", geom);
+                        config::set_settings_window_geometry(geom);
+                    }
                     let _ = window.hide();
                     api.prevent_close();
                 }
