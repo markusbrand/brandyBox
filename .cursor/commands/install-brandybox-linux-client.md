@@ -9,9 +9,10 @@ Commands for **Garuda Linux** (or any Arch-based desktop): install and run the *
 When the user invokes this command, **perform the steps yourself**—do not only show instructions for copy-paste.
 
 - **Default (no extra keyword):** Autonomously perform a **test-run**:
-  1. From repo root: `cd client-tauri`, run `npm install`.
-  2. Start the client: `npm run tauri dev` (or `npm run tauri:dev` if `tauri dev` fails). Run this in the **background** (it is a GUI/tray app and blocks otherwise). Use the workspace path for the repo root (e.g. `/home/markus/cursorProjects/brandyBox`).
-  - Remind about prerequisites once: **Node.js** (LTS), **Rust** (`rustup default stable`), and for Arch/Garuda: `sudo pacman -S webkit2gtk gtk3 libappindicator-gtk3`.
+  1. **Install system deps (Arch/Garuda):** Run `./scripts/install_tauri_prereqs.sh` from repo root. This requires sudo (user must run in a terminal and enter password). If this fails in the agent (no terminal for sudo), remind the user to run it manually.
+  2. From repo root: `cd client-tauri`, run `npm install`.
+  3. Start the client: `npm run tauri dev` (or `npm run tauri:dev` if `tauri dev` fails). Run this in the **background** (it is a GUI/tray app and blocks otherwise). Use the workspace path for the repo root (e.g. `/home/markus/cursorProjects/brandyBox`).
+  - Other prerequisites: **Node.js** (LTS), **Rust** (`rustup default stable`).
 
 - **If the user also says "install" (or "install for system", "menu entries", "install menu"):** In addition to the test-run setup, **install for the system** (menu entries):
   1. Build the Tauri app: `cd client-tauri && CARGO_TARGET_DIR="$(pwd)/src-tauri/target" npm run tauri:build` (ensures output lands in workspace for the install script).
@@ -39,7 +40,7 @@ The tray icon should appear; use the menu to open Settings, sync, or Quit.
 **Prerequisites** (Arch/Garuda):
 - Node.js (LTS, e.g. 20.x) and npm
 - Rust: <https://rustup.rs/> – `rustup default stable`
-- `sudo pacman -S webkit2gtk gtk3 libappindicator-gtk3`
+- System deps: `./scripts/install_tauri_prereqs.sh` (installs webkit2gtk, gtk3, libappindicator-gtk3)
 
 ---
 
