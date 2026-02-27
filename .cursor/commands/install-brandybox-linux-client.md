@@ -10,8 +10,8 @@ When the user invokes this command, **perform the steps yourself**—do not only
 
 - **Default (no extra keyword):** Autonomously perform a **test-run**:
   1. **Install system deps (Arch/Garuda):** Run `./scripts/install_tauri_prereqs.sh` from repo root. This requires sudo (user must run in a terminal and enter password). If this fails in the agent (no terminal for sudo), remind the user to run it manually.
-  2. From repo root: `cd client-tauri`, run `npm install`.
-  3. Start the client: `npm run tauri dev` (or `npm run tauri:dev` if `tauri dev` fails). Run this in the **background** (it is a GUI/tray app and blocks otherwise). Use the workspace path for the repo root (e.g. `/home/markus/cursorProjects/brandyBox`).
+  2. **Start the client:** Prefer the **installed** build (tray works on Wayland). If `./scripts/run_brandybox_installed.sh` exists and runs successfully, use that in the background. Otherwise: `cd client-tauri`, `npm install`, then `npm run tauri:dev` in the background. Note: dev mode does NOT show the tray icon on Wayland; only the installed build does.
+  3. Use the workspace path for the repo root (e.g. `/home/markus/cursorProjects/brandyBox`).
   - Other prerequisites: **Node.js** (LTS), **Rust** (`rustup default stable`).
 
 - **If the user also says "install" (or "install for system", "menu entries", "install menu"):** In addition to the test-run setup, **install for the system** (menu entries):
@@ -25,7 +25,14 @@ Use the actual workspace path for the repo (e.g. `$WORKSPACE_PATH` or the path f
 
 ## 1. Test-run the client (no install)
 
-From your **repo root** (replace with your actual path, e.g. `/home/markus/cursorProjects/brandyBox`):
+**Preferred (tray works on Wayland):** Run the installed build:
+
+```bash
+cd <repo_root>
+./scripts/run_brandybox_installed.sh
+```
+
+**Fallback (dev mode):** If not installed, or for development:
 
 ```bash
 cd <repo_root>/client-tauri
@@ -33,9 +40,7 @@ npm install
 npm run tauri dev
 ```
 
-Or if `tauri dev` fails with CI/GTK issues: `npm run tauri:dev`
-
-The tray icon should appear; use the menu to open Settings, sync, or Quit.
+Note: Dev mode (`tauri dev`) does NOT show the tray icon on Wayland. Use the installed build or start from the application menu for tray support.
 
 **Prerequisites** (Arch/Garuda):
 - Node.js (LTS, e.g. 20.x) and npm
@@ -67,7 +72,7 @@ If the menu still shows an old icon: `kbuildsycoca5 --noincremental` (KDE).
 
 | Goal | Commands |
 |------|----------|
-| **Test-run** | Repo root → `cd client-tauri` → `npm install` → `npm run tauri dev` (run in background) |
+| **Test-run** | Repo root → `./scripts/run_brandybox_installed.sh` (or `npm run tauri dev` if not installed) |
 | **Install (menu)** | Build: `cd client-tauri && npm run tauri:build` → `./scripts/install_desktop_tauri.sh` |
 
 This command is available in chat as `/install-brandybox-linux-client`. Say **install** (or "install for system" / "menu entries") to also add desktop menu entries.
