@@ -47,6 +47,21 @@ After that, the tray icon should appear when you start Brandy Box. If the tray s
 
 See also the main [README](https://github.com/markusbrand/brandyBox/blob/master/README.md) section “Install on Linux” and [Installers](https://github.com/markusbrand/brandyBox/blob/master/assets/installers/README_installers.md) (Option A — Venv).
 
+## Tauri client: tray icon not showing (Wayland)
+
+**Symptom:** The Tauri client runs but **no tray icon** appears. Prerequisites (webkit2gtk, gtk3, libayatana-appindicator) are installed.
+
+**Cause:** Known Tauri bug ([tauri-apps/tauri#14234](https://github.com/tauri-apps/tauri/issues/14234)): on **Wayland**, the tray icon does not appear in **dev mode** or when running from the **.deb** package. It works under **X11** and with the **AppImage** build.
+
+**Workarounds:**
+
+1. **Run under X11:** Log out, choose **Plasma (X11)** or **X11 session** at the login screen instead of Wayland, then start Brandy Box again. The tray icon should appear.
+2. **Use AppImage (if available):** The AppImage build works on Wayland. If your install used the .deb, try building with AppImage: in `tauri.conf.json` set `"targets": ["appimage"]` and rebuild. Note: AppImage creation can fail on some systems (linuxdeploy issues).
+3. **Use Python client:** The Python client with venv + `--system-site-packages` works on Wayland. See [Linux: tray shows square icon](#linux-tray-shows-square-icon-no-context-menu-recurring-with-new-installs).
+
+**Prerequisites:** Ensure `libayatana-appindicator` is installed:  
+`./scripts/install_tauri_prereqs.sh` or `sudo pacman -S webkit2gtk gtk3 libayatana-appindicator`
+
 ## System metadata files (`.directory`, `Thumbs.db`, etc.)
 
 Files like `.directory` (KDE Dolphin), `Thumbs.db`, `Desktop.ini` (Windows), and `.DS_Store` (macOS) are created automatically by the OS or file manager to store view settings or thumbnails. **Brandy Box does not need them** for syncing your actual content.
