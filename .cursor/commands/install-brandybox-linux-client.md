@@ -14,7 +14,7 @@ When the user invokes this command, **perform the steps yourself**—do not only
   - Remind about prerequisites once: **Node.js** (LTS), **Rust** (`rustup default stable`), and for Arch/Garuda: `sudo pacman -S webkit2gtk gtk3 libappindicator-gtk3`.
 
 - **If the user also says "install" (or "install for system", "menu entries", "install menu"):** In addition to the test-run setup, **install for the system** (menu entries):
-  1. Build the Tauri app: `cd client-tauri && npm run tauri:build`.
+  1. Build the Tauri app: `cd client-tauri && CARGO_TARGET_DIR="$(pwd)/src-tauri/target" npm run tauri:build` (ensures output lands in workspace for the install script).
   2. From repo root run: `chmod +x scripts/install_desktop_tauri.sh && ./scripts/install_desktop_tauri.sh`.
   - Tell the user that **Brandy Box**, **Brandy Box Settings**, and **Quit Brandy Box** are now in the application menu and they can enable "Start when I log in" in Settings.
 
@@ -50,7 +50,7 @@ From **repo root** (after building the Tauri app):
 ```bash
 cd <repo_root>/client-tauri
 npm install
-npm run tauri:build
+CARGO_TARGET_DIR="$(pwd)/src-tauri/target" npm run tauri:build
 cd ..
 chmod +x scripts/install_desktop_tauri.sh
 ./scripts/install_desktop_tauri.sh
