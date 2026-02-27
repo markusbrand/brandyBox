@@ -226,10 +226,49 @@ export default function Settings({ email, onLogout }: SettingsProps) {
           </Typography>
           <Typography variant="body1">{email ?? "—"}</Typography>
           {storage && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Storage: {formatBytes(storage.used_bytes)}
-              {storage.limit_bytes != null ? ` / ${formatBytes(storage.limit_bytes)}` : ""}
-            </Typography>
+            <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2, mt: 1 }}>
+              <Box sx={{ position: "relative", flexShrink: 0 }}>
+                {/* Full circle = 100% of available space (grey track) */}
+                <CircularProgress
+                  variant="determinate"
+                  value={100}
+                  size={64}
+                  thickness={4}
+                  sx={{
+                    color: "action.disabledBackground",
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                  }}
+                />
+                {/* Blue arc = used percentage of limit */}
+                <CircularProgress
+                  variant="determinate"
+                  value={
+                    storage.limit_bytes != null && storage.limit_bytes > 0
+                      ? Math.min(100, (storage.used_bytes / storage.limit_bytes) * 100)
+                      : 0
+                  }
+                  size={64}
+                  thickness={4}
+                  sx={{ color: "primary.main" }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Storage space</strong>
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Used: {formatBytes(storage.used_bytes)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Available:{" "}
+                  {storage.limit_bytes != null
+                    ? formatBytes(Math.max(0, storage.limit_bytes - storage.used_bytes))
+                    : "No maximum"}
+                </Typography>
+              </Box>
+            </Box>
           )}
           <Box sx={{ mt: 1 }}>
             <Button size="small" onClick={() => setChangePwdOpen(true)}>

@@ -7,7 +7,7 @@
 - **Login** with email/password; credentials in OS keyring (Secret Service / Keychain / Credential Manager)
 - **Sync folder** selectable; automatic or manual server URL mode (LAN/Cloudflare)
 - **System tray**: Icon + context menu (Settings, Open folder, Sync now, Quit); icon and tooltip show sync status (Syncing / Synced / Warning / Error)
-- **Settings**: Account, storage, change password, logout; autostart; admin section (create/delete users)
+- **Settings**: Account, storage used/available with circular indicator, change password, logout; autostart; admin section (create/delete users)
 - **Sync engine** in Rust (robust v2): List local/remote, diff, propagate deletes, download/upload; only verified paths in `sync_state.json`; hash comparison when available; **automatic background sync** every 60 seconds (15 s delay after start)
 - **Single instance** per user (file lock)
 
