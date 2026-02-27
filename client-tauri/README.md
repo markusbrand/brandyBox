@@ -1,14 +1,14 @@
 # Brandy Box – Tauri + React Client
 
-Moderner Desktop-Client auf Basis von **Tauri 2** und **React** mit Material Design. Ersetzt die Python/Tk-Oberfläche durch ein webbasiertes UI; Tray und System-Integration laufen über die Tauri/Rust-API (unter Linux nutzt Tauri die passenden AppIndicator-Schnittstellen für Wayland).
+**Primary desktop client** for Brandy Box. Modern UI on **Tauri 2** and **React** with Material Design. Tray and system integration via Tauri/Rust (on Linux, native AppIndicator for Wayland). Includes the robust sync engine (v2) with verified state, hash-based comparison, and proper handling of skipped transfers.
 
 ## Features (wie Python-Client)
 
 - **Login** mit E-Mail/Passwort; Credentials im OS-Keyring (Secret Service / Keychain / Credential Manager)
 - **Sync-Ordner** wählbar; automatischer oder manueller Server-URL-Modus (LAN/Cloudflare)
-- **System-Tray**: Icon + Kontextmenü (Settings, Ordner öffnen, Sync now, Quit); Icon und Tooltip zeigen den Sync-Status (Syncing / Synced / Error)
+- **System-Tray**: Icon + Kontextmenü (Settings, Ordner öffnen, Sync now, Quit); Icon und Tooltip zeigen den Sync-Status (Syncing / Synced / Warning / Error)
 - **Einstellungen**: Konto, Speicher, Passwort ändern, Abmelden; Autostart; Admin-Bereich (Benutzer anlegen/löschen)
-- **Sync-Engine** in Rust: Liste lokal/remote, Diff, Löschungen propagieren, Download/Upload, Zustand in `sync_state.json`; **automatischer Hintergrund-Sync** alle 60 Sekunden (15 s Verzögerung nach Start), sofern Sync-Ordner gesetzt und eingeloggt
+- **Sync-Engine** in Rust (robust v2): Liste lokal/remote, Diff, Löschungen propagieren, Download/Upload; nur verifizierte Pfade in `sync_state.json`; Hash-Vergleich wo möglich; **automatischer Hintergrund-Sync** alle 60 Sekunden (15 s Verzögerung nach Start)
 - **Single-Instance** pro Benutzer (Datei-Lock)
 
 ## Voraussetzungen
@@ -33,8 +33,10 @@ Beim ersten Start erscheint ein Fenster (z. B. Login). Das Tray-Icon wird beim S
 ```bash
 cd client-tauri
 npm install
-npm run tauri build
+npm run tauri:build
 ```
+
+Use `tauri:build` when CI=1 causes `--ci` errors; otherwise `npm run tauri build`.
 
 Ausgabe z. B. unter `src-tauri/target/release/bundle/` (Debian/AppImage/msi/dmg je nach Plattform).
 

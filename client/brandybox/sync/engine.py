@@ -3,8 +3,15 @@
 Multi-client design: any number of clients (Windows, Linux, macOS) can use the same
 account and sync folder; each has its own per-machine sync state (config dir).
 Last change wins: deletions propagate (delete on one client → server → other clients
-delete locally); file content uses mtime (newer overwrites older). No conflict
-merge — concurrent edits to the same file resolve by timestamp.
+delete locally); file content uses content hash when available, else mtime (newer
+overwrites older). No conflict merge — concurrent edits resolve by hash match or
+timestamp.
+
+Robustness principles:
+- Only mark a path as "in sync" when we have verified it exists on both sides with
+  matching content. Never add paths we failed to download/upload.
+- Track skipped operations separately; do not pollute sync state.
+- Operations are idempotent where possible (e.g. delete 404 = success).
 """
 
 import hashlib
@@ -20,6 +27,8 @@ from typing import Callable, List, Optional, Set, Tuple
 
 # Progress callback: (phase, current_index, total_count). Phase: "listing"|"delete_server"|"delete_local"|"download"|"upload". total=0 when unknown.
 ProgressCallback = Callable[[str, int, int], None]
+# Warnings callback: called when sync completes with non-fatal issues (e.g. skipped uploads due to file removed during sync)
+WarningsCallback = Callable[[int, List[str]], None]
 
 import httpx
 
@@ -164,6 +173,7 @@ def sync_run(
     on_status: Optional[Callable[[str], None]] = None,
     on_progress: Optional[ProgressCallback] = None,
     on_complete: Optional[Callable[[int, int], None]] = None,
+    on_warnings: Optional[WarningsCallback] = None,
 ) -> Optional[str]:
     """
     Run one sync cycle: (1) list server and local; (2) propagate deletions (local→server,
@@ -190,6 +200,8 @@ def sync_run(
             on_progress(phase, current, total)
 
     log.info("Sync cycle started (local_root=%s)", local_root)
+
+    # --- Phase 1: List both sides (authoritative snapshot) ---
     try:
         status("Listing…")
         progress("listing", 0, 0)
@@ -218,7 +230,7 @@ def sync_run(
         else:
             log.debug("%d paths only on server (%d ignored); %d paths only local", len(only_remote), ignored_remote, len(only_local))
 
-    # 1) Propagate deletions: local deletes → server, server deletes → local
+    # --- Phase 2: Compute deletions from last_synced vs current state ---
     # Only treat "missing locally" as "delete on server" for paths we actually had locally (last_synced
     # should mean "in sync on both sides"). Otherwise a new/empty client would mark all remote paths
     # as in-sync before downloading and then delete them on the next run.
@@ -283,13 +295,31 @@ def sync_run(
         _save_sync_state(file_hashes=file_hashes)
         log.info("Skipped %d downloads (local content matches server hash); updated file_hashes", len(verified_hashes))
 
+    # Build to_upload: new files, or local newer than remote. Use content hash when
+    # available to avoid spurious uploads from clock skew.
+    remote_by_item = {item["path"]: item for item in remote_list}
     to_upload = []
     for path, local_mtime in local_list:
         if _is_ignored(path):
             continue
-        if path not in remote_by_path:
+        remote = remote_by_item.get(path)
+        if remote is None:
             to_upload.append(path)
-        elif local_mtime > remote_by_path[path]:
+            continue
+        remote_mtime = remote["mtime"]
+        server_hash = remote.get("hash")
+        if server_hash:
+            # Hash available: skip upload if local content matches (avoids clock skew)
+            try:
+                parts = path.replace("\\", "/").split("/")
+                local_path = local_root.joinpath(*parts)
+                if local_path.exists() and local_path.is_file():
+                    local_hash = hashlib.sha256(local_path.read_bytes()).hexdigest()
+                    if local_hash == server_hash:
+                        continue  # Already in sync
+            except (OSError, MemoryError):
+                pass
+        if local_mtime > remote_mtime:
             to_upload.append(path)
 
     # Warn if we're about to download a huge number of files (possible sync-folder mismatch, e.g. brandyBox vs brandybox on Linux)
@@ -302,6 +332,7 @@ def sync_run(
     total_work = len(to_del_list) + len(to_del_local_list) + len(to_download) + len(to_upload)
     done = 0
 
+    # --- Phase 3: Execute deletions (server first, then local) ---
     # Delete on server deepest paths first so backend can remove empty parent dirs
     for path in to_del_list:
         try:
@@ -347,12 +378,14 @@ def sync_run(
     _save_last_synced_paths(base_synced)
     log.debug("Saved sync state after deletes (%d paths, only those present locally)", len(base_synced))
 
-    # 2) Download from server to local (concurrent, rate-limited to stay under backend 600/min)
+    # --- Phase 4: Download from server (concurrent, rate-limited) ---
     log.info("Downloading %d files from server (%d workers)", len(to_download), SYNC_MAX_WORKERS)
     rate_limiter = _RateLimiter(SYNC_RATE_LIMIT_PER_SEC)
     done_lock = threading.Lock()
     n_downloaded = 0
     n_uploaded = 0  # set in upload phase
+    completed_downloads: Set[str] = set()  # paths we successfully downloaded (for new_synced)
+    skipped_downloads: Set[str] = set()  # paths we skipped (permission, 404) - exclude from new_synced
 
     def _download_one(path: str) -> Tuple[str, Optional[object], Optional[str]]:
         """Returns (path, None, content_hash) on success, (path, 'skip', None) on skip, (path, exc, None) on error."""
@@ -408,8 +441,11 @@ def sync_run(
                 err = result if isinstance(result, Exception) else result
                 log.error("Download %s: %s", path, err)
                 return f"Download {path}: {err}"
+            if result == "skip":
+                skipped_downloads.add(path)
             if result is None:
                 n_downloaded += 1
+                completed_downloads.add(path)
                 _add_downloaded_path(path, lock=done_lock)
                 if content_hash:
                     with done_lock:
@@ -417,10 +453,11 @@ def sync_run(
                         state.setdefault("file_hashes", {})[path] = content_hash
                         _save_sync_state(file_hashes=state["file_hashes"])
 
-    # 3) Upload local additions and newer files to server (concurrent, rate-limited)
+    # --- Phase 5: Upload to server (concurrent, rate-limited) ---
     log.info("Uploading %d files to server (%d workers)", len(to_upload), SYNC_MAX_WORKERS)
     done_after_downloads = done
     completed_uploads: Set[str] = set()  # persist after each so mid-sync close can resume
+    skipped_uploads: Set[str] = set()  # file no longer present (removed during sync) - don't add to new_synced
     upload_save_lock = threading.Lock()
 
     def _upload_one(path: str) -> Tuple[str, Optional[object]]:
@@ -432,9 +469,12 @@ def sync_run(
             body = full.read_bytes()
             api.upload_file(path, body)
             return (path, None)
+        except MemoryError as e:
+            log.error("Upload %s: out of memory (file too large to load), consider excluding large files: %s", path, e)
+            return (path, e)
         except (FileNotFoundError, OSError) as e:
             if getattr(e, "errno", None) == 2 or isinstance(e, FileNotFoundError):
-                log.warning("Upload %s: file no longer present, skipping: %s", path, e)
+                log.debug("Upload %s: file no longer present, skipping", path)
                 return (path, "skip")
             return (path, e)
         except Exception as e:
@@ -453,6 +493,8 @@ def sync_run(
                     f.cancel()
                 log.error("Upload %s: %s", path, result)
                 return f"Upload {path}: {result}"
+            if result == "skip":
+                skipped_uploads.add(path)
             if result is None:
                 n_uploaded += 1
                 # Persist so closing the app mid-upload lets the next run pick up where we left off
@@ -460,8 +502,27 @@ def sync_run(
                     completed_uploads.add(path)
                     _save_last_synced_paths(base_synced | completed_uploads)
 
-    # Persist synced paths for next run; clear downloaded_paths so future runs use normal mtime check
-    new_synced = (current_remote_paths - to_delete_remote) | set(to_upload)
+    # Log skipped uploads once (avoid log spam when many files removed during sync)
+    if skipped_uploads:
+        sample = sorted(skipped_uploads)[:5]
+        log.warning(
+            "Skipped %d uploads (file no longer present during sync, e.g. removed by another process): sample=%s",
+            len(skipped_uploads), sample,
+        )
+        if on_warnings:
+            on_warnings(len(skipped_uploads), list(sample))
+
+    if skipped_downloads:
+        sample = sorted(skipped_downloads)[:5]
+        log.warning(
+            "Skipped %d downloads (permission denied or file gone): sample=%s",
+            len(skipped_downloads), sample,
+        )
+
+    # --- Phase 6: Persist verified sync state ---
+    # Only paths we verified exist on both sides with correct content.
+    # Never add paths we failed/skipped to download or upload (prevents discrepancy and wrong deletes).
+    new_synced = (base_synced | completed_downloads | completed_uploads) - skipped_uploads
     new_synced = {p for p in new_synced if not _is_ignored(p)}
     _save_last_synced_paths(new_synced, clear_downloaded_paths=True)
     log.info("Sync cycle completed (synced paths: %d)", len(new_synced))
@@ -483,12 +544,14 @@ class SyncEngine:
         on_status: Optional[Callable[[str], None]] = None,
         on_progress: Optional[ProgressCallback] = None,
         on_complete: Optional[Callable[[int, int], None]] = None,
+        on_warnings: Optional[WarningsCallback] = None,
     ) -> None:
         self._api = api
         self._local_root = local_root
         self._on_status = on_status
         self._on_progress = on_progress
         self._on_complete = on_complete
+        self._on_warnings = on_warnings
 
     def run(self) -> Optional[str]:
         """Run one sync cycle. Returns None on success, error message on failure."""
@@ -498,4 +561,5 @@ class SyncEngine:
             on_status=self._on_status,
             on_progress=self._on_progress,
             on_complete=self._on_complete,
+            on_warnings=self._on_warnings,
         )

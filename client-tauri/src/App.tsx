@@ -12,7 +12,7 @@ import Login from "./Login";
 import Settings from "./Settings";
 import TitleBar from "./TitleBar";
 
-type SyncStatus = "idle" | "syncing" | "synced" | "error";
+type SyncStatus = "idle" | "syncing" | "synced" | "warning" | "error";
 
 interface SyncStatusPayload {
   status: SyncStatus;
@@ -82,9 +82,11 @@ export default function App() {
       const tooltip =
         status === "error" && message
           ? `Brandy Box – Error: ${message.slice(0, 80)}`
-          : status === "syncing"
-            ? "Brandy Box – Syncing…"
-            : "Brandy Box";
+          : status === "warning" && message
+            ? `Brandy Box – ${message.slice(0, 80)}`
+            : status === "syncing"
+              ? "Brandy Box – Syncing…"
+              : "Brandy Box";
       try {
         trayIcon.setTooltip(tooltip);
       } catch {
@@ -93,7 +95,7 @@ export default function App() {
         } catch (_) {}
       }
       let path =
-        status === "syncing"
+        status === "syncing" || status === "warning"
           ? icons.yellow
           : status === "error"
             ? icons.red
@@ -102,7 +104,7 @@ export default function App() {
         trayIcon.setIcon(path).catch(() => {});
       } else {
         const name =
-          status === "syncing"
+          status === "syncing" || status === "warning"
             ? "icon_syncing.png"
             : status === "error"
               ? "icon_error.png"

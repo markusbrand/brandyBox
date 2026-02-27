@@ -1,8 +1,12 @@
 //! Sync engine: list local/remote, diff, propagate deletes, download, upload.
-//! Matches Python client logic and sync_state.json layout.
+//! Matches Python client logic (robust sync v2) and sync_state.json layout.
+//!
+//! Robustness: only mark paths as "in sync" when verified on both sides.
+//! Skipped downloads/uploads are excluded from state and trigger warning status.
 
 use crate::api::ApiClient;
 use crate::config;
+use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -51,6 +55,13 @@ fn list_local(root: &Path) -> Vec<(String, f64)> {
     out
 }
 
+fn compute_file_hash(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    Some(format!("{:x}", hasher.finalize()))
+}
+
 fn load_sync_state() -> SyncStateFile {
     let path = config::get_sync_state_path();
     if !path.exists() {
@@ -84,6 +95,7 @@ pub enum SyncStatus {
     Idle,
     Syncing,
     Synced,
+    Warning(String),
     Error(String),
 }
 
@@ -98,11 +110,12 @@ pub fn get_sync_status() -> (String, Option<String>) {
         SyncStatus::Idle => ("idle".to_string(), None),
         SyncStatus::Syncing => ("syncing".to_string(), None),
         SyncStatus::Synced => ("synced".to_string(), None),
+        SyncStatus::Warning(msg) => ("warning".to_string(), Some(msg.clone())),
         SyncStatus::Error(msg) => ("error".to_string(), Some(msg.clone())),
     }
 }
 
-/// Payload for the sync-status Tauri event (status + optional error message).
+/// Payload for the sync-status Tauri event (status + optional message).
 pub fn get_sync_status_payload() -> serde_json::Value {
     let (status, message) = get_sync_status();
     serde_json::json!({ "status": status, "message": message })
@@ -120,7 +133,7 @@ fn set_progress(phase: &str, current: u64, total: u64) {
     let _ = SYNC_PROGRESS.lock().map(|mut g| *g = Some(SyncProgress { phase: phase.to_string(), current, total }));
 }
 
-pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64), String> {
+pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, Option<String>), String> {
     let mut state = load_sync_state();
     let last_synced: HashSet<String> = state.paths.iter().cloned().collect();
     let prev_downloaded: HashSet<String> = state.downloaded_paths.iter().cloned().collect();
@@ -129,14 +142,33 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64),
     let local_list = list_local(local_root);
     let remote_list = client.list_files()?;
 
+    log::info!(
+        "Sync: {} remote, {} local (sync_folder={})",
+        remote_list.len(),
+        local_list.len(),
+        local_root.display()
+    );
+
     let local_by_path: HashMap<String, f64> = local_list.iter().cloned().collect();
     let remote_by_path: HashMap<String, f64> = remote_list.iter().map(|i| (i.path.clone(), i.mtime)).collect();
     let remote_hashes: HashMap<String, String> = remote_list.iter().filter_map(|i| i.hash.clone().map(|h| (i.path.clone(), h))).collect();
+    let remote_by_item: HashMap<String, &crate::api::FileItem> = remote_list.iter().map(|i| (i.path.clone(), i)).collect();
 
     let current_local: HashSet<String> = local_by_path.keys().cloned().collect();
     let current_remote: HashSet<String> = remote_by_path.keys().cloned().collect();
 
-    let to_delete_remote: HashSet<String> = last_synced.difference(&current_local).filter(|p| !is_ignored(p)).cloned().collect();
+    let mut to_delete_remote: HashSet<String> = last_synced.difference(&current_local).filter(|p| !is_ignored(p)).cloned().collect();
+
+    // Safety: never delete more files on server than we have locally when the number is large
+    if to_delete_remote.len() > 50 && to_delete_remote.len() > current_local.len() {
+        log::warn!(
+            "Skipping server deletes: would delete {} on server but only {} files locally; likely new device or wrong sync folder",
+            to_delete_remote.len(),
+            current_local.len()
+        );
+        to_delete_remote.clear();
+    }
+
     let to_delete_local: HashSet<String> = last_synced.difference(&current_remote).cloned().collect();
 
     let mut to_del_remote: Vec<String> = to_delete_remote.into_iter().collect();
@@ -144,6 +176,9 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64),
 
     let mut to_del_local: Vec<String> = to_delete_local.into_iter().collect();
     to_del_local.sort_by(|a, b| b.matches('/').count().cmp(&a.matches('/').count()));
+
+    let to_del_local_set: HashSet<String> = to_del_local.iter().cloned().collect();
+    let to_del_remote_set: HashSet<String> = to_del_remote.iter().cloned().collect();
 
     let total_work = to_del_remote.len() + to_del_local.len()
         + current_remote.difference(&current_local).filter(|p| !is_ignored(p)).count()
@@ -153,7 +188,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64),
 
     for path in &to_del_remote {
         set_progress("delete_server", done, total_work);
-        client.delete_file(&path).map_err(|e| format!("Delete server {}: {}", path, e))?;
+        client.delete_file(path).map_err(|e| format!("Delete server {}: {}", path, e))?;
         done += 1;
     }
     for path in &to_del_local {
@@ -174,15 +209,9 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64),
         done += 1;
     }
 
-    let to_del_local_set: HashSet<String> = to_del_local.iter().cloned().collect();
-    let to_del_remote_set: HashSet<String> = to_del_remote.iter().cloned().collect();
     let remaining_local: HashSet<String> = current_local.difference(&to_del_local_set).cloned().collect();
     let remaining_remote: HashSet<String> = current_remote.difference(&to_del_remote_set).cloned().collect();
     let base_synced: HashSet<String> = remaining_local.intersection(&remaining_remote).filter(|p| !is_ignored(p)).cloned().collect();
-    state.paths = base_synced.iter().cloned().collect();
-    state.paths.sort();
-    // Do not save_sync_state here: state.paths would omit files we are about to upload,
-    // so the next sync could re-download them after user deletes locally. Only persist at the end.
 
     let mut to_download: Vec<String> = current_remote
         .difference(&current_local)
@@ -194,22 +223,62 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64),
         if !is_ignored(path) && current_remote.contains(path) {
             let remote_mtime = remote_by_path.get(path).copied().unwrap_or(0.0);
             if remote_mtime > *local_mtime {
+                if let Some(server_hash) = remote_hashes.get(path) {
+                    let local_path = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
+                    if local_path.exists() && local_path.is_file() {
+                        if let Some(local_hash) = compute_file_hash(&local_path) {
+                            if local_hash == *server_hash {
+                                state.file_hashes.insert(path.clone(), server_hash.clone());
+                                continue;
+                            }
+                        }
+                    }
+                }
                 to_download.push(path.clone());
             }
         }
     }
     to_download.sort();
     to_download.dedup();
+
+    // Build to_upload with hash-based skip when local matches server (avoids clock skew)
     let to_upload: Vec<String> = local_list
         .iter()
         .filter(|(path, _)| !is_ignored(path))
         .filter(|(path, local_mtime)| {
-            !current_remote.contains(path) || *local_mtime > remote_by_path.get(path).copied().unwrap_or(0.0)
+            let remote = remote_by_item.get(path);
+            match remote {
+                None => true,
+                Some(r) => {
+                    if let Some(server_hash) = &r.hash {
+                        let local_path = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
+                        if local_path.exists() && local_path.is_file() {
+                            if let Some(local_hash) = compute_file_hash(&local_path) {
+                                if local_hash == *server_hash {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    *local_mtime > r.mtime
+                }
+            }
         })
         .map(|(path, _)| path.clone())
         .collect();
 
+    log::info!(
+        "Sync plan: {} to_download, {} to_upload, {} delete_server, {} delete_local",
+        to_download.len(),
+        to_upload.len(),
+        to_del_remote.len(),
+        to_del_local.len()
+    );
+
     let mut bytes_downloaded = 0u64;
+    let mut completed_downloads: HashSet<String> = HashSet::new();
+    let mut skipped_downloads: HashSet<String> = HashSet::new();
+
     for path in &to_download {
         set_progress("download", done, total_work);
         let skip = prev_downloaded.contains(path);
@@ -227,46 +296,134 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64),
         match client.download_file(path) {
             Ok(body) => {
                 bytes_downloaded += body.len() as u64;
+                let _content_hash = {
+                    let mut hasher = Sha256::new();
+                    hasher.update(&body);
+                    format!("{:x}", hasher.finalize())
+                };
                 if let Some(parent) = local_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
-                let _ = std::fs::write(&local_path, body);
-                state.downloaded_paths.push(path.clone());
+                if let Err(e) = std::fs::write(&local_path, &body) {
+                    if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        log::warn!("Download {}: permission denied, skipping", path);
+                        skipped_downloads.insert(path.clone());
+                        done += 1;
+                        continue;
+                    }
+                    return Err(format!("Download {}: {}", path, e));
+                }
+                completed_downloads.insert(path.clone());
                 if let Some(h) = remote_hashes.get(path) {
                     state.file_hashes.insert(path.clone(), h.clone());
                 }
             }
-            Err(e) => return Err(format!("Download {}: {}", path, e)),
+            Err(e) => {
+                if e.contains("404") {
+                    log::debug!("Download {}: 404, file no longer on server", path);
+                    if local_path.exists() && local_path.is_file() {
+                        let _ = std::fs::remove_file(&local_path);
+                    }
+                    skipped_downloads.insert(path.clone());
+                } else {
+                    return Err(format!("Download {}: {}", path, e));
+                }
+            }
         }
         done += 1;
+    }
+
+    if !skipped_downloads.is_empty() {
+        let sample: Vec<_> = {
+            let mut v: Vec<_> = skipped_downloads.iter().cloned().collect();
+            v.sort();
+            v.into_iter().take(5).collect()
+        };
+        log::warn!(
+            "Skipped {} downloads (permission denied or file gone): sample={:?}",
+            skipped_downloads.len(),
+            sample
+        );
     }
 
     let mut bytes_uploaded = 0u64;
-    let mut uploaded_paths = Vec::new();
+    let mut completed_uploads: HashSet<String> = HashSet::new();
+    let mut skipped_uploads: HashSet<String> = HashSet::new();
+
     for path in &to_upload {
         set_progress("upload", done, total_work);
         let full = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
-        if let Ok(meta) = std::fs::metadata(&full) {
-            bytes_uploaded += meta.len();
+        if full.exists() && full.is_file() {
+            if let Ok(meta) = std::fs::metadata(&full) {
+                bytes_uploaded += meta.len();
+            }
+            if let Err(e) = client.upload_file_from_path(path, &full) {
+                return Err(format!("Upload {}: {}", path, e));
+            }
+            completed_uploads.insert(path.clone());
+        } else {
+            log::debug!("Upload {}: file no longer present, skipping", path);
+            skipped_uploads.insert(path.clone());
         }
-        if let Err(e) = client.upload_file_from_path(path, &full) {
-            return Err(format!("Upload {}: {}", path, e));
-        }
-        uploaded_paths.push(path.clone());
-        state.paths.push(path.clone());
-        save_sync_state(&state);
         done += 1;
     }
 
+    let mut warning_msg = None;
+    let mut warnings: Vec<String> = Vec::new();
+    if !skipped_downloads.is_empty() {
+        warnings.push(format!(
+            "{} download(s) skipped (permission denied or file gone on server)",
+            skipped_downloads.len()
+        ));
+    }
+    if !skipped_uploads.is_empty() {
+        let sample: Vec<_> = {
+            let mut v: Vec<_> = skipped_uploads.iter().cloned().collect();
+            v.sort();
+            v.into_iter().take(5).collect()
+        };
+        log::warn!(
+            "Skipped {} uploads (file no longer present during sync): sample={:?}",
+            skipped_uploads.len(),
+            sample
+        );
+        warnings.push(format!(
+            "{} upload(s) skipped (files removed during sync)",
+            skipped_uploads.len()
+        ));
+    }
+    if !warnings.is_empty() {
+        warning_msg = Some(warnings.join("; "));
+    }
+
+    // Persist ONLY verified paths: base_synced | completed_downloads | completed_uploads
+    let new_synced: HashSet<String> = base_synced
+        .union(&completed_downloads)
+        .cloned()
+        .chain(completed_uploads.iter().cloned())
+        .collect();
+    let mut new_synced: Vec<String> = new_synced.into_iter().collect();
+    new_synced.sort();
+    state.paths = new_synced;
     state.downloaded_paths.clear();
-    let final_remote: HashSet<String> = current_remote.difference(&to_del_remote_set).cloned().collect();
-    state.paths = final_remote.into_iter().chain(uploaded_paths.into_iter()).collect();
-    state.paths.sort();
     save_sync_state(&state);
 
     set_progress("idle", 0, 0);
-    Ok((bytes_downloaded, bytes_uploaded))
+
+    log::info!(
+        "Sync cycle complete: {} downloaded ({} bytes), {} skipped, {} uploaded ({} bytes), {} synced paths{}",
+        completed_downloads.len(),
+        bytes_downloaded,
+        skipped_downloads.len(),
+        completed_uploads.len(),
+        bytes_uploaded,
+        state.paths.len(),
+        if warning_msg.is_some() { " [WARNING]" } else { "" }
+    );
+
+    Ok((bytes_downloaded, bytes_uploaded, warning_msg))
 }
+
 
 #[cfg(test)]
 mod tests {

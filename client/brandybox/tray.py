@@ -373,8 +373,10 @@ class TrayApp:
         self._settings_parent = settings_parent
         self._on_logout = on_logout
         self._paused = False
-        self._status = "synced"  # synced | syncing | error
+        self._status = "synced"  # synced | syncing | warning | error
         self._last_error: Optional[str] = None  # so user can see why sync failed (tooltip)
+        self._last_warning: Optional[str] = None  # e.g. "X uploads skipped (files removed during sync)"
+        self._had_warnings: bool = False  # set by on_warnings during sync
         self._last_notified_error: Optional[str] = None
         self._last_notified_time: float = 0
         self._icon: Optional[pystray.Icon] = None
@@ -393,7 +395,7 @@ class TrayApp:
         # On Linux we always use the drawn icon (circle + B): PNGs often render as a solid square
         # with AppIndicator/Plasma, and compositing didn't help, so skip PNG there entirely.
         size = TRAY_ICON_SIZE_LINUX if sys.platform == "linux" else TRAY_ICON_SIZE_DEFAULT
-        if self._status == "syncing":
+        if self._status in ("syncing", "warning"):
             if sys.platform != "linux":
                 path = _icon_path("icon_syncing.png")
                 if path.exists():
@@ -419,6 +421,9 @@ class TrayApp:
             if self._status == "error" and self._last_error:
                 msg = (self._last_error[:80]).encode("ascii", errors="replace").decode("ascii")
                 self._icon.title = f"Brandy Box - error: {msg}"
+            elif self._status == "warning" and self._last_warning:
+                msg = (self._last_warning[:80]).encode("ascii", errors="replace").decode("ascii")
+                self._icon.title = f"Brandy Box - {msg}"
             elif self._status == "syncing" and (self._sync_phase or self._sync_total > 0):
                 self._icon.title = _progress_tooltip_text(
                     self._sync_phase, self._sync_current, self._sync_total
@@ -453,6 +458,8 @@ class TrayApp:
             log.info("Starting sync cycle (folder=%s)", sync_path)
             self._set_status("syncing")
             self._last_error = None
+            self._last_warning = None
+            self._had_warnings = False
             self._sync_phase = ""
             self._sync_current = 0
             self._sync_total = 0
@@ -463,14 +470,24 @@ class TrayApp:
                 self._sync_total = total
                 self._update_icon()
 
+            def on_warnings(n_skipped: int, sample_paths: list) -> None:
+                self._had_warnings = True
+                self._last_warning = f"{n_skipped} upload(s) skipped (files removed during sync)"
+                self._set_status("warning")
+
             engine = SyncEngine(
                 self._api,
                 sync_path,
                 on_status=lambda _: None,
                 on_progress=on_progress,
                 on_complete=notify_sync_complete,
+                on_warnings=on_warnings,
             )
-            err = engine.run()
+            try:
+                err = engine.run()
+            except Exception as e:
+                log.exception("Sync raised unexpected error: %s", e)
+                err = str(e)
             # If 401, try refreshing the access token and sync once more
             if err and "401" in err and self._refresh_token:
                 log.warning("Sync got 401, attempting token refresh")
@@ -508,7 +525,11 @@ class TrayApp:
                     retry_interval = 60
                     log.debug("Pausing %ds until next sync cycle", retry_interval)
             else:
-                self._set_status("synced")
+                if self._had_warnings:
+                    self._set_status("warning")
+                    log.warning("Sync completed with %s", self._last_warning or "warnings")
+                else:
+                    self._set_status("synced")
                 self._last_notified_error = None
                 log.info("Sync cycle completed successfully")
                 retry_interval = 60

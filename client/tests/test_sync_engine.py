@@ -196,6 +196,47 @@ def test_sync_run_safety_skips_mass_server_deletes_when_local_tiny(
     api.delete_file.assert_not_called()
 
 
+def test_sync_run_skipped_downloads_excluded_from_synced_state(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Skipped downloads (e.g. 404 when file was deleted by another client) must NOT
+    be added to new_synced. Otherwise next run would wrongly delete from server."""
+    import httpx
+
+    from brandybox.sync import engine
+
+    state_path = tmp_path / "sync_state.json"
+    monkeypatch.setattr(engine, "get_sync_state_path", lambda: state_path)
+    (tmp_path / "a.txt").write_text("a")
+    state_path.write_text(
+        json.dumps({"paths": ["a.txt"], "downloaded_paths": [], "file_hashes": {}}),
+        encoding="utf-8",
+    )
+    api = MagicMock()
+    api.list_files.return_value = [
+        {"path": "a.txt", "mtime": 100.0, "hash": "x"},
+        {"path": "b.txt", "mtime": 100.0},
+    ]
+
+    def download_side_effect(path):
+        if path == "b.txt":
+            resp = MagicMock()
+            resp.status_code = 404
+            raise httpx.HTTPStatusError("404", request=MagicMock(), response=resp)
+        return b"a"
+
+    api.download_file.side_effect = download_side_effect
+    monkeypatch.setattr(engine, "SYNC_RATE_LIMIT_PER_SEC", 500.0)
+
+    err = sync_run(api, tmp_path)
+
+    # 404 on download is treated as skip; sync completes
+    assert err is None
+    # b.txt was skipped (404), so it must NOT be in new_synced
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert "b.txt" not in state["paths"], "Skipped download must not be marked as synced"
+
+
 def test_sync_run_after_deletes_saved_state_only_includes_paths_present_locally(
     monkeypatch, tmp_path: Path
 ) -> None:

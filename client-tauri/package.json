@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "GTK_MODULES= npm run tauri dev"
+    "tauri:dev": "GTK_MODULES= npm run tauri dev",
+    "tauri:build": "CI=false npm run tauri build"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

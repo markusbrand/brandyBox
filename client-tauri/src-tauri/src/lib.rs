@@ -231,8 +231,12 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
         client.set_access_token(Some(token));
         let result = sync::run_sync(&mut client, &root);
         match &result {
-            Ok((bytes_downloaded, bytes_uploaded)) => {
-                sync::set_sync_status(sync::SyncStatus::Synced);
+            Ok((bytes_downloaded, bytes_uploaded, warning)) => {
+                if let Some(msg) = warning {
+                    sync::set_sync_status(sync::SyncStatus::Warning(msg.clone()));
+                } else {
+                    sync::set_sync_status(sync::SyncStatus::Synced);
+                }
                 let _ = app.emit(
                     "sync-completed",
                     serde_json::json!({ "bytesDownloaded": bytes_downloaded, "bytesUploaded": bytes_uploaded }),
@@ -376,8 +380,12 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                         client.set_access_token(Some(token));
                         let result = sync::run_sync(&mut client, &root);
                         match &result {
-                            Ok((bytes_downloaded, bytes_uploaded)) => {
-                                sync::set_sync_status(sync::SyncStatus::Synced);
+                            Ok((bytes_downloaded, bytes_uploaded, warning)) => {
+                                if let Some(msg) = warning {
+                                    sync::set_sync_status(sync::SyncStatus::Warning(msg.clone()));
+                                } else {
+                                    sync::set_sync_status(sync::SyncStatus::Synced);
+                                }
                                 let _ = app.emit(
                                     "sync-completed",
                                     serde_json::json!({ "bytesDownloaded": bytes_downloaded, "bytesUploaded": bytes_uploaded }),

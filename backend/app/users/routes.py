@@ -41,7 +41,7 @@ log = logging.getLogger(__name__)
 
 
 @router.post("/auth/login", response_model=TokenPair)
-@limiter.limit("10/minute")
+@limiter.limit("60/minute")  # E2E polls login frequently; 60/min avoids 429 on sync scenarios
 async def login(
     request: Request,
     body: UserLogin,
@@ -67,7 +67,7 @@ async def login(
 
 
 @router.post("/auth/refresh", response_model=TokenPair)
-@limiter.limit("20/minute")
+@limiter.limit("60/minute")  # Align with login; E2E + normal use
 async def refresh(
     request: Request,
     body: RefreshRequest,

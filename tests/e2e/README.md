@@ -5,8 +5,10 @@ End-to-end scenarios (sync, large file) that run the **client-tauri** desktop ap
 **Build the Tauri client before running E2E** (from repo root):
 
 ```bash
-cd client-tauri && npm run tauri build
+cd client-tauri && npm run tauri:build
 ```
+
+Use `tauri:build` when CI=1 causes `--ci` errors; otherwise `npm run tauri build` or `cargo build --release` in src-tauri.
 
 The runner starts the binary at `client-tauri/src-tauri/target/release/brandybox` (or `target/debug/brandybox` if release is not present).
 

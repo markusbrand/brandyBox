@@ -1,4 +1,6 @@
-# Autonomous Testing Reference — Brandy Box
+# Autonomous Testing Reference — Brandy Box (client-tauri)
+
+All autonomous testing runs on the **Tauri client (client-tauri)**; the Python client in `client/` is not tested.
 
 ## Test summary template
 
@@ -45,7 +47,7 @@ Use this structure at the end of an autonomous test run:
 - **BRANDYBOX_E2E_CLIENT_RUNNING**: Set to `1` (or `true`/`yes`) to skip starting the client; assume it is already running (e.g. started manually or in tray). Use when client start fails or you run client separately.
 - **BRANDYBOX_BASE_URL**, **BRANDYBOX_SYNC_FOLDER**, **BRANDYBOX_E2E_MAX_ATTEMPTS**: Optional (in `.env` or env). **BRANDYBOX_SYNC_FOLDER** must be a path the test process can write to and should match the folder the Brandy Box client is syncing (e.g. repo `tests/e2e/sync_test_dir`; create with `mkdir -p` and set in `.env`). **BRANDYBOX_LARGE_FILE_SIZE_MB**: For large-file scenario (default 2).
 
-**Separate test user and folder (no production mix):** Use a dedicated E2E config so the client-tauri app runs with the test user and test sync folder only. One-time setup (legacy): run the client-tauri app once with `BRANDYBOX_CONFIG_DIR` set to the repo’s `tests/e2e/e2e_client_config` directory, log in with **BRANDYBOX_TEST_EMAIL** / **BRANDYBOX_TEST_PASSWORD**, and set the sync folder to the same path as **BRANDYBOX_SYNC_FOLDER** (e.g. `tests/e2e/sync_test_dir`). The E2E runners then start the client-tauri binary with that config dir automatically when **BRANDYBOX_SYNC_FOLDER** is set. Production stays in the default config (e.g. `~/.config/brandybox`) and keyring ("BrandyBox"); E2E uses `tests/e2e/e2e_client_config` and keyring ("BrandyBox-E2E"). See `tests/e2e/README.md` for step-by-step setup. Build the Tauri client before E2E: `cd client-tauri && npm run tauri build`.
+**Separate test user and folder (no production mix):** Use a dedicated E2E config so the client-tauri app runs with the test user and test sync folder only. One-time setup (legacy): run the client-tauri app once with `BRANDYBOX_CONFIG_DIR` set to the repo’s `tests/e2e/e2e_client_config` directory, log in with **BRANDYBOX_TEST_EMAIL** / **BRANDYBOX_TEST_PASSWORD**, and set the sync folder to the same path as **BRANDYBOX_SYNC_FOLDER** (e.g. `tests/e2e/sync_test_dir`). The E2E runners then start the client-tauri binary with that config dir automatically when **BRANDYBOX_SYNC_FOLDER** is set. Production stays in the default config (e.g. `~/.config/brandybox`) and keyring ("BrandyBox"); E2E uses `tests/e2e/e2e_client_config` and keyring ("BrandyBox-E2E"). See `tests/e2e/README.md` for step-by-step setup. Build the Tauri client before E2E: `cd client-tauri && npm run tauri:build` (or `cargo build --release` in src-tauri; use tauri:build when CI=1 causes --ci errors).
 
 ## E2E scenarios (included)
 
@@ -55,5 +57,5 @@ Use this structure at the end of an autonomous test run:
 ## Performance checks
 
 - **Unit**: `pytest --durations=10` in `backend/` for slow tests; client-tauri uses `cargo test` (Rust output includes timing).
-- **E2E**: Add timing in scenario steps; store in `StepResult(..., details={"duration_seconds": ...})` and surface in logs or summary. E2E runs the **client-tauri** app.
+- **E2E**: Add timing in scenario steps; store in `StepResult(..., details={"duration_seconds": ...})` and surface in logs or summary. E2E runs exclusively against the **client-tauri** app.
 - **Profiling**: For backend CPU hotspots, run under `python -m cProfile -o profile.stats`; for client-tauri use Rust tooling (e.g. cargo flamegraph). Summarize top functions in the test summary.

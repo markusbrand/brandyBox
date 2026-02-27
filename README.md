@@ -7,7 +7,8 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 ## Architecture
 
 - **Backend**: Python (FastAPI) in Docker on Raspberry Pi. Storage under `/mnt/shared_storage/brandyBox/<email>/`. JWT auth, user CRUD (admin), file list/upload/download.
-- **Client**: Python desktop app (Windows, Linux, Mac) with system tray, sync engine, and keyring-backed login. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8081` when on LAN **brandstaetter**. Optional: **Tauri + React** client in `client-tauri/` (moderne Oberfläche, gleiche Features; unter Linux nutzt Tauri die korrekten Tray-Schnittstellen für Wayland).
+- **Client (primary)**: **Tauri + React** in `client-tauri/` – modern desktop app (Windows, Linux, Mac) with robust sync engine. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8081` when on LAN. Tray and sync work out of the box on Linux (incl. Wayland/KDE).
+- **Client (fallback)**: Python/Tk client in `client/` – **deprecated**, use only if Tauri cannot be built or run. Same config format and keyring; under Linux the venv-based install may be needed for correct tray behavior.
 
 ## Backend (Raspberry Pi)
 
@@ -86,7 +87,9 @@ On first start, the backend creates an admin user from `BRANDYBOX_ADMIN_EMAIL` a
 
 ## Client (Desktop)
 
-### Install (download pre-built)
+The **Tauri client** (`client-tauri/`) is the recommended desktop app. The Python client (`client/`) is deprecated and kept as fallback only.
+
+### Install (download pre-built) – Tauri client
 
 1. Open **[Releases](https://github.com/markusbrand/brandyBox/releases)** and download the zip for your system:
    - **Windows:** `BrandyBox-<version>-Windows-x64.zip`
@@ -98,29 +101,25 @@ On first start, the backend creates an admin user from `BRANDYBOX_ADMIN_EMAIL` a
    - **macOS:** Open the folder and run the app (or drag it to Applications).
    - **Linux:** Open a terminal in the unzipped folder and run `./BrandyBox`. To add a menu entry, see [Installers](assets/installers/README_installers.md#linux).
 
-**Linux (Garuda/KDE):** If the tray icon appears as a square and right-click has no menu, use the [venv-based install](#linux-venv-install-optional-if-tray-is-broken) instead. See [Client troubleshooting](docs/client/troubleshooting.md) for more.
+**Linux (Garuda/KDE):** Tauri uses native tray APIs; no venv needed. If you encounter issues, see [Client troubleshooting](docs/client/troubleshooting.md).
 
 ### Other install options
 
-**Development** (run from source):
+**Tauri – development** (run from source):
 
 ```bash
-cd client
-pip install -e .
-# From repo root so assets are findable:
-cd ..
-python -m brandybox.main
+cd client-tauri
+npm install
+npm run tauri dev
 ```
 
-#### Linux venv install (optional; if tray is broken)
+**Tauri – build from source** (create your own zip):  
+`cd client-tauri && npm install && npm run tauri:build`. Output under `src-tauri/target/release/bundle/`. See [client-tauri/README.md](client-tauri/README.md).
 
-On Linux (e.g. Garuda, KDE) the standalone binary may show a square tray icon and no context menu. For the correct icon and menu, use the venv install: prerequisites `sudo pacman -S python-gobject libappindicator-gtk3` (Arch/Garuda), then from repo root: `python -m venv .venv --system-site-packages`, `source .venv/bin/activate`, `cd client && pip install -e . && cd ..`, and `./assets/installers/linux_install.sh --venv`. Start from the app menu; enable "Start when I log in" in Settings. See [Client troubleshooting](docs/client/troubleshooting.md).
+---
 
-**Build from source** (create your own zip):  
-Generate logos (optional): `python scripts/generate_logos.py`. Then `pip install pyinstaller && pyinstaller client/brandybox.spec`. Output: `dist/BrandyBox/`. See [Installers](assets/installers/README_installers.md) for Linux/Windows/macOS steps.
-
-**Tauri + React client** (moderne Oberfläche, gleiche Funktionalität):  
-Siehe [client-tauri/README.md](client-tauri/README.md). Voraussetzungen: Node.js, Rust (`rustup default stable`). Entwicklung: `cd client-tauri && npm install && npm run tauri dev`. Build: `npm run tauri build`. Unter Linux funktionieren Tray-Icon und Kontextmenü mit Tauri out of the box (kein venv nötig).
+**Python client** (deprecated, fallback only):  
+Use only if Tauri cannot be built or run. Development: `cd client && pip install -e . && cd .. && python -m brandybox.main`. Linux venv install (for correct tray): prerequisites `sudo pacman -S python-gobject libappindicator-gtk3`, then `python -m venv .venv --system-site-packages`, `source .venv/bin/activate`, `cd client && pip install -e .`, `./assets/installers/linux_install.sh --venv`. PyInstaller build: `pyinstaller client/brandybox.spec`. See [Client troubleshooting](docs/client/troubleshooting.md).
 
 ### Usage
 
@@ -130,13 +129,13 @@ Siehe [client-tauri/README.md](client-tauri/README.md). Voraussetzungen: Node.js
 - **Open Settings**: If you have never set a sync folder, the Settings window opens automatically (showing default ~/brandyBox); close it or choose another folder so sync can start. You can also run **"Brandy Box Settings"** from your app menu (Linux install adds this desktop entry) or run `BrandyBox --settings` to open Settings without the tray. Left-clicking the tray icon is supposed to open Settings too, but on some Linux setups the tray menu is broken (grey circle); use "Brandy Box Settings" instead.
 - **Quit the app**: Right-click tray icon → Quit (if the menu opens). If the tray menu is broken, run **"Quit Brandy Box"** from your app menu (Linux install adds this), or run `killall BrandyBox` in a terminal.
 - **Tray icon / menu on Linux**: For the full tray (icon + right‑click menu), install PyGObject and AppIndicator: `sudo pacman -S python-gobject libappindicator-gtk3` (Arch/Garuda). The app then uses the AppIndicator backend. **On Garuda/KDE, use the venv-based install** (see “Install on Linux” above or `./assets/installers/linux_install.sh --venv`) so the menu runs `python -m brandybox.main` with the system `gi`; the standalone PyInstaller binary falls back to the XOrg backend (square icon, no context menu). If you use a venv, create it with `python -m venv .venv --system-site-packages` so the venv can use the system `gi` module.
-- Tray icon shows sync state: synced (blue), syncing (amber), error (red). The icon is drawn as a rounded "B". If the icon turns **red**, hover over it to see the error in the tooltip (e.g. "401 Unauthorized" or "Upload test.txt: …"); fix the cause (token, network, or Pi storage) and the next sync will retry. Expired tokens are refreshed automatically.
+- Tray icon shows sync state: synced (blue), syncing (amber), warning (amber – some uploads skipped), error (red). If the icon turns **red**, hover to see the error; if **amber** after sync, some files were skipped (e.g. removed during sync). Expired tokens are refreshed automatically.
 - Option “Start when I log in” in Settings (no admin required).
 
 ## Documentation
 
 - [Installers](assets/installers/README_installers.md)
-- [E2E autonomous sync test](tests/e2e/README.md) – runs the **client-tauri** app; build first with `cd client-tauri && npm run tauri build`, then `python -m tests.e2e.run_autonomous_sync` (requires test credentials and backend).
+- [E2E autonomous sync test](tests/e2e/README.md) – runs the **client-tauri** app; build first with `cd client-tauri && npm run tauri:build`, then `python -m tests.e2e.run_autonomous_sync` (requires test credentials and backend).
 - Development docs: `pip install mkdocs && mkdocs serve` then open http://127.0.0.1:8000, or `mkdocs build` for `site/`
 - **Full QA**: From repo root run `./scripts/run-qa.sh` (client-tauri tests, backend pytest, mkdocs build). Requires `.venv` with `pytest` and `mkdocs` (e.g. `pip install -r backend/requirements.txt mkdocs`).
 

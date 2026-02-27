@@ -78,7 +78,7 @@ def _tauri_binary() -> Optional[Path]:
 def _start_client() -> bool:
     """Start Brandy Box (Tauri) client. Returns True if started or already running.
     When using E2E config (BRANDYBOX_SYNC_FOLDER set), starts client with BRANDYBOX_CONFIG_DIR
-    so it uses the test user and test folder. Requires client-tauri to be built (npm run tauri build)."""
+    so it uses the test user and test folder. Requires client-tauri to be built (npm run tauri:build)."""
     # Allow skipping start when client is run manually (e.g. BRANDYBOX_E2E_CLIENT_RUNNING=1)
     if os.environ.get("BRANDYBOX_E2E_CLIENT_RUNNING", "").strip().lower() in ("1", "true", "yes"):
         log.info("BRANDYBOX_E2E_CLIENT_RUNNING set; assuming client is already running")
@@ -92,7 +92,7 @@ def _start_client() -> bool:
     binary = _tauri_binary()
     if not binary:
         log.error(
-            "Tauri client not built. From repo root run: cd client-tauri && npm run tauri build"
+            "Tauri client not built. From repo root run: cd client-tauri && npm run tauri:build"
         )
         return False
     env = os.environ.copy()

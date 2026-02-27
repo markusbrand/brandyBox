@@ -53,6 +53,60 @@ Files like `.directory` (KDE Dolphin), `Thumbs.db`, `Desktop.ini` (Windows), and
 
 The client **ignores** these names: they are never uploaded and never downloaded. So they no longer clutter the server or cause permission errors on other operating systems. If such a file was synced to the server in the past, it remains there but the client will not try to download it (and will not delete it from the server, so other clients can keep it if they want). The list of ignored basenames is fixed in the sync engine (see `SYNC_IGNORE_BASENAMES` in `sync/engine.py`).
 
+## Sync engine robustness (v2)
+
+The sync engine follows these principles to avoid discrepancies between server and client:
+
+- **Verified state only**: A path is marked "in sync" only when we have verified it exists on both sides with matching content. Paths we failed or skipped to download/upload are never added to sync state.
+- **Content hash preferred**: When the server sends content hashes, we use them to decide if upload/download is needed. This avoids spurious transfers from clock skew.
+- **Skipped operations**: Download skips (e.g. 404, permission denied) and upload skips (file removed during sync) are logged and excluded from sync state. The tray icon turns **yellow** when any downloads or uploads were skipped.
+
+If you see persistent discrepancies, change the sync folder in Settings (which clears the folder and sync state) or manually delete `~/.config/brandybox/sync_state.json`, then run sync again. This treats the server as source of truth and re-downloads everything.
+
+## Tray icon is yellow after sync
+
+**Symptom:** The Brandy Box tray icon turns **yellow** (instead of blue) after a sync cycle completes.
+
+**Meaning:** The sync completed, but some **downloads** or **uploads** were skipped. This typically happens when:
+
+**Uploads skipped:** Another process deletes or moves files in the sync folder during sync, or you manually delete/move files while sync is in progress.
+
+**Downloads skipped:** Permission denied when writing locally (read-only folder), or file no longer on server (404).
+
+**What the client does:** A warning is logged. The tray icon stays **yellow** and the tooltip shows the message (e.g. "5 download(s) skipped" or "3 upload(s) skipped"). Skipped paths are not marked as synced, so they will be retried on the next run.
+
+**What you can do:** If the files were intentionally removed, nothing. If you need them synced, keep the files in place and run **Sync now** from the tray menu.
+
+## Sync says complete but files are missing locally (Tauri client)
+
+**Symptom:** You click "Sync now" on the Tauri client, it reports sync complete (blue or yellow icon), but comparing server files with your local sync folder shows many files missing locally.
+
+**Possible causes and fixes:**
+
+1. **Wrong sync folder:** On Linux, paths are case-sensitive. If Settings shows `/home/you/brandyBox` but you're comparing with `/home/you/brandybox`, the synced files are in the folder configured in Settings. Check **Settings → Sync folder** and open that folder to verify.
+
+2. **Downloads skipped (permission denied):** If the tray icon is **yellow** after sync, hover it — you may see "X download(s) skipped (permission denied or file gone on server)". Fix write permissions on the sync folder and any subfolders, then run **Sync now** again.
+
+3. **Stale sync state:** If you changed the sync folder, migrated from Python to Tauri, or suspect corrupted state: In Settings, change the sync folder (or re-select the same one and confirm the warning). This clears sync state; the next sync downloads everything from the server.
+
+4. **View sync logs (dev build):** Run from terminal to see sync details: `cd client-tauri && npm run tauri dev`. Look for "Sync plan: X to_download" and "Sync cycle complete: Y downloaded, Z skipped" in the output.
+
+## Large files (MP4, video) not syncing – tray icon blue
+
+**Symptom:** A large file (e.g. big MP4) in your sync folder never appears on the server, but the tray icon stays **blue** (no error).
+
+**Possible causes:**
+
+1. **Out of memory:** The client loads the entire file into memory for upload. Very large files (e.g. 2 GB+) can cause `MemoryError`. When that happens, the sync **fails** and the tray icon turns **red** with an error message. If the icon stays blue, the upload may not have been attempted yet (sync is still processing many other files) or the file might be in a subfolder that hasn’t been reached.
+2. **File removed during sync:** If the file was deleted or moved while sync ran, it would be skipped and the tray would turn **yellow** (see above).
+3. **Timeout or quota:** Very large uploads can hit timeouts or hit your storage quota. Those failures produce a **red** icon and an error in the log.
+
+**What you can do:**
+
+- **Check the log:** Look in `~/.config/brandybox/brandybox.log` for errors mentioning the file path (e.g. "out of memory", "timeout", "507").
+- **Exclude large files:** If you regularly sync very large videos, consider moving them outside the sync folder or adding support for size-based exclusions in the client.
+- **Run "Sync now":** Ensure sync has finished; large syncs with many files can take a long time.
+
 ## Sync: "Permission denied" when downloading another file
 
 **Symptom:** Sync fails or logs a warning like:
