@@ -1,6 +1,6 @@
 [package]
 name = "brandybox"
-version = "0.2.1"
+version = "0.2.2"
 description = "Brandy Box desktop client - sync local folder to Raspberry Pi"
 authors = ["Brandy Box"]
 edition = "2021"
