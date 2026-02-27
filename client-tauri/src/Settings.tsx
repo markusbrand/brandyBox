@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -65,6 +65,27 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const [syncProgress, setSyncProgress] = useState<{ phase: string; current: number; total: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  const fitWindowToContent = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const timer = setTimeout(() => {
+      const contentHeight = el.scrollHeight || el.getBoundingClientRect().height;
+      const contentWidth = el.scrollWidth || el.getBoundingClientRect().width;
+      const height = Math.ceil(contentHeight + 64); // + title bar 32 + padding
+      const width = Math.max(560, Math.ceil(contentWidth) + 48);
+      invoke("fit_window_to_content", { width, height }).catch(() => {});
+    }, 350);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const cleanup = fitWindowToContent();
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [adminOpen, storage, fitWindowToContent]);
 
   const loadSettings = async () => {
     try {
@@ -214,7 +235,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   };
 
   return (
-    <Box sx={{ p: 2, maxWidth: 560, mx: "auto" }}>
+    <Box ref={contentRef} sx={{ p: 2, maxWidth: 560, mx: "auto" }}>
       <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
         Settings
       </Typography>

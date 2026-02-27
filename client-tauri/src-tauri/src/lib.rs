@@ -257,8 +257,10 @@ fn quit_app() {
     std::process::exit(0);
 }
 
-const DEFAULT_SETTINGS_WIDTH: u32 = 520;
-const DEFAULT_SETTINGS_HEIGHT: u32 = 640;
+const DEFAULT_SETTINGS_WIDTH: u32 = 600;
+const DEFAULT_SETTINGS_HEIGHT: u32 = 720;
+const MIN_SETTINGS_WIDTH: u32 = 400;
+const MIN_SETTINGS_HEIGHT: u32 = 400;
 const TRAY_SIDE_MARGIN: i32 = 16;
 
 /// Restore or set main (settings) window position and size, then show it.
@@ -274,6 +276,7 @@ fn show_main_window(app: tauri::AppHandle) {
                 }
             }
         } else {
+            // No stored position: place near tray (typically bottom-right) and ensure fully visible
             if let Ok(Some(monitor)) = win.primary_monitor() {
                 let work = monitor.work_area();
                 let wa_x = work.position.x;
@@ -282,15 +285,16 @@ fn show_main_window(app: tauri::AppHandle) {
                 let wa_h = work.size.height as i32;
                 let win_w = DEFAULT_SETTINGS_WIDTH as i32;
                 let win_h = DEFAULT_SETTINGS_HEIGHT as i32;
-                let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).max(wa_x);
-                let y = (wa_y + TRAY_SIDE_MARGIN).min(wa_y + wa_h - win_h);
+                // Tray is usually bottom-right: position window there, clamped to work area
+                let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).clamp(wa_x, wa_x + wa_w - win_w);
+                let y = (wa_y + wa_h - win_h - TRAY_SIDE_MARGIN).clamp(wa_y, wa_y + wa_h - win_h);
                 let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
                 let _ = win.set_size(tauri::PhysicalSize::new(
                     DEFAULT_SETTINGS_WIDTH,
                     DEFAULT_SETTINGS_HEIGHT,
                 ));
                 log::debug!(
-                    "Positioned settings window near tray: ({}, {})",
+                    "Positioned settings window near tray: ({}, {}), fully visible",
                     x,
                     y
                 );
@@ -305,7 +309,41 @@ fn show_main_window(app: tauri::AppHandle) {
 #[tauri::command]
 fn hide_main_window(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
+        if let (Ok(pos), Ok(sz)) = (win.inner_position(), win.inner_size()) {
+            let geom = format!("{},{},{},{}", pos.x, pos.y, sz.width, sz.height);
+            config::set_settings_window_geometry(geom);
+        }
         let _ = win.hide();
+    }
+}
+
+/// Resize the settings window to fit content. Called from frontend when cards expand/collapse.
+#[tauri::command]
+fn fit_window_to_content(app: tauri::AppHandle, width: Option<u32>, height: Option<u32>) {
+    if let Some(win) = app.get_webview_window("main") {
+        let w = width
+            .map(|v| v.max(MIN_SETTINGS_WIDTH))
+            .unwrap_or(DEFAULT_SETTINGS_WIDTH);
+        let h = height
+            .map(|v| v.max(MIN_SETTINGS_HEIGHT))
+            .unwrap_or(DEFAULT_SETTINGS_HEIGHT);
+        if win.set_size(tauri::PhysicalSize::new(w, h)).is_ok() {
+            // Ensure window stays fully visible (clamp to monitor work area)
+            if let Ok(Some(monitor)) = win.current_monitor() {
+                let work = monitor.work_area();
+                if let Ok(pos) = win.inner_position() {
+                    let wa_x = work.position.x;
+                    let wa_y = work.position.y;
+                    let wa_w = work.size.width as i32;
+                    let wa_h = work.size.height as i32;
+                    let win_w = w as i32;
+                    let win_h = h as i32;
+                    let new_x = pos.x.clamp(wa_x, (wa_x + wa_w - win_w).max(wa_x));
+                    let new_y = pos.y.clamp(wa_y, (wa_y + wa_h - win_h).max(wa_y));
+                    let _ = win.set_position(tauri::PhysicalPosition::new(new_x, new_y));
+                }
+            }
+        }
     }
 }
 
@@ -430,8 +468,8 @@ pub fn run() {
                     let wa_h = work.size.height as i32;
                     let win_w = DEFAULT_SETTINGS_WIDTH as i32;
                     let win_h = DEFAULT_SETTINGS_HEIGHT as i32;
-                    let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).max(wa_x);
-                    let y = (wa_y + TRAY_SIDE_MARGIN).min(wa_y + wa_h - win_h);
+                    let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).clamp(wa_x, wa_x + wa_w - win_w);
+                    let y = (wa_y + wa_h - win_h - TRAY_SIDE_MARGIN).clamp(wa_y, wa_y + wa_h - win_h);
                     let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
                     let _ = win.set_size(tauri::PhysicalSize::new(
                         DEFAULT_SETTINGS_WIDTH,
@@ -490,6 +528,7 @@ pub fn run() {
             quit_app,
             show_main_window,
             hide_main_window,
+            fit_window_to_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

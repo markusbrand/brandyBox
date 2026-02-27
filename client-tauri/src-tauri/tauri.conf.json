@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Brandy Box",
-        "width": 520,
-        "height": 640,
+        "width": 600,
+        "height": 720,
         "resizable": true,
-        "visible": true,
+        "visible": false,
         "label": "main",
         "decorations": false
       }
