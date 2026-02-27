@@ -1,4 +1,4 @@
-# Build Brandy Box client (Windows, Linux, macOS) and attach zips to GitHub Releases.
+# Build Brandy Box Tauri client (Windows, Linux, macOS) and attach zips to GitHub Releases.
 # On "Release published", produces BrandyBox-<tag>-Windows-x64.zip, -Linux-x64.zip, -macOS-<arch>.zip
 # as downloadable assets on the release page.
 
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Tag to build and attach assets to (e.g. v0.1.1). Leave empty to only build (no attach).'
+        description: 'Tag to build and attach assets to (e.g. v0.2.1). Leave empty to only build (no attach).'
         required: false
         type: string
 
@@ -27,20 +27,26 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: client-tauri/package-lock.json
 
-      - name: Install dependencies and build
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies and build Tauri
         run: |
-          pip install pyinstaller
-          pip install -e ./client
-          pyinstaller -y client/brandybox.spec
+          cd client-tauri
+          npm ci
+          npm run tauri:build
 
       - name: Zip Windows artifact
         run: |
-          Compress-Archive -Path dist/BrandyBox/* -DestinationPath "BrandyBox-${{ env.VERSION }}-Windows-x64.zip"
+          $bundle = "client-tauri/src-tauri/target/release/bundle"
+          Compress-Archive -Path "$bundle/msi/*" -DestinationPath "BrandyBox-${{ env.VERSION }}-Windows-x64.zip"
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -49,27 +55,43 @@ jobs:
           path: BrandyBox-${{ env.VERSION }}-Windows-x64.zip
 
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies and build
+      - name: Install Linux dependencies
         run: |
-          pip install pyinstaller
-          pip install -e ./client
-          pyinstaller -y client/brandybox.spec
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: client-tauri/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'client-tauri/src-tauri -> target'
+
+      - name: Install dependencies and build Tauri
+        run: |
+          cd client-tauri
+          npm ci
+          npm run tauri:build
 
       - name: Zip Linux artifact
         run: |
-          cd dist && zip -r "../BrandyBox-${{ env.VERSION }}-Linux-x64.zip" BrandyBox && cd ..
+          cd client-tauri/src-tauri/target/release/bundle
+          zip -r "../../../../../../BrandyBox-${{ env.VERSION }}-Linux-x64.zip" deb appimage
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -85,23 +107,37 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: client-tauri/package-lock.json
 
-      - name: Install dependencies and build
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'client-tauri/src-tauri -> target'
+
+      - name: Install dependencies and build Tauri
         run: |
-          pip install pyinstaller
-          pip install -e ./client
-          pyinstaller -y client/brandybox.spec
+          cd client-tauri
+          npm ci
+          npm run tauri:build
 
       - name: Zip macOS artifact
         id: zip-macos
         run: |
           ARCH=$(echo "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')
           ZIP_NAME="BrandyBox-${{ env.VERSION }}-macOS-${ARCH}.zip"
-          cd dist && zip -r "../${ZIP_NAME}" BrandyBox && cd ..
+          cd client-tauri/src-tauri/target/release/bundle/dmg
+          zip -r "../../../../../../../${ZIP_NAME}" .
+          cd -
           echo "zip_path=${ZIP_NAME}" >> $GITHUB_OUTPUT
 
       - name: Upload macOS artifact
