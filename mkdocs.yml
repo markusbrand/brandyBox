@@ -7,5 +7,6 @@ nav:
   - Backend: backend/overview.md
   - Client:
     - Overview: client/overview.md
+    - Tauri client: client/tauri.md
     - Troubleshooting: client/troubleshooting.md
   - License: license.md
