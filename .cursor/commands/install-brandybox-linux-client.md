@@ -1,6 +1,6 @@
 # install-brandybox-linux-client
 
-Commands for **Garuda Linux** (or any Arch-based desktop): test-run the client, then install with desktop menu entries. **Use the venv-based install** so the tray shows the correct icon and right-click menu (the standalone PyInstaller binary on Linux often shows a square icon and no context menu).
+Commands for **Garuda Linux** (or any Arch-based desktop): install and run the **Tauri client**, optionally add desktop menu entries. The Tauri client is the primary desktop app with modern UI, tray icon, and native integration.
 
 ---
 
@@ -9,14 +9,13 @@ Commands for **Garuda Linux** (or any Arch-based desktop): test-run the client, 
 When the user invokes this command, **perform the steps yourself**—do not only show instructions for copy-paste.
 
 - **Default (no extra keyword):** Autonomously perform a **test-run**:
-  1. From repo root: ensure `.venv` exists with `python -m venv .venv --system-site-packages` (skip if `.venv` already exists).
-  2. Install the client in the venv: `source .venv/bin/activate && cd client && pip install -e . && cd ..` (from repo root).
-  3. Start the client: `python -m brandybox.main` from repo root with the venv activated. Run this in the **background** (it is a GUI/tray app and blocks otherwise). Use the workspace path for the repo root (e.g. `/home/markus/cursorProjects/brandyBox`).
-  - If the user has not installed prerequisites, remind them once: `sudo pacman -S python-gobject libappindicator-gtk3` (Arch/Garuda).
+  1. From repo root: `cd client-tauri`, run `npm install`.
+  2. Start the client: `npm run tauri dev` (or `npm run tauri:dev` if `tauri dev` fails). Run this in the **background** (it is a GUI/tray app and blocks otherwise). Use the workspace path for the repo root (e.g. `/home/markus/cursorProjects/brandyBox`).
+  - Remind about prerequisites once: **Node.js** (LTS), **Rust** (`rustup default stable`), and for Arch/Garuda: `sudo pacman -S webkit2gtk gtk3 libappindicator-gtk3`.
 
 - **If the user also says "install" (or "install for system", "menu entries", "install menu"):** In addition to the test-run setup, **install for the system** (menu entries):
-  1. Ensure venv + client are set up as above (step 1–2).
-  2. From repo root run: `chmod +x scripts/install_desktop_venv.sh && ./scripts/install_desktop_venv.sh` (or `./assets/installers/linux_install.sh --venv`).
+  1. Build the Tauri app: `cd client-tauri && npm run tauri:build`.
+  2. From repo root run: `chmod +x scripts/install_desktop_tauri.sh && ./scripts/install_desktop_tauri.sh`.
   - Tell the user that **Brandy Box**, **Brandy Box Settings**, and **Quit Brandy Box** are now in the application menu and they can enable "Start when I log in" in Settings.
 
 Use the actual workspace path for the repo (e.g. `$WORKSPACE_PATH` or the path from context); do not assume `~/brandyBox` if the workspace is elsewhere.
@@ -28,61 +27,38 @@ Use the actual workspace path for the repo (e.g. `$WORKSPACE_PATH` or the path f
 From your **repo root** (replace with your actual path, e.g. `/home/markus/cursorProjects/brandyBox`):
 
 ```bash
-cd <repo_root>
-python -m venv .venv --system-site-packages
-source .venv/bin/activate
-cd client && pip install -e . && cd ..
-python -m brandybox.main
+cd <repo_root>/client-tauri
+npm install
+npm run tauri dev
 ```
 
-- Use `--system-site-packages` so the venv can use the system PyGObject (needed for tray icon + menu).
-- The tray icon should appear; use the menu to open Settings, sync, or Quit.
-- To leave the venv: `deactivate`.
+Or if `tauri dev` fails with CI/GTK issues: `npm run tauri:dev`
 
-**Prerequisites** (Arch/Garuda, for full tray):  
-`sudo pacman -S python-gobject libappindicator-gtk3`
+The tray icon should appear; use the menu to open Settings, sync, or Quit.
 
-Optional — run tests first:
-
-```bash
-pip install -e ".[dev]"
-pytest
-```
+**Prerequisites** (Arch/Garuda):
+- Node.js (LTS, e.g. 20.x) and npm
+- Rust: <https://rustup.rs/> – `rustup default stable`
+- `sudo pacman -S webkit2gtk gtk3 libappindicator-gtk3`
 
 ---
 
 ## 2. Install for the system (menu entries, recommended)
 
-From **repo root** (venv and client already set up as in step 1):
+From **repo root** (after building the Tauri app):
 
 ```bash
-cd <repo_root>
-chmod +x scripts/install_desktop_venv.sh
-./scripts/install_desktop_venv.sh
+cd <repo_root>/client-tauri
+npm install
+npm run tauri:build
+cd ..
+chmod +x scripts/install_desktop_tauri.sh
+./scripts/install_desktop_tauri.sh
 ```
 
-Or use the installer script (same result):
-
-```bash
-./assets/installers/linux_install.sh --venv
-```
-
-This adds **Brandy Box**, **Brandy Box Settings**, and **Quit Brandy Box** to the application menu. Start **Brandy Box** from the menu; in Settings you can enable "Start when I log in". No sudo (except for the pacman packages above).
+This copies the AppImage to `~/.local/share/brandybox/` and adds **Brandy Box**, **Brandy Box Settings**, and **Quit Brandy Box** to the application menu. Start **Brandy Box** from the menu; in Settings you can enable "Start when I log in".
 
 If the menu still shows an old icon: `kbuildsycoca5 --noincremental` (KDE).
-
----
-
-## 3. Optional: run from anywhere (no menu entries)
-
-If you only want a `brandybox` command without desktop entries:
-
-```bash
-cd <repo_root>/client
-pip install --user -e .
-```
-
-Then from anywhere: `python -m brandybox.main` (ensure `~/.local/bin` is on your `PATH` if you use a console script).
 
 ---
 
@@ -90,8 +66,7 @@ Then from anywhere: `python -m brandybox.main` (ensure `~/.local/bin` is on your
 
 | Goal | Commands |
 |------|----------|
-| **Test-run** | Repo root: `python -m venv .venv --system-site-packages` → `source .venv/bin/activate` → `cd client && pip install -e . && cd ..` → `python -m brandybox.main` (run in background) |
-| **Install (menu)** | After test-run setup: `./scripts/install_desktop_venv.sh` or `./assets/installers/linux_install.sh --venv` |
-| **Run from anywhere** | `cd client` → `pip install --user -e .` → `python -m brandybox.main` from any directory |
+| **Test-run** | Repo root → `cd client-tauri` → `npm install` → `npm run tauri dev` (run in background) |
+| **Install (menu)** | Build: `cd client-tauri && npm run tauri:build` → `./scripts/install_desktop_tauri.sh` |
 
 This command is available in chat as `/install-brandybox-linux-client`. Say **install** (or "install for system" / "menu entries") to also add desktop menu entries.
