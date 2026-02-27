@@ -45,11 +45,11 @@ if [ -z "$EXEC_PATH" ]; then
   done
 
   if [ -n "$DEB" ] && command -v ar >/dev/null 2>&1; then
-    mkdir -p "$INSTALL_DIR"
     TMP_DEB="$(mktemp -d)"
     trap "rm -rf $TMP_DEB" EXIT
     (cd "$TMP_DEB" && ar x "$DEB" && tar xf data.tar.* 2>/dev/null || tar xf data.tar 2>/dev/null)
-    # Tauri deb puts binary in usr/bin/ - name varies (brandy-box, "Brandy Box", etc.)
+    # Tauri deb expects full structure: usr/bin/brandybox + usr/lib/Brandy Box/ (icons)
+    # Extract preserving structure so resolveResource finds tray icons
     BINARY=""
     for name in "brandy-box" "brandybox" "Brandy Box"; do
       if [ -f "$TMP_DEB/usr/bin/$name" ]; then
@@ -57,13 +57,12 @@ if [ -z "$EXEC_PATH" ]; then
         break
       fi
     done
-    if [ -z "$BINARY" ]; then
-      BINARY=$(find "$TMP_DEB/usr/bin" -type f 2>/dev/null | head -1)
-    fi
+    [ -z "$BINARY" ] && BINARY=$(find "$TMP_DEB/usr/bin" -type f 2>/dev/null | head -1)
     if [ -n "$BINARY" ] && [ -x "$BINARY" ]; then
-      cp -f "$BINARY" "$INSTALL_DIR/brandybox"
-      chmod +x "$INSTALL_DIR/brandybox"
-      EXEC_PATH="$INSTALL_DIR/brandybox"
+      rm -rf "$INSTALL_DIR"
+      mkdir -p "$INSTALL_DIR"
+      cp -a "$TMP_DEB/usr" "$INSTALL_DIR/"
+      EXEC_PATH="$INSTALL_DIR/usr/bin/$(basename "$BINARY")"
     fi
   fi
 fi
