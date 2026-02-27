@@ -490,7 +490,7 @@ class TrayApp:
                 err = str(e)
             # If 401, try refreshing the access token and sync once more
             if err and "401" in err and self._refresh_token:
-                log.warning("Sync got 401, attempting token refresh")
+                log.info("Sync got 401, attempting token refresh")
                 new_token = self._refresh_token()
                 if new_token:
                     self._api.set_access_token(new_token)

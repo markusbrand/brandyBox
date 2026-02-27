@@ -514,8 +514,8 @@ def sync_run(
 
     if skipped_downloads:
         sample = sorted(skipped_downloads)[:5]
-        log.warning(
-            "Skipped %d downloads (permission denied or file gone): sample=%s",
+        log.info(
+            "Skipped %d downloads (file no longer on server or local write denied): sample=%s",
             len(skipped_downloads), sample,
         )
 
