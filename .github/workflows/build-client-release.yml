@@ -46,7 +46,15 @@ jobs:
       - name: Zip Windows artifact
         run: |
           $bundle = "client-tauri/src-tauri/target/release/bundle"
-          Compress-Archive -Path "$bundle/msi/*" -DestinationPath "BrandyBox-${{ env.VERSION }}-Windows-x64.zip"
+          # Tauri 2 uses NSIS by default (nsis/); MSI (msi/) requires WiX and may not be present
+          if (Test-Path "$bundle/nsis") {
+            Compress-Archive -Path "$bundle/nsis/*" -DestinationPath "BrandyBox-${{ env.VERSION }}-Windows-x64.zip"
+          } elseif (Test-Path "$bundle/msi") {
+            Compress-Archive -Path "$bundle/msi/*" -DestinationPath "BrandyBox-${{ env.VERSION }}-Windows-x64.zip"
+          } else {
+            Get-ChildItem -Path $bundle -Recurse | Select-Object FullName
+            throw "No nsis or msi folder found under $bundle"
+          }
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -90,8 +98,13 @@ jobs:
 
       - name: Zip Linux artifact
         run: |
-          cd client-tauri/src-tauri/target/release/bundle
-          zip -r "../../../../../../BrandyBox-${{ env.VERSION }}-Linux-x64.zip" deb appimage
+          BUNDLE_DIR="client-tauri/src-tauri/target/release/bundle"
+          ZIP_NAME="BrandyBox-${{ env.VERSION }}-Linux-x64.zip"
+          cd "$BUNDLE_DIR"
+          # tauri.conf.json has targets: ["deb"] only - no appimage; zip only what exists
+          zip -r "../../../../../${ZIP_NAME}" deb
+          cd -
+          ls -la "$ZIP_NAME"
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
@@ -135,9 +148,16 @@ jobs:
         run: |
           ARCH=$(echo "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')
           ZIP_NAME="BrandyBox-${{ env.VERSION }}-macOS-${ARCH}.zip"
-          cd client-tauri/src-tauri/target/release/bundle/dmg
-          zip -r "../../../../../../../${ZIP_NAME}" .
-          cd -
+          BUNDLE_DIR="client-tauri/src-tauri/target/release/bundle"
+          # Tauri 2: dmg output is under bundle/dmg/; 6 levels up from dmg = workspace root
+          if [ -d "$BUNDLE_DIR/dmg" ]; then
+            (cd "$BUNDLE_DIR/dmg" && zip -r "../../../../../../${ZIP_NAME}" .)
+          else
+            echo "Bundle contents:"
+            ls -laR "$BUNDLE_DIR" || true
+            exit 1
+          fi
+          ls -la "$ZIP_NAME"
           echo "zip_path=${ZIP_NAME}" >> $GITHUB_OUTPUT
 
       - name: Upload macOS artifact
