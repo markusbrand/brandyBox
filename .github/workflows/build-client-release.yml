@@ -114,6 +114,9 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    env:
+      # Avoid AppleScript/Finder timeout in CI when creating DMG (see tauri-action#1003)
+      TAURI_BUNDLER_DMG_IGNORE_CI: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
