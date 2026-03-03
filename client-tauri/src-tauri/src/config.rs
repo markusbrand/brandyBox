@@ -4,6 +4,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 const DEFAULT_REMOTE_BASE_URL: &str = "https://brandybox.brandstaetter.rocks";
 const CONFIG_FILENAME: &str = "config.json";
 const SYNC_STATE_FILENAME: &str = "sync_state.json";
