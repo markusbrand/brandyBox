@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
 import { resolveResource } from "@tauri-apps/api/path";
 import { listen } from "@tauri-apps/api/event";
@@ -63,8 +64,13 @@ export default function App() {
     refreshAuth();
   }, [refreshAuth]);
 
-  // Window is shown only when user clicks "Settings" in tray (show_main_window).
-  // Never auto-show on startup.
+  // In dev mode: auto-show window (tray doesn't work on Wayland, so show window for development).
+  // In production: window only via tray "Settings" click.
+  useEffect(() => {
+    if (import.meta.env.DEV && view !== "loading") {
+      getCurrentWindow().show().catch(() => {});
+    }
+  }, [view]);
 
   /** Preloaded paths: blue = idle/synced, yellow = syncing, red = error. Set at tray init. */
   const stateIconsRef = useRef<{ blue: string; yellow: string; red: string } | null>(null);
