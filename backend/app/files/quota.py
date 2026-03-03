@@ -64,15 +64,13 @@ def get_disk_usage_bytes(path: Path) -> int:
 def get_drive_stats(path: Path) -> Tuple[int, int]:
     """
     Return (total_bytes, free_bytes) for the filesystem containing path.
-    Uses os.statvfs (Linux/Unix).
+    Uses shutil.disk_usage (cross-platform); falls back to os.statvfs on Unix if needed.
     """
-    import os
+    import shutil
     try:
-        st = os.statvfs(str(path.resolve()))
-        total = st.f_blocks * st.f_frsize
-        free = st.f_bavail * st.f_frsize
-        return (total, free)
-    except OSError as e:
+        usage = shutil.disk_usage(path.resolve())
+        return (usage.total, usage.free)
+    except (OSError, AttributeError) as e:
         log.warning("get_drive_stats failed for %s: %s", path, e)
         return (0, 0)
 

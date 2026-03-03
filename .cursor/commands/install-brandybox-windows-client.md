@@ -1,8 +1,16 @@
 # install-brandybox-windows-client
 
-PowerShell commands for **Windows** (e.g. Lenovo laptop, no admin): run the client from Cursor for testing, then build a portable exe for any Windows machine.
+PowerShell commands for **Windows** (e.g. Lenovo laptop, no admin): run the **Tauri + React** desktop client from Cursor for testing, then build an installer or portable exe for any Windows machine.
 
-Replace `C:\path\to\brandyBox` with your actual repo path (e.g. `C:\Users\mbrandstaetter\cursorWS\brandyBox` or your workspace path).
+Uses the **client-tauri** UI (Material Design, system tray, Rust sync engine). Replace `C:\path\to\brandyBox` with your actual repo path (e.g. `C:\Users\mbrandstaetter\cursorWS\brandybox\brandyBox`).
+
+---
+
+## Prerequisites
+
+- **Node.js** LTS (e.g. 20.x) and **npm**: <https://nodejs.org/>
+- **Rust** (stable): <https://rustup.rs/> — run `rustup default stable`
+- **Visual Studio Build Tools** (for Rust on Windows): typically needed for the `windows-sys` crate; install “Desktop development with C++” or the components suggested by `rustup`.
 
 ---
 
@@ -11,67 +19,62 @@ Replace `C:\path\to\brandyBox` with your actual repo path (e.g. `C:\Users\mbrand
 From the **repo root** in PowerShell (e.g. from Cursor’s terminal):
 
 ```powershell
-cd C:\path\to\brandyBox\client
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .
-cd ..
-python -m brandybox.main
+cd C:\path\to\brandyBox\client-tauri
+npm install
+npm run tauri dev
 ```
 
-- The `cd ..` and run from repo root so assets and config paths resolve correctly.
-- If execution policy blocks the activate script: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` (once), or use `cmd` and `.\.venv\Scripts\activate.bat` then `python -m brandybox.main`.
-- Tray icon should appear. To exit the venv: `deactivate`.
+- A window opens (e.g. Login); the **tray icon** appears in the system tray. Left-click the icon for the menu; “Settings” opens the window.
+- Config and logs use the same paths as the old client: `%APPDATA%\BrandyBox\` (config, logs). Keyring credentials (service name “BrandyBox”) are compatible if you migrated from the Python client.
 
-Optional — run tests first:
+Optional — run frontend dev only (no Tauri window):
 
 ```powershell
-pip install -e ".[dev]"
-pytest
+npm run dev
 ```
 
 ---
 
-## 2. Create a ready-to-use exe (portable folder)
+## 2. Create a Windows build (installer or portable)
 
-Build from the **repo root** (not `client/`). No admin required if Python and pip are user-installed.
+Build from **client-tauri** (no admin required):
 
 ```powershell
-cd C:\path\to\brandyBox
-pip install pyinstaller
-pyinstaller client/brandybox.spec
+cd C:\path\to\brandyBox\client-tauri
+npm install
+npm run tauri:build
 ```
 
-**Output:** `dist\BrandyBox\` containing:
-- `BrandyBox.exe` — run this to start the app
-- DLLs and assets (e.g. `assets\logo\`) — keep the whole folder together
+- Use `tauri:build` (script sets `CI=false`) to avoid CI-related build errors; otherwise you can run `npm run tauri build` if your environment is already set.
+- **Output:** `src-tauri\target\release\bundle\`:
+  - **MSI** installer (e.g. `Brandy Box_0.2.2_x64_en-US.msi`) — run on the target PC for a per-machine or per-user install.
+  - Optionally **NSIS** or other formats if configured in `src-tauri/tauri.conf.json` under `bundle.targets` (e.g. add `"nsis"` for a single .exe installer).
 
-**To use on any Windows machine:** Copy the entire `dist\BrandyBox` folder (e.g. to a USB stick or shared drive). On the target PC, run `BrandyBox.exe` from inside that folder. No installer or admin needed; per-user config and logs go to `%APPDATA%\BrandyBox\`.
+**To use on any Windows machine:** Copy the built MSI (or the unpacked app from the bundle folder) to the target PC and run it. No admin needed for per-user install; config and logs go to `%APPDATA%\BrandyBox\`.
 
 ---
 
-## 3. Optional: single installer exe (Inno Setup)
+## 3. Optional: customize bundle targets (e.g. NSIS .exe)
 
-For one `.exe` installer that does per-user install (no admin):
+For a single `.exe` installer (NSIS) in addition to or instead of MSI:
 
-1. Install [Inno Setup 6](https://jrsoftware.org/isinfo.php) (default path).
-2. Build the folder as above (`pyinstaller client/brandybox.spec`).
-3. In PowerShell from repo root:
+1. In `client-tauri/src-tauri/tauri.conf.json`, under `bundle.targets`, add `"nsis"` (e.g. `["msi", "nsis"]` for Windows).
+2. Re-run from **client-tauri**:
 
 ```powershell
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "C:\path\to\brandyBox\assets\installers\brandybox.iss"
+npm run tauri:build
 ```
 
-- Installer is created at `dist\BrandyBox-Setup.exe`. Run it on any Windows machine for a per-user install (Start Menu shortcut, uninstaller).
+- NSIS output appears in `src-tauri\target\release\bundle\nsis\` (e.g. `Brandy Box_0.2.2_x64-setup.exe`).
 
 ---
 
 ## Summary
 
-| Goal | PowerShell (from repo or client as noted) |
-|------|------------------------------------------|
-| **Test-run in Cursor** | `cd …\brandyBox\client` → `.\.venv\Scripts\Activate.ps1` → `pip install -e .` → `cd ..` → `python -m brandybox.main` |
-| **Portable exe folder** | From repo root: `pip install pyinstaller` → `pyinstaller client/brandybox.spec` → use `dist\BrandyBox\BrandyBox.exe` (copy whole folder to target PC) |
-| **Single installer exe** | After PyInstaller build, run Inno Setup: `ISCC.exe …\assets\installers\brandybox.iss` → `dist\BrandyBox-Setup.exe` |
+| Goal | PowerShell (from repo or client-tauri as noted) |
+|------|--------------------------------------------------|
+| **Test-run in Cursor** | `cd …\brandyBox\client-tauri` → `npm install` → `npm run tauri dev` |
+| **Windows build (MSI/portable)** | `cd …\brandyBox\client-tauri` → `npm install` → `npm run tauri:build` → use `src-tauri\target\release\bundle\` |
+| **NSIS single .exe installer** | Add `"nsis"` to `bundle.targets` in `tauri.conf.json`, then `npm run tauri:build` → output in `bundle\nsis\` |
 
 This command is available in chat as `/install-brandybox-windows-client`.

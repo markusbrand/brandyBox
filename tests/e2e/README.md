@@ -2,10 +2,14 @@
 
 End-to-end scenarios (sync, large file) that run the **client-tauri** desktop app and verify behaviour against the API. The Python client in `client/` is not used for E2E.
 
-**Build the Tauri client before running E2E** (from repo root):
+**Build the Tauri client before running E2E** (from repo root).
+
+**On your local machine** you need [Rust](https://rustup.rs/) and Node.js installed (and on Windows: Visual Studio build tools for Rust). Then:
 
 ```bash
-cd client-tauri && npm run tauri:build
+cd client-tauri
+npm ci
+npm run tauri:build
 ```
 
 Use `tauri:build` when CI=1 causes `--ci` errors; otherwise `npm run tauri build` or `cargo build --release` in src-tauri.
@@ -50,6 +54,10 @@ If you prefer to use an existing test user and run the client once yourself:
 2. Create the test user on the backend (e.g. via admin API or UI).
 3. Run the **client-tauri** app **once** with `BRANDYBOX_CONFIG_DIR="$(pwd)/tests/e2e/e2e_client_config"`, log in as the test user, and in Settings set the sync folder to the same path as **BRANDYBOX_SYNC_FOLDER** (e.g. `tests/e2e/sync_test_dir`).
 4. Run `python -m tests.e2e.run_autonomous_sync` or `run_all_e2e`; the runner will use the existing credentials and config.
+
+## CI
+
+The [Test workflow](../../.github/workflows/test.yml) runs on push/PR to `main`/`master`: backend pytest, client-tauri `cargo test` and build, then E2E against a backend container (test admin `test@example.com` / `testpass123`). No repo secrets required for E2E in CI.
 
 ## Optional env vars
 
