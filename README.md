@@ -139,6 +139,23 @@ Use only if Tauri cannot be built or run. Development: `cd client && pip install
 - Development docs: `pip install mkdocs && mkdocs serve` then open http://127.0.0.1:8000, or `mkdocs build` for `site/`
 - **Full QA**: From repo root run `./scripts/run-qa.sh` (client-tauri tests, backend pytest, mkdocs build). Requires `.venv` with `pytest` and `mkdocs` (e.g. `pip install -r backend/requirements.txt mkdocs`).
 
+**Single venv for backend tests and docs:** From repo root, install backend deps (and optional mkdocs) into the project venv so `python -m pytest backend` and `run-qa.sh` work without changing into `backend/`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+pip install -r backend/requirements.txt mkdocs
+cd backend && pytest        # or: pytest backend (from root)
+```
+
+**Local client-tauri and E2E:** Install [Rust](https://rustup.rs/) and Node.js, then build the Tauri client and run E2E (see [E2E README](tests/e2e/README.md)):
+
+```bash
+cd client-tauri && npm ci && npm run tauri:build
+# Set BRANDYBOX_ADMIN_EMAIL and BRANDYBOX_ADMIN_PASSWORD in repo-root .env, then:
+python -m tests.e2e.run_autonomous_sync
+```
+
 ## Security
 
 - **No secrets in repo**: Passwords, JWT secret, and SMTP credentials are never committed. Backend reads from environment (use `backend/.env` from `backend/.env.example`; `.env` is gitignored).
