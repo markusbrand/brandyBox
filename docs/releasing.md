@@ -2,7 +2,7 @@
 
 This page describes how to create a new GitHub release. Releases trigger:
 
-- **Build Client for Release**: Builds the Tauri client for Windows, Linux, and macOS and attaches zips to the release.
+- **Build Client for Release**: Uses [tauri-action](https://github.com/tauri-apps/tauri-action) to build the Tauri client for Windows (NSIS), Linux (deb), and macOS (Arm + Intel) and attach artifacts to the release.
 - **Publish Backend to GHCR**: Builds and pushes the backend Docker image to `ghcr.io/markusbrand/brandybox-backend` with the release tag.
 
 ## Prerequisites
