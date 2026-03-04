@@ -14,6 +14,8 @@ When the user invokes this command, **perform the steps yourself**—do not only
   3. Use the workspace path for the repo root (e.g. `/home/markus/cursorProjects/brandyBox`).
   - Other prerequisites: **Node.js** (LTS), **Rust** (`rustup default stable`).
 
+- **If the user says "dev" (or "development", "develop"):** Start in **dev mode** for immediate code changes: `cd client-tauri`, `npm install`, `npm run tauri:dev` in the background. The window auto-shows (no tray on Wayland). Frontend hot-reloads; Rust changes recompile.
+
 - **If the user also says "install" (or "install for system", "menu entries", "install menu"):** In addition to the test-run setup, **install for the system** (menu entries):
   1. Build the Tauri app: `cd client-tauri && CARGO_TARGET_DIR="$(pwd)/src-tauri/target" npm run tauri:build` (ensures output lands in workspace for the install script).
   2. From repo root run: `chmod +x scripts/install_desktop_tauri.sh && ./scripts/install_desktop_tauri.sh`.
@@ -32,7 +34,7 @@ cd <repo_root>
 ./scripts/run_brandybox_installed.sh
 ```
 
-**Fallback (dev mode):** If not installed, or for development:
+**For development (immediate code changes, hot reload):**
 
 ```bash
 cd <repo_root>/client-tauri
@@ -40,7 +42,7 @@ npm install
 npm run tauri dev
 ```
 
-Note: Dev mode (`tauri dev`) does NOT show the tray icon on Wayland. Use the installed build or start from the application menu for tray support.
+In dev mode the window auto-shows on startup (so you can work without the tray). Frontend changes hot-reload; Rust changes trigger a recompile. The tray icon does NOT appear on Wayland in dev mode.
 
 **Prerequisites** (Arch/Garuda):
 - Node.js (LTS, e.g. 20.x) and npm
@@ -75,4 +77,4 @@ If the menu still shows an old icon: `kbuildsycoca5 --noincremental` (KDE).
 | **Test-run** | Repo root → `./scripts/run_brandybox_installed.sh` (or `npm run tauri dev` if not installed) |
 | **Install (menu)** | Build: `cd client-tauri && npm run tauri:build` → `./scripts/install_desktop_tauri.sh` |
 
-This command is available in chat as `/install-brandybox-linux-client`. Say **install** (or "install for system" / "menu entries") to also add desktop menu entries.
+This command is available in chat as `/install-brandybox-linux-client`. Say **install** for menu entries, or **dev** for development mode with hot reload.

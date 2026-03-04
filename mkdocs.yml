@@ -4,6 +4,7 @@ theme:
   name: readthedocs
 nav:
   - Home: index.md
+  - Releasing: releasing.md
   - Backend: backend/overview.md
   - Client:
     - Overview: client/overview.md
