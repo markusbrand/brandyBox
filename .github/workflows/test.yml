@@ -66,14 +66,13 @@ jobs:
 
       - name: Tar Tauri release for E2E
         run: |
-          cd client-tauri/src-tauri/target
-          tar czf ../../../tauri-release.tar.gz release/
+          tar czf tauri-release.tar.gz -C client-tauri/src-tauri/target release/
 
       - name: Upload Tauri release for E2E
         uses: actions/upload-artifact@v4
         with:
           name: tauri-release-linux
-          path: client-tauri/tauri-release.tar.gz
+          path: tauri-release.tar.gz
 
   e2e:
     name: E2E (sync scenario)

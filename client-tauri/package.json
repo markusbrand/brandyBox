@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "GTK_MODULES= npm run tauri dev",
-    "tauri:build": "CI=false npm run tauri build"
+    "tauri:build": "cross-env CI=false npm run tauri build"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "cross-env": "^7.0.3",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
