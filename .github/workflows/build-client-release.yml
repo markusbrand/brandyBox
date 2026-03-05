@@ -13,6 +13,10 @@ on:
         description: 'Tag to build and attach assets to (e.g. v0.2.3). Leave empty to only build (no attach).'
         required: false
         type: string
+      build_ref:
+        description: 'Ref to build from (e.g. master). Leave empty to build from the release tag.'
+        required: false
+        type: string
 
 env:
   VERSION: ${{ github.event.release.tag_name || github.event.inputs.release_tag || 'dev' }}
@@ -47,7 +51,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
+          # When build_ref is set (e.g. master), build from that ref and still upload to release_tag
+          ref: ${{ github.event.inputs.build_ref || github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
