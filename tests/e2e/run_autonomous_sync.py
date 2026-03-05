@@ -26,6 +26,10 @@ _client = _repo_root / "client"
 if _client.exists() and str(_client) not in sys.path:
     sys.path.insert(0, str(_client))
 
+# CI has no keyring backend; set before any keyring import (e.g. from brandybox or e2e_setup).
+if os.environ.get("CI") == "true":
+    os.environ.setdefault("KEYRING_BACKEND", "keyrings.alt.file.PlaintextKeyring")
+
 from tests.e2e.env_loader import load_e2e_env
 load_e2e_env(_repo_root)
 

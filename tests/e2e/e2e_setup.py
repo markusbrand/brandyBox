@@ -16,6 +16,10 @@ import uuid
 from pathlib import Path
 from typing import Optional, Tuple
 
+# CI (e.g. GitHub Actions) has no keyring backend; force file-based backend before any keyring use.
+if os.environ.get("CI") == "true":
+    os.environ.setdefault("KEYRING_BACKEND", "keyrings.alt.file.PlaintextKeyring")
+
 log = logging.getLogger(__name__)
 
 E2E_CLIENT_PID_FILE = "e2e_client.pid"
@@ -121,6 +125,25 @@ def create_test_user(
     return test_email, temp_password, refresh_token
 
 
+def _ensure_keyring_backend() -> None:
+    """Use file-based keyring when no backend is available (e.g. CI). Idempotent."""
+    import keyring
+    try:
+        # Set backend without calling get_keyring() first (get_keyring() can raise or cache fail backend).
+        if os.environ.get("CI") == "true":
+            from keyrings.alt.file import PlaintextKeyring
+            keyring.set_keyring(PlaintextKeyring())
+            log.debug("E2E: set keyring backend to PlaintextKeyring for CI")
+            return
+        kr = keyring.get_keyring()
+        if type(kr).__module__ == "keyring.backends.fail":
+            from keyrings.alt.file import PlaintextKeyring
+            keyring.set_keyring(PlaintextKeyring())
+            log.debug("E2E: set keyring backend to PlaintextKeyring (fail backend was active)")
+    except Exception as e:
+        log.debug("E2E: could not set keyring backend: %s", e)
+
+
 def setup_e2e_config(
     sync_folder: Path,
     test_email: str,
@@ -131,6 +154,7 @@ def setup_e2e_config(
     Create E2E config dir, write config.json with sync_folder, seed keyring with test user.
     Returns the config dir used.
     """
+    _ensure_keyring_backend()
     import keyring
 
     config_dir = e2e_config_dir or _e2e_config_dir()
@@ -160,6 +184,7 @@ def cleanup_e2e(
     If remove_sync_contents_only is True, only empty or remove test artifacts from sync_folder;
     if False and sync_folder was created by us (temp), remove the folder.
     """
+    _ensure_keyring_backend()
     import keyring
 
     # Delete test user (admin API)
