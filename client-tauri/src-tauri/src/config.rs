@@ -84,6 +84,11 @@ fn write_config(update: impl FnOnce(&mut ConfigFile)) {
     );
 }
 
+/// Config directory path (for E2E credential file, etc.). Does not create the dir.
+pub fn get_config_dir() -> PathBuf {
+    config_dir()
+}
+
 #[allow(dead_code)]
 pub fn get_config_path() -> PathBuf {
     ensure_config_dir();

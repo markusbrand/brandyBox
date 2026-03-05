@@ -166,7 +166,13 @@ def setup_e2e_config(
     )
     keyring.set_password(E2E_KEYRING_SERVICE, KEY_EMAIL, test_email)
     keyring.set_password(E2E_KEYRING_SERVICE, KEY_REFRESH_TOKEN, refresh_token)
-    log.info("E2E config ready: %s, keyring %s seeded", config_dir, E2E_KEYRING_SERVICE)
+    # Tauri client in CI has no system keyring; it reads from e2e_credentials.json when BRANDYBOX_CONFIG_DIR is set.
+    credentials_path = config_dir / "e2e_credentials.json"
+    credentials_path.write_text(
+        json.dumps({"email": test_email, "refresh_token": refresh_token}, indent=2),
+        encoding="utf-8",
+    )
+    log.info("E2E config ready: %s, keyring %s and e2e_credentials.json seeded", config_dir, E2E_KEYRING_SERVICE)
     return config_dir
 
 
@@ -208,10 +214,11 @@ def cleanup_e2e(
     except Exception as e:
         log.warning("E2E cleanup: keyring clear failed: %s", e)
 
-    # Config dir: remove config and pid file so next run starts clean
+    # Config dir: remove config, credentials file, and pid file so next run starts clean
     if e2e_config_dir and e2e_config_dir.exists():
         try:
             (e2e_config_dir / "config.json").unlink(missing_ok=True)
+            (e2e_config_dir / "e2e_credentials.json").unlink(missing_ok=True)
             (e2e_config_dir / E2E_CLIENT_PID_FILE).unlink(missing_ok=True)
         except OSError as e:
             log.warning("E2E cleanup: config dir cleanup failed: %s", e)
