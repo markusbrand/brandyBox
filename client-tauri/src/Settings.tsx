@@ -308,7 +308,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
               </Box>
               <Box>
                 <Typography variant="body2" color="text.secondary">
-                  <strong>Storage space</strong>
+                  <strong>Your storage (quota)</strong>
                 </Typography>
                 {storage.limit_bytes != null && storage.limit_bytes > 0 && (
                   <Typography variant="body2" color="text.secondary">
@@ -336,18 +336,18 @@ export default function Settings({ email, onLogout }: SettingsProps) {
           {storage?.server_disk_total_bytes != null &&
             storage.server_disk_total_bytes > 0 &&
             storage.server_disk_used_bytes != null && (
-              <Box sx={{ mt: 1.5, pl: 0 }}>
+              <Box sx={{ mt: 1.5, pl: 0, p: 1.5, bgcolor: "action.hover", borderRadius: 1 }}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  <strong>Server disk (entire Pi HDD)</strong>
+                </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  <strong>Server disk (Pi)</strong>
+                  {formatBytes(storage.server_disk_used_bytes)} used of {formatBytes(storage.server_disk_total_bytes)} total
                 </Typography>
                 {storage.server_disk_path && (
                   <Typography variant="caption" display="block" color="text.disabled">
                     path: {storage.server_disk_path}
                   </Typography>
                 )}
-                <Typography variant="body2" color="text.secondary">
-                  {formatBytes(storage.server_disk_used_bytes)} used of {formatBytes(storage.server_disk_total_bytes)} total
-                </Typography>
               </Box>
             )}
           <Box sx={{ mt: 1 }}>
