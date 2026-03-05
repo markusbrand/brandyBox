@@ -57,6 +57,7 @@ async def get_storage(
         if total_disk > 0:
             result["server_disk_total_bytes"] = total_disk
             result["server_disk_used_bytes"] = total_disk - free_disk
+            result["server_disk_path"] = str(disk_path)  # so client/debug can show which path was used
             log.info(
                 "Server disk stats: path=%s total=%s used=%s",
                 disk_path,

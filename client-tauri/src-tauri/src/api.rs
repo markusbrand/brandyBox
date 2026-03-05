@@ -55,6 +55,9 @@ pub struct StorageInfo {
     /// Used bytes on that filesystem (total - free). Optional for backward compatibility.
     #[serde(default)]
     pub server_disk_used_bytes: Option<i64>,
+    /// Path that was used for server disk stats (for debugging).
+    #[serde(default)]
+    pub server_disk_path: Option<String>,
 }
 
 #[derive(Deserialize)]

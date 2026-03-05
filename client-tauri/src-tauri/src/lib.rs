@@ -145,7 +145,8 @@ fn api_get_storage() -> Result<serde_json::Value, String> {
         "used_bytes": s.used_bytes,
         "limit_bytes": s.limit_bytes,
         "server_disk_total_bytes": s.server_disk_total_bytes,
-        "server_disk_used_bytes": s.server_disk_used_bytes
+        "server_disk_used_bytes": s.server_disk_used_bytes,
+        "server_disk_path": s.server_disk_path
     }))
 }
 

@@ -55,6 +55,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
     limit_bytes: number | null;
     server_disk_used_bytes?: number | null;
     server_disk_total_bytes?: number | null;
+    server_disk_path?: string | null;
   } | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [adminOpen, setAdminOpen] = useState(false);
@@ -105,6 +106,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
           limit_bytes: number | null;
           server_disk_used_bytes?: number | null;
           server_disk_total_bytes?: number | null;
+          server_disk_path?: string | null;
         }>("api_get_storage").catch(() => null),
       ]);
       setSyncFolder(folder);
@@ -338,6 +340,11 @@ export default function Settings({ email, onLogout }: SettingsProps) {
                 <Typography variant="body2" color="text.secondary">
                   <strong>Server disk (Pi)</strong>
                 </Typography>
+                {storage.server_disk_path && (
+                  <Typography variant="caption" display="block" color="text.disabled">
+                    path: {storage.server_disk_path}
+                  </Typography>
+                )}
                 <Typography variant="body2" color="text.secondary">
                   {formatBytes(storage.server_disk_used_bytes)} used of {formatBytes(storage.server_disk_total_bytes)} total
                 </Typography>
