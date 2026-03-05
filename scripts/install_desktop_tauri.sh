@@ -37,7 +37,9 @@ if [ -z "$EXEC_PATH" ]; then
   for dir in deb ""; do
     [ -n "$dir" ] && subdir="$BUNDLE_DIR/$dir" || subdir="$BUNDLE_DIR"
     [ -d "$subdir" ] || continue
-    found=$(find "$subdir" -maxdepth 1 -name "*.deb" -type f 2>/dev/null | head -1)
+    # Use newest .deb by mtime so we install the latest build (e.g. 0.2.3 over 0.2.2)
+    found=$(ls -t "$subdir"/*.deb 2>/dev/null | head -1)
+    [ -z "$found" ] && found=$(find "$subdir" -maxdepth 1 -name "*.deb" -type f 2>/dev/null | head -1)
     if [ -n "$found" ] && [ -f "$found" ]; then
       DEB="$found"
       break
