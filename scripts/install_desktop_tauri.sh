@@ -90,6 +90,13 @@ if [ -z "$EXEC_PATH" ]; then
   exit 1
 fi
 
+# Always prefer the latest release binary if it is newer (avoids stale client after code changes)
+RELEASE_BIN="$REPO_ROOT/client-tauri/src-tauri/target/release/brandybox"
+if [ -x "$RELEASE_BIN" ] && [ -f "$EXEC_PATH" ] && [ "$RELEASE_BIN" -nt "$EXEC_PATH" ]; then
+  cp -f "$RELEASE_BIN" "$EXEC_PATH"
+  chmod +x "$EXEC_PATH"
+fi
+
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 mkdir -p "$APPS"
 
