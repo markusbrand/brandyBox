@@ -246,10 +246,25 @@ export default function Settings({ email, onLogout }: SettingsProps) {
             Account
           </Typography>
           <Typography variant="body1">{email ?? "—"}</Typography>
-          {storage && (
+          {storage && (() => {
+            const usedPct =
+              storage.limit_bytes != null && storage.limit_bytes > 0
+                ? (storage.used_bytes / storage.limit_bytes) * 100
+                : 0;
+            // Ensure arc is visible when any storage is used (real % can be tiny, e.g. 3 GiB of 3.8 TiB ≈ 0.09%)
+            const displayPct =
+              storage.used_bytes > 0 && usedPct < 2 ? Math.min(100, Math.max(2, usedPct * 10)) : Math.min(100, usedPct);
+            return (
             <Box sx={{ display: "flex", alignItems: "flex-start", gap: 2, mt: 1 }}>
-              <Box sx={{ position: "relative", flexShrink: 0 }}>
-                {/* Full circle = 100% of available space (grey track) */}
+              <Box
+                sx={{
+                  position: "relative",
+                  flexShrink: 0,
+                  width: 64,
+                  height: 64,
+                }}
+              >
+                {/* Grey track = 100% (background) */}
                 <CircularProgress
                   variant="determinate"
                   value={100}
@@ -260,28 +275,42 @@ export default function Settings({ email, onLogout }: SettingsProps) {
                     position: "absolute",
                     left: 0,
                     top: 0,
+                    zIndex: 0,
                   }}
                 />
-                {/* Blue arc = used percentage of limit */}
+                {/* Blue arc = used percentage (on top); explicit blue so it's visible in bundled app */}
                 <CircularProgress
                   variant="determinate"
-                  value={
-                    storage.limit_bytes != null && storage.limit_bytes > 0
-                      ? Math.min(100, (storage.used_bytes / storage.limit_bytes) * 100)
-                      : 0
-                  }
+                  value={displayPct}
                   size={64}
                   thickness={4}
-                  sx={{ color: "primary.main" }}
+                  color="primary"
+                  sx={{
+                    color: "#1a73e8",
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    zIndex: 1,
+                  }}
                 />
               </Box>
               <Box>
                 <Typography variant="body2" color="text.secondary">
                   <strong>Storage space</strong>
                 </Typography>
+                {storage.limit_bytes != null && storage.limit_bytes > 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    {Math.min(100, (storage.used_bytes / storage.limit_bytes) * 100).toFixed(1)}% used
+                  </Typography>
+                )}
                 <Typography variant="body2" color="text.secondary">
                   Used: {formatBytes(storage.used_bytes)}
                 </Typography>
+                {storage.limit_bytes != null && (
+                  <Typography variant="body2" color="text.secondary">
+                    Max: {formatBytes(storage.limit_bytes)}
+                  </Typography>
+                )}
                 <Typography variant="body2" color="text.secondary">
                   Available:{" "}
                   {storage.limit_bytes != null
@@ -290,7 +319,8 @@ export default function Settings({ email, onLogout }: SettingsProps) {
                 </Typography>
               </Box>
             </Box>
-          )}
+            );
+          })()}
           <Box sx={{ mt: 1 }}>
             <Button size="small" onClick={() => setChangePwdOpen(true)}>
               Change password

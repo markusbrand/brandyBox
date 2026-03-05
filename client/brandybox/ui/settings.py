@@ -941,24 +941,37 @@ def show_settings(
         )
         _storage_canvas.pack(fill="both", expand=True)
         storage_used_var = tk.StringVar(value="…")
+        storage_limit_var = tk.StringVar(value="…")
         storage_available_var = tk.StringVar(value="…")
+        storage_percent_var = tk.StringVar(value="")
         ttk.Label(storage_sec, text="Storage space", style="Card.Title.TLabel").grid(
             row=0, column=1, sticky="w", pady=(0, 2)
         )
+        storage_percent_label = ttk.Label(
+            storage_sec, textvariable=storage_percent_var, style="Card.Caption.TLabel"
+        )
+        storage_percent_label.grid(row=1, column=1, sticky="w", pady=(0, 0))
         ttk.Label(storage_sec, text="Used:", style="Card.Caption.TLabel").grid(
-            row=1, column=1, sticky="w", pady=(0, 0)
+            row=2, column=1, sticky="w", pady=(0, 0)
         )
         storage_used_label = ttk.Label(
             storage_sec, textvariable=storage_used_var, style="Card.TLabel", wraplength=400
         )
-        storage_used_label.grid(row=2, column=1, sticky="w", pady=(0, 0))
+        storage_used_label.grid(row=3, column=1, sticky="w", pady=(0, 0))
+        ttk.Label(storage_sec, text="Max:", style="Card.Caption.TLabel").grid(
+            row=4, column=1, sticky="w", pady=(4, 0)
+        )
+        storage_limit_label = ttk.Label(
+            storage_sec, textvariable=storage_limit_var, style="Card.TLabel", wraplength=400
+        )
+        storage_limit_label.grid(row=5, column=1, sticky="w", pady=(0, 0))
         ttk.Label(storage_sec, text="Available:", style="Card.Caption.TLabel").grid(
-            row=3, column=1, sticky="w", pady=(4, 0)
+            row=6, column=1, sticky="w", pady=(4, 0)
         )
         storage_available_label = ttk.Label(
             storage_sec, textvariable=storage_available_var, style="Card.TLabel", wraplength=400
         )
-        storage_available_label.grid(row=4, column=1, sticky="w", pady=(0, 2))
+        storage_available_label.grid(row=7, column=1, sticky="w", pady=(0, 2))
         _last_storage_used: List[int] = [0]
         _last_storage_limit: List[Optional[int]] = [None]
 
@@ -993,7 +1006,9 @@ def show_settings(
                     return
                 if data is None:
                     storage_used_var.set("unavailable")
+                    storage_limit_var.set("—")
                     storage_available_var.set("—")
+                    storage_percent_var.set("")
                     _draw_storage_circle(0, None)
                     return
                 used = int(data.get("used_bytes") or 0)
@@ -1001,10 +1016,15 @@ def show_settings(
                 limit = int(limit_raw) if limit_raw is not None else None
                 storage_used_var.set(_format_storage_bytes(used))
                 if limit is not None:
+                    storage_limit_var.set(_format_storage_bytes(limit))
                     available = max(0, limit - used)
                     storage_available_var.set(_format_storage_bytes(available))
+                    pct = min(100.0, (used / limit) * 100) if limit > 0 else 0.0
+                    storage_percent_var.set(f"{pct:.1f}% used")
                 else:
+                    storage_limit_var.set("No maximum")
                     storage_available_var.set("No maximum")
+                    storage_percent_var.set("")
                 _draw_storage_circle(used, limit)
                 def _redraw_later() -> None:
                     try:
