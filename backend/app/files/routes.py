@@ -57,8 +57,19 @@ async def get_storage(
         if total_disk > 0:
             result["server_disk_total_bytes"] = total_disk
             result["server_disk_used_bytes"] = total_disk - free_disk
+            log.info(
+                "Server disk stats: path=%s total=%s used=%s",
+                disk_path,
+                total_disk,
+                total_disk - free_disk,
+            )
     except Exception as e:
-        log.debug("Server disk stats unavailable: %s", e)
+        try:
+            s = get_settings()
+            path = getattr(s, "server_disk_path", None) or s.storage_base_path
+        except Exception:
+            path = "?"
+        log.warning("Server disk stats unavailable (path=%s): %s", path, e)
     return result
 
 
