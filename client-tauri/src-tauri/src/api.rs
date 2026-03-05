@@ -49,6 +49,12 @@ pub struct User {
 pub struct StorageInfo {
     pub used_bytes: i64,
     pub limit_bytes: Option<i64>,
+    /// Total bytes on the server (Pi) filesystem containing storage. Optional for backward compatibility.
+    #[serde(default)]
+    pub server_disk_total_bytes: Option<i64>,
+    /// Used bytes on that filesystem (total - free). Optional for backward compatibility.
+    #[serde(default)]
+    pub server_disk_used_bytes: Option<i64>,
 }
 
 #[derive(Deserialize)]

@@ -971,7 +971,15 @@ def show_settings(
         storage_available_label = ttk.Label(
             storage_sec, textvariable=storage_available_var, style="Card.TLabel", wraplength=400
         )
-        storage_available_label.grid(row=7, column=1, sticky="w", pady=(0, 2))
+        storage_available_label.grid(row=7, column=1, sticky="w", pady=(0, 0))
+        storage_server_disk_var = tk.StringVar(value="")
+        ttk.Label(storage_sec, text="Server disk (Pi):", style="Card.Caption.TLabel").grid(
+            row=8, column=1, sticky="w", pady=(4, 0)
+        )
+        storage_server_disk_label = ttk.Label(
+            storage_sec, textvariable=storage_server_disk_var, style="Card.TLabel", wraplength=400
+        )
+        storage_server_disk_label.grid(row=9, column=1, sticky="w", pady=(0, 2))
         _last_storage_used: List[int] = [0]
         _last_storage_limit: List[Optional[int]] = [None]
 
@@ -1009,6 +1017,7 @@ def show_settings(
                     storage_limit_var.set("—")
                     storage_available_var.set("—")
                     storage_percent_var.set("")
+                    storage_server_disk_var.set("")
                     _draw_storage_circle(0, None)
                     return
                 used = int(data.get("used_bytes") or 0)
@@ -1025,6 +1034,18 @@ def show_settings(
                     storage_limit_var.set("No maximum")
                     storage_available_var.set("No maximum")
                     storage_percent_var.set("")
+                server_total = data.get("server_disk_total_bytes")
+                server_used = data.get("server_disk_used_bytes")
+                if (
+                    server_total is not None
+                    and server_used is not None
+                    and int(server_total) > 0
+                ):
+                    storage_server_disk_var.set(
+                        f"{_format_storage_bytes(int(server_used))} used of {_format_storage_bytes(int(server_total))} total"
+                    )
+                else:
+                    storage_server_disk_var.set("")
                 _draw_storage_circle(used, limit)
                 def _redraw_later() -> None:
                     try:

@@ -15,7 +15,9 @@ from app.files.quota import (
     get_user_storage_limit_bytes,
     get_user_used_bytes,
     get_total_used_bytes,
+    get_drive_stats,
 )
+from app.config import get_settings
 from app.files.storage import delete_file as storage_delete_file
 from app.files.storage import list_files_recursive, resolve_user_path, user_base_path
 from app.limiter import limiter
@@ -36,11 +38,22 @@ async def get_storage(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
-    """Return current user's storage used and limit in bytes (for settings UI)."""
+    """Return current user's storage used/limit and server (Pi) disk usage in bytes (for settings UI)."""
     used = get_user_used_bytes(current_user.email)
     server_limit = get_server_storage_limit_bytes()
     effective_limit = get_user_storage_limit_bytes(server_limit, current_user.storage_limit_bytes)
-    return {"used_bytes": used, "limit_bytes": effective_limit}
+    result = {"used_bytes": used, "limit_bytes": effective_limit}
+    # Add server (Raspberry Pi) overall disk usage: filesystem that contains storage_base_path
+    try:
+        base = get_settings().storage_base_path
+        base.mkdir(parents=True, exist_ok=True)
+        total_disk, free_disk = get_drive_stats(base)
+        if total_disk > 0:
+            result["server_disk_total_bytes"] = total_disk
+            result["server_disk_used_bytes"] = total_disk - free_disk
+    except Exception as e:
+        log.debug("Server disk stats unavailable: %s", e)
+    return result
 
 
 @router.get("/list", response_model=List[dict])

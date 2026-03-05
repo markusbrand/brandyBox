@@ -143,7 +143,9 @@ fn api_get_storage() -> Result<serde_json::Value, String> {
     let s = client.get_storage()?;
     Ok(serde_json::json!({
         "used_bytes": s.used_bytes,
-        "limit_bytes": s.limit_bytes
+        "limit_bytes": s.limit_bytes,
+        "server_disk_total_bytes": s.server_disk_total_bytes,
+        "server_disk_used_bytes": s.server_disk_used_bytes
     }))
 }
 

@@ -50,7 +50,12 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const [autostart, setAutostart] = useState(false);
   const [baseUrlMode, setBaseUrlMode] = useState<"automatic" | "manual">("automatic");
   const [manualBaseUrl, setManualBaseUrl] = useState("");
-  const [storage, setStorage] = useState<{ used_bytes: number; limit_bytes: number | null } | null>(null);
+  const [storage, setStorage] = useState<{
+    used_bytes: number;
+    limit_bytes: number | null;
+    server_disk_used_bytes?: number | null;
+    server_disk_total_bytes?: number | null;
+  } | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [adminOpen, setAdminOpen] = useState(false);
   const [users, setUsers] = useState<Array<{ email: string; first_name?: string; last_name?: string; is_admin?: boolean; storage_limit_bytes?: number | null }>>([]);
@@ -95,7 +100,12 @@ export default function Settings({ email, onLogout }: SettingsProps) {
         invoke<string>("get_base_url_mode"),
         invoke<string>("get_manual_base_url"),
         invoke<string>("get_base_url"),
-        invoke<{ used_bytes: number; limit_bytes: number | null }>("api_get_storage").catch(() => null),
+        invoke<{
+          used_bytes: number;
+          limit_bytes: number | null;
+          server_disk_used_bytes?: number | null;
+          server_disk_total_bytes?: number | null;
+        }>("api_get_storage").catch(() => null),
       ]);
       setSyncFolder(folder);
       setAutostart(start);
@@ -321,6 +331,18 @@ export default function Settings({ email, onLogout }: SettingsProps) {
             </Box>
             );
           })()}
+          {storage?.server_disk_total_bytes != null &&
+            storage.server_disk_total_bytes > 0 &&
+            storage.server_disk_used_bytes != null && (
+              <Box sx={{ mt: 1.5, pl: 0 }}>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Server disk (Pi)</strong>
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {formatBytes(storage.server_disk_used_bytes)} used of {formatBytes(storage.server_disk_total_bytes)} total
+                </Typography>
+              </Box>
+            )}
           <Box sx={{ mt: 1 }}>
             <Button size="small" onClick={() => setChangePwdOpen(true)}>
               Change password
