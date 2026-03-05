@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import {
   Box,
@@ -46,6 +47,7 @@ interface SettingsProps {
 }
 
 export default function Settings({ email, onLogout }: SettingsProps) {
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [syncFolder, setSyncFolder] = useState("");
   const [autostart, setAutostart] = useState(false);
   const [baseUrlMode, setBaseUrlMode] = useState<"automatic" | "manual">("automatic");
@@ -131,6 +133,10 @@ export default function Settings({ email, onLogout }: SettingsProps) {
 
   useEffect(() => {
     loadSettings();
+  }, []);
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(null));
   }, []);
 
   useEffect(() => {
@@ -362,6 +368,11 @@ export default function Settings({ email, onLogout }: SettingsProps) {
               Log out
             </Button>
           </Box>
+          {appVersion != null && (
+            <Typography variant="caption" color="text.disabled" display="block" sx={{ mt: 1.5 }}>
+              Client version {appVersion}
+            </Typography>
+          )}
         </CardContent>
       </Card>
 
