@@ -36,7 +36,7 @@ jobs:
             args: --target x86_64-apple-darwin
             rust_target: x86_64-apple-darwin
           - platform: ubuntu-22.04
-            args: ''
+            args: --bundles deb,rpm,appimage
             rust_target: ''
           - platform: windows-latest
             args: --bundles nsis
@@ -82,6 +82,29 @@ jobs:
           cd client-tauri
           npm ci
 
+      # Linux: custom build + upload so we attach deb, rpm, and appimage (Red Hat, SUSE, Arch/portable)
+      - name: Build Tauri (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          cd client-tauri
+          npm run tauri build -- ${{ matrix.args }}
+
+      - name: Upload to release (Linux)
+        if: matrix.platform == 'ubuntu-22.04' && (github.event.release.tag_name || github.event.inputs.release_tag)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.release_tag }}"
+          BUNDLE="client-tauri/src-tauri/target/release/bundle"
+          echo "Uploading Linux artifacts from $BUNDLE to release $TAG"
+          set -e
+          for dir in deb rpm appimage; do
+            [ -d "$BUNDLE/$dir" ] || continue
+            for f in "$BUNDLE/$dir"/*; do
+              [ -f "$f" ] && { echo "Uploading $f"; gh release upload "$TAG" "$f" --clobber; }
+            done
+          done
+
       # macOS: custom build + upload (tauri-action often fails to find artifacts when using --target and projectPath)
       - name: Build Tauri (macOS)
         if: matrix.platform == 'macos-latest'
@@ -105,9 +128,9 @@ jobs:
             gh release upload "$TAG" "$f" --clobber
           done
 
-      # Windows + Linux: use tauri-action for build and upload
+      # Windows only: use tauri-action for build and upload (Linux/macOS use custom steps above)
       - name: Build and upload to release
-        if: matrix.platform != 'macos-latest'
+        if: matrix.platform == 'windows-latest'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

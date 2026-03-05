@@ -2,7 +2,7 @@
 
 This page describes how to create a new GitHub release. Releases trigger:
 
-- **Build Client for Release**: Uses [tauri-action](https://github.com/tauri-apps/tauri-action) to build the Tauri client for Windows (NSIS), Linux (deb), and macOS (Arm + Intel) and attach artifacts to the release.
+- **Build Client for Release**: Builds the Tauri client for Windows (NSIS), Linux (deb, rpm, AppImage), and macOS (Arm + Intel) and attaches artifacts to the release. Linux assets: **.deb** (Debian/Ubuntu), **.rpm** (Red Hat/Fedora/openSUSE), **.AppImage** (portable, e.g. Arch Linux).
 - **Publish Backend to GHCR**: Builds and pushes the backend Docker image to `ghcr.io/markusbrand/brandybox-backend` with the release tag.
 
 ## How the client build works
@@ -10,6 +10,16 @@ This page describes how to create a new GitHub release. Releases trigger:
 The **Build Client for Release** workflow runs on **GitHub Actions**. Each platform (Windows, Linux, macOS Arm, macOS Intel) is built on GitHub’s own runner for that OS. **It does not matter whether you trigger the workflow from a Linux PC, Windows PC, or Mac**—all four jobs run on GitHub’s infrastructure. Trigger the workflow from the repo (e.g. Actions → Build Client for Release → Run workflow) and wait for all jobs to finish; the artifacts are then attached to the release.
 
 Do not rely on building the client for all platforms on your local machine; use the GitHub workflow for releases.
+
+### Linux package formats
+
+Each release includes three Linux artifacts:
+
+| Format     | File        | Use on |
+|-----------|-------------|--------|
+| Debian    | `*.deb`     | Debian, Ubuntu |
+| RPM       | `*.rpm`     | Red Hat, Fedora, openSUSE, SUSE |
+| AppImage  | `*.AppImage`| Portable (e.g. Arch Linux); no system package manager needed |
 
 ## Prerequisites
 
