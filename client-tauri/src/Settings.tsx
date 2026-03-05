@@ -316,19 +316,23 @@ export default function Settings({ email, onLogout }: SettingsProps) {
                   </Typography>
                 )}
                 <Typography variant="body2" color="text.secondary">
-                  Used: {formatBytes(storage.used_bytes)}
+                  Your data: {formatBytes(storage.used_bytes)}
                 </Typography>
                 {storage.limit_bytes != null && (
+                  <>
+                    <Typography variant="body2" color="text.secondary">
+                      Quota max: {formatBytes(storage.limit_bytes)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Quota available: {formatBytes(Math.max(0, storage.limit_bytes - storage.used_bytes))}
+                    </Typography>
+                  </>
+                )}
+                {storage.limit_bytes == null && (
                   <Typography variant="body2" color="text.secondary">
-                    Max: {formatBytes(storage.limit_bytes)}
+                    Available: No maximum
                   </Typography>
                 )}
-                <Typography variant="body2" color="text.secondary">
-                  Available:{" "}
-                  {storage.limit_bytes != null
-                    ? formatBytes(Math.max(0, storage.limit_bytes - storage.used_bytes))
-                    : "No maximum"}
-                </Typography>
               </Box>
             </Box>
             );
