@@ -93,6 +93,11 @@ jobs:
           tar xzf tauri-release.tar.gz -C client-tauri/src-tauri/target
           chmod +x client-tauri/src-tauri/target/release/brandybox
 
+      - name: Install Tauri runtime dependencies (E2E)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-0 libjavascriptcoregtk-4.1-0 libappindicator3-1 librsvg2-2 libgtk-3-0 libsoup-3.0-0
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
