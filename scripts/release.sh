@@ -35,13 +35,19 @@ echo "Bumping version to $VERSION and creating tag $TAG"
 # client-tauri/package.json
 sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT/client-tauri/package.json"
 
+# client-tauri/package-lock.json (root package version only; first occurrence)
+sed -i "0,/\"version\": \"[^\"]*\"/ s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT/client-tauri/package-lock.json"
+
 # client-tauri/src-tauri/tauri.conf.json
 sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT/client-tauri/src-tauri/tauri.conf.json"
+
+# client-tauri/src-tauri/Cargo.toml (Tauri app crate)
+sed -i "s/^version = \"[^\"]*\"$/version = \"$VERSION\"/" "$ROOT/client-tauri/src-tauri/Cargo.toml"
 
 # client/pyproject.toml (Python client; keep in sync for consistency)
 sed -i "s/^version = \"[^\"]*\"$/version = \"$VERSION\"/" "$ROOT/client/pyproject.toml"
 
-git -C "$ROOT" add client-tauri/package.json client-tauri/src-tauri/tauri.conf.json client/pyproject.toml
+git -C "$ROOT" add client-tauri/package.json client-tauri/package-lock.json client-tauri/src-tauri/tauri.conf.json client-tauri/src-tauri/Cargo.toml client/pyproject.toml
 git -C "$ROOT" commit -m "Bump version to $VERSION"
 git -C "$ROOT" tag -a "$TAG" -m "Release $TAG"
 
