@@ -102,6 +102,7 @@ jobs:
         run: |
           pip install -r backend/requirements.txt
           pip install -e client/
+          pip install keyrings.alt
 
       - name: Build backend image for E2E
         run: docker build -t brandybox-backend-e2e ./backend
@@ -132,6 +133,8 @@ jobs:
           BRANDYBOX_ADMIN_EMAIL: test@example.com
           BRANDYBOX_ADMIN_PASSWORD: testpass123
           BRANDYBOX_SYNC_FOLDER: ${{ github.workspace }}/tests/e2e/sync_test_dir
+          # CI has no keyring backend (no Secret Service); use file-based backend for credentials
+          KEYRING_BACKEND: keyrings.alt.file.PlaintextKeyring
         run: |
           mkdir -p tests/e2e/sync_test_dir
           python -m tests.e2e.run_autonomous_sync
