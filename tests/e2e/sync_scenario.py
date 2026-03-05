@@ -102,14 +102,23 @@ def _start_client() -> bool:
         stop_e2e_client()
         log.info("Starting Tauri client with E2E config dir: %s", e2e_config)
     try:
+        stderr_target = subprocess.DEVNULL
+        if use_e2e_config:
+            e2e_stderr_log = e2e_config / "tauri_stderr.log"
+            try:
+                stderr_target = open(e2e_stderr_log, "w", encoding="utf-8")
+            except OSError:
+                pass
         proc = subprocess.Popen(
             [str(binary)],
             cwd=root,
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=stderr_target,
             start_new_session=True,
         )
+        if use_e2e_config and hasattr(stderr_target, "close"):
+            stderr_target.close()
         if use_e2e_config:
             try:
                 pid_file = e2e_config / E2E_CLIENT_PID_FILE

@@ -400,10 +400,18 @@ fn try_acquire_single_instance_lock() -> bool {
 
 const BACKGROUND_SYNC_INTERVAL_SECS: u64 = 60;
 const BACKGROUND_SYNC_INITIAL_DELAY_SECS: u64 = 15;
+/// Shorter delay/interval when BRANDYBOX_CONFIG_DIR is set (E2E/CI) so sync runs sooner.
+const E2E_SYNC_INITIAL_DELAY_SECS: u64 = 5;
+const E2E_SYNC_INTERVAL_SECS: u64 = 30;
 
 fn spawn_background_sync_loop(app: tauri::AppHandle) {
+    let (initial_delay, interval) = if std::env::var("BRANDYBOX_CONFIG_DIR").map(|s| !s.trim().is_empty()).unwrap_or(false) {
+        (E2E_SYNC_INITIAL_DELAY_SECS, E2E_SYNC_INTERVAL_SECS)
+    } else {
+        (BACKGROUND_SYNC_INITIAL_DELAY_SECS, BACKGROUND_SYNC_INTERVAL_SECS)
+    };
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(BACKGROUND_SYNC_INITIAL_DELAY_SECS));
+        std::thread::sleep(std::time::Duration::from_secs(initial_delay));
         loop {
             let (status, _) = sync::get_sync_status();
             if status != "syncing"
@@ -440,7 +448,7 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                     }
                 }
             }
-            std::thread::sleep(std::time::Duration::from_secs(BACKGROUND_SYNC_INTERVAL_SECS));
+            std::thread::sleep(std::time::Duration::from_secs(interval));
         }
     });
 }

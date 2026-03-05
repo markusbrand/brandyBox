@@ -145,3 +145,11 @@ jobs:
       - name: Backend logs on failure
         if: failure()
         run: docker logs brandybox-e2e 2>&1 | tail -200
+
+      - name: Tauri client stderr on failure
+        if: failure()
+        run: |
+          if [ -f tests/e2e/e2e_client_config/tauri_stderr.log ]; then
+            echo "=== Tauri client stderr ==="
+            cat tests/e2e/e2e_client_config/tauri_stderr.log
+          fi
