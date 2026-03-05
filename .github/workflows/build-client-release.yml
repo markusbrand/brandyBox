@@ -1,5 +1,6 @@
 # Build Brandy Box Tauri client (Windows, Linux, macOS) and attach artifacts to GitHub Releases.
-# Uses official tauri-action for reliable builds and uploads per platform.
+# Each platform is built on GitHub's native runner (Windows/Linux/macOS). Trigger from any device
+# (Actions → Build Client for Release → Run workflow); all four jobs run on GitHub, not on your machine.
 
 name: Build Client for Release
 
@@ -26,12 +27,16 @@ jobs:
         include:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
+            rust_target: aarch64-apple-darwin
           - platform: macos-latest
             args: --target x86_64-apple-darwin
+            rust_target: x86_64-apple-darwin
           - platform: ubuntu-22.04
             args: ''
+            rust_target: ''
           - platform: windows-latest
             args: --bundles nsis
+            rust_target: ''
 
     runs-on: ${{ matrix.platform }}
     env:
@@ -72,16 +77,41 @@ jobs:
           cd client-tauri
           npm ci
 
+      # macOS: custom build + upload (tauri-action often fails to find artifacts when using --target and projectPath)
+      - name: Build Tauri (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          cd client-tauri
+          npm run tauri build -- ${{ matrix.args }}
+
+      - name: Upload to release (macOS)
+        if: matrix.platform == 'macos-latest' && (github.event.release.tag_name || github.event.inputs.release_tag)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.release_tag }}"
+          BUNDLE="client-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle"
+          echo "Uploading from $BUNDLE to release $TAG"
+          # Paths may contain spaces (e.g. "Brandy Box.dmg"); quote when passing to gh
+          set -e
+          for f in "$BUNDLE/dmg/"*.dmg "$BUNDLE/macos/"*.app.tar.gz; do
+            [ -f "$f" ] || continue
+            echo "Uploading $f"
+            gh release upload "$TAG" "$f" --clobber
+          done
+
+      # Windows + Linux: use tauri-action for build and upload
       - name: Build and upload to release
+        if: matrix.platform != 'macos-latest'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: client-tauri
-          # Omit tagName/releaseName to only build (no upload); set when releasing
           tagName: ${{ github.event.release.tag_name || github.event.inputs.release_tag || '' }}
           releaseName: Brandy Box ${{ env.VERSION }}
           releaseBody: See the assets below to download and install.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+          retryAttempts: 2
