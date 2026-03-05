@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     # Storage
     storage_base_path: Path = Path("/mnt/shared_storage/brandyBox")
+    # Optional: path used for "Server disk (Pi)" stats in Settings. If set, disk usage is reported
+    # for this path's filesystem (e.g. /mnt/shared_storage to show full HDD). If unset, uses storage_base_path.
+    server_disk_path: Path | None = None
     db_path: Path = Path("/data/brandybox.db")
     # Maximum storage for all users: fixed size (e.g. "500GB", "1TB") or percentage of drive (e.g. "70%").
     # Default: use 70% of the available space on the drive containing storage_base_path.

@@ -43,11 +43,17 @@ async def get_storage(
     server_limit = get_server_storage_limit_bytes()
     effective_limit = get_user_storage_limit_bytes(server_limit, current_user.storage_limit_bytes)
     result = {"used_bytes": used, "limit_bytes": effective_limit}
-    # Add server (Raspberry Pi) overall disk usage: filesystem that contains storage_base_path
+    # Add server (Raspberry Pi) overall disk usage. Use server_disk_path if set (e.g. /mnt/shared_storage
+    # for full HDD), else the filesystem containing storage_base_path.
     try:
-        base = get_settings().storage_base_path
-        base.mkdir(parents=True, exist_ok=True)
-        total_disk, free_disk = get_drive_stats(base)
+        settings = get_settings()
+        use_server_disk_path = (
+            settings.server_disk_path is not None and str(settings.server_disk_path).strip()
+        )
+        disk_path = settings.server_disk_path.resolve() if use_server_disk_path else settings.storage_base_path
+        if not use_server_disk_path:
+            settings.storage_base_path.mkdir(parents=True, exist_ok=True)
+        total_disk, free_disk = get_drive_stats(disk_path)
         if total_disk > 0:
             result["server_disk_total_bytes"] = total_disk
             result["server_disk_used_bytes"] = total_disk - free_disk

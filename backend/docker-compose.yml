@@ -16,6 +16,8 @@ services:
       - "${HOST_PORT:-8081}:8080"
     environment:
       - BRANDYBOX_STORAGE_BASE_PATH=/mnt/shared_storage/brandyBox
+      # Path for "Server disk (Pi)" in Settings (full HDD usage). Must be mounted; default uses storage path.
+      - BRANDYBOX_SERVER_DISK_PATH=/mnt/shared_storage
       # Max storage for all users: e.g. 70% (default), 500GB, 1TB
       # BRANDYBOX_STORAGE_LIMIT=70%
       # DB lives in /data (mounted volume); default /data/brandybox.db
@@ -32,8 +34,8 @@ services:
     volumes:
       # Persist SQLite DB
       - brandybox_data:/data
-      # Mount Pi storage so backend can read/write user folders
-      - /mnt/shared_storage/brandyBox:/mnt/shared_storage/brandyBox
+      # Mount Pi HDD so backend can read/write user folders and report full disk usage in Settings
+      - /mnt/shared_storage:/mnt/shared_storage
     restart: unless-stopped
 
 volumes:
