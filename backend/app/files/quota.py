@@ -10,9 +10,9 @@ from app.files.storage import user_base_path
 
 log = logging.getLogger(__name__)
 
-# Optional: 1–3 digits, optional decimal, then unit: G, GB, T, TB (case-insensitive), or digits + %
+# Optional: 1–3 digits, optional decimal, then unit: M, MB, G, GB, T, TB (case-insensitive), or digits + %
 _STORAGE_LIMIT_PATTERN = re.compile(
-    r"^\s*(\d+(?:\.\d+)?)\s*%\s*$|^\s*(\d+(?:\.\d+)?)\s*(Gi?B?|Ti?B?)\s*$",
+    r"^\s*(\d+(?:\.\d+)?)\s*%\s*$|^\s*(\d+(?:\.\d+)?)\s*(Mi?B?|Gi?B?|Ti?B?)\s*$",
     re.IGNORECASE,
 )
 
@@ -38,11 +38,13 @@ def _parse_storage_limit_string(value: str) -> Tuple[Optional[float], Optional[s
     unit = (m.group(3) or "").upper()
     if num <= 0:
         return (None, None)
-    # GiB, GB, G -> 1024**3 or 1000**3; TiB, TB, T -> 1024**4 or 1000**4. Use binary (GiB/TiB).
+    # MiB, MB, M -> 1024**2; GiB, GB, G -> 1024**3; TiB, TB, T -> 1024**4.
     if "T" in unit:
         return (num * (1024**4), "bytes")
     if "G" in unit:
         return (num * (1024**3), "bytes")
+    if "M" in unit:
+        return (num * (1024**2), "bytes")
     return (None, None)
 
 
