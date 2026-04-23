@@ -304,7 +304,8 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                 if let Some(parent) = local_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
-                if let Err(e) = std::fs::write(&local_path, &body) {
+                let tmp_path = local_path.with_extension("tmp_download");
+                if let Err(e) = std::fs::write(&tmp_path, &body) {
                     if e.kind() == std::io::ErrorKind::PermissionDenied {
                         log::warn!("Download {}: permission denied, skipping", path);
                         skipped_downloads.insert(path.clone());
@@ -312,6 +313,10 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                         continue;
                     }
                     return Err(format!("Download {}: {}", path, e));
+                }
+                if let Err(e) = std::fs::rename(&tmp_path, &local_path) {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    return Err(format!("Download {}: failed to rename tmp to final: {}", path, e));
                 }
                 completed_downloads.insert(path.clone());
                 if let Some(h) = remote_hashes.get(path) {

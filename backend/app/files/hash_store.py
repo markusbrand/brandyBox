@@ -50,3 +50,8 @@ async def delete_hash(session: AsyncSession, user_email: str, path: str) -> None
 def compute_hash(body: bytes) -> str:
     """SHA-256 hex digest of file body."""
     return hashlib.sha256(body).hexdigest()
+
+
+def get_hasher():
+    """Return a new SHA-256 hasher instance."""
+    return hashlib.sha256()

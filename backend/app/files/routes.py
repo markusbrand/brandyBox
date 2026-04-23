@@ -1,6 +1,10 @@
 """File API routes: list, upload, download, delete."""
 
+import hashlib
 import logging
+import os
+import shutil
+import tempfile
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -9,7 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.db.session import get_db
-from app.files.hash_store import compute_hash, get_hashes_for_paths, set_hash, delete_hash
+from app.files.hash_store import (
+    get_hashes_for_paths,
+    set_hash,
+    delete_hash,
+    get_hasher,
+)
 from app.files.quota import (
     get_server_storage_limit_bytes,
     get_user_storage_limit_bytes,
@@ -95,15 +104,15 @@ async def list_files(
 
 
 @router.post("/upload")
-@limiter.limit("600/minute")  # Bulk sync: allow ~10 uploads/sec so 18k files finish in ~30 min
+@limiter.limit("600/minute")  # Bulk sync
 async def upload_file(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """
-    Upload a file. Query param: path (relative path). Body: raw file bytes.
-    Stores content hash so clients can skip re-download when unchanged.
+    Upload a file by streaming the request body directly to a temporary file.
+    Enforces quota during streaming to fail fast.
     """
     path_param = _normalize_path_param(request.query_params.get("path"))
     if not path_param or not path_param.strip():
@@ -119,39 +128,65 @@ async def upload_file(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
-    body = await request.body()
-    # Enforce storage quota: server total and per-user limit (account for overwrite)
+
+    # Determine quotas before starting
     old_size = 0
     if target.exists() and target.is_file():
         try:
             old_size = target.stat().st_size
         except OSError:
             pass
+
     server_limit = get_server_storage_limit_bytes()
     user_limit = get_user_storage_limit_bytes(server_limit, current_user.storage_limit_bytes)
-    if server_limit is not None:
-        total_used = get_total_used_bytes()
-        if total_used - old_size + len(body) > server_limit:
-            raise HTTPException(
-                status_code=507,  # Insufficient Storage
-                detail="Server storage limit reached",
-            )
-    if user_limit is not None:
-        current_user_used = get_user_used_bytes(current_user.email)
-        if current_user_used - old_size + len(body) > user_limit:
-            raise HTTPException(
-                status_code=507,  # Insufficient Storage
-                detail="Your storage limit has been reached",
-            )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(body)
-    content_hash = compute_hash(body)
-    await set_hash(session, current_user.email, path_param, content_hash)
-    if not target.exists():
-        log.error("upload_file wrote but file missing: %s", target)
-    else:
-        log.info("upload_file user=%s path=%s size=%d resolved=%s", current_user.email, path_param, len(body), target)
-    return {"path": path_param, "size": len(body), "hash": content_hash}
+    total_used_before = get_total_used_bytes()
+    user_used_before = get_user_used_bytes(current_user.email)
+
+    hasher = get_hasher()
+    bytes_written = 0
+
+    # Stream to a temporary file
+    temp_dir = target.parent
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    fd, temp_path = tempfile.mkstemp(dir=temp_dir, prefix=".bb_upload_")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+
+                # Quota check during streaming
+                current_size = bytes_written + len(chunk)
+                if server_limit is not None:
+                    if total_used_before - old_size + current_size > server_limit:
+                        raise HTTPException(status_code=507, detail="Server storage limit reached")
+                if user_limit is not None:
+                    if user_used_before - old_size + current_size > user_limit:
+                        raise HTTPException(status_code=507, detail="Your storage limit has been reached")
+
+                f.write(chunk)
+                hasher.update(chunk)
+                bytes_written += len(chunk)
+
+        # Atomic move to final destination
+        shutil.move(temp_path, target)
+        content_hash = hasher.hexdigest()
+        await set_hash(session, current_user.email, path_param, content_hash)
+
+        log.info(
+            "upload_file user=%s path=%s size=%d resolved=%s",
+            current_user.email, path_param, bytes_written, target
+        )
+        return {"path": path_param, "size": bytes_written, "hash": content_hash}
+
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        if isinstance(e, HTTPException):
+            raise e
+        log.exception("Upload failed: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error during upload")
 
 
 @router.get("/download")
