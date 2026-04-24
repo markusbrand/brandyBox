@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     # Storage
     storage_base_path: Path = Path("/mnt/shared_storage/brandyBox")
+    # Optional hard cap for a single upload body (bytes). Unset = no cap beyond quota and reverse-proxy limits.
+    # Set e.g. under Cloudflare Free (100 MB) to fail fast with 413 instead of a truncated or timed-out upload.
+    max_single_upload_bytes: int | None = None
     # Optional: path used for "Server disk (Pi)" stats in Settings. If set, disk usage is reported
     # for this path's filesystem (e.g. /mnt/shared_storage to show full HDD). If unset, uses storage_base_path.
     server_disk_path: Path | None = None

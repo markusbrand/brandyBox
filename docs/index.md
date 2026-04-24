@@ -4,6 +4,8 @@ Sync a local folder to your Raspberry Pi storage (Dropbox-style). Backend runs i
 
 ## Quick links
 
+- [ADR 006 — Sync semantics & trust boundaries](adrs/006-sync-semantics-trust-boundaries.md)
+- [Security review checklist](security-review.md)
 - [Backend overview](backend/overview.md)
 - [Client overview](client/overview.md)
 - [Client troubleshooting](client/troubleshooting.md)

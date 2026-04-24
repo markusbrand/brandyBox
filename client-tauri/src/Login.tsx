@@ -10,6 +10,7 @@ import {
   Alert,
   CircularProgress,
 } from "@mui/material";
+import { formatUserFacingError } from "./errors";
 
 interface LoginProps {
   onSuccess: () => void;
@@ -30,7 +31,7 @@ export default function Login({ onSuccess, onCancel }: LoginProps) {
       await invoke("login", { email: email.trim(), password });
       onSuccess();
     } catch (err) {
-      setError(String(err));
+      setError(formatUserFacingError(err));
     } finally {
       setLoading(false);
     }

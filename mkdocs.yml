@@ -4,10 +4,14 @@ theme:
   name: readthedocs
 nav:
   - Home: index.md
+  - Architecture:
+      - "ADR 006: Sync & trust boundaries": adrs/006-sync-semantics-trust-boundaries.md
+      - Security review checklist: security-review.md
   - Releasing: releasing.md
   - Backend: backend/overview.md
   - Client:
     - Overview: client/overview.md
     - Tauri client: client/tauri.md
     - Troubleshooting: client/troubleshooting.md
+    - Network limitations: network/limitations.md
   - License: license.md

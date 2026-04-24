@@ -5,7 +5,7 @@ Python FastAPI service in Docker on Raspberry Pi.
 ## Layout
 
 - `app/main.py` – FastAPI app, CORS, lifespan (DB init, admin bootstrap)
-- `app/config.py` – Settings from env (`BRANDYBOX_*`); `BRANDYBOX_STORAGE_LIMIT` (e.g. `70%` or `500GB`, `1TB`) caps total storage for all users
+- `app/config.py` – Settings from env (`BRANDYBOX_*`); `BRANDYBOX_STORAGE_LIMIT` (e.g. `70%` or `500GB`, `1TB`) caps total storage for all users; optional `BRANDYBOX_MAX_SINGLE_UPLOAD_BYTES` (integer) rejects a single upload body with **413** when exceeded (useful under strict reverse-proxy body limits)
 - `app/auth/` – JWT create/decode, dependencies (get_current_user, get_current_admin)
 - `app/users/` – User model, routes (login, refresh, me, change-password, admin create/delete), service (email)
 - `app/files/` – Storage (safe path resolution), quota (server and per-user limits), routes (list, upload, download, delete, storage)
@@ -20,7 +20,7 @@ Python FastAPI service in Docker on Raspberry Pi.
 - `GET/POST/DELETE /api/users` – admin list (with storage per user), create, delete; `PATCH /api/users/{email}` – admin set per-user storage limit
 - `GET /api/files/storage` – current user storage used and limit (Bearer)
 - `GET /api/files/list` – list files for user
-- `POST /api/files/upload?path=...` – upload body (rejects with 507 if over quota)
+- `POST /api/files/upload?path=...` – upload body (rejects with **507** if over quota, **413** if over `BRANDYBOX_MAX_SINGLE_UPLOAD_BYTES` when set)
 - `GET /api/files/download?path=...` – download file
 - `DELETE /api/files/delete?path=...` – delete file; after removing the file, empty parent directories are removed so folder deletions stay in sync
 
@@ -46,5 +46,5 @@ Configure the webhook in GitHub (repo → Settings → Webhooks): Payload URL po
 
 - Passwords hashed with bcrypt; JWT for access/refresh.
 - Access tokens are short-lived (default 30 minutes); refresh tokens are long-lived (default 365 days, configurable via `BRANDYBOX_REFRESH_TOKEN_EXPIRE_DAYS`) so clients stay logged in without re-entering credentials (Dropbox-style).
-- File paths sanitized (no `..`); user scope by email.
+- File paths sanitized (no `..`); user scope by email; optional per-request body cap (`BRANDYBOX_MAX_SINGLE_UPLOAD_BYTES`).
 - Rate limits on login/refresh and file endpoints; CORS from config.

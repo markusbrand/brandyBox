@@ -142,6 +142,9 @@ async def upload_file(
     total_used_before = get_total_used_bytes()
     user_used_before = get_user_used_bytes(current_user.email)
 
+    settings = get_settings()
+    max_body = settings.max_single_upload_bytes
+
     hasher = get_hasher()
     bytes_written = 0
 
@@ -156,8 +159,19 @@ async def upload_file(
                 if not chunk:
                     continue
 
-                # Quota check during streaming
                 current_size = bytes_written + len(chunk)
+                if max_body is not None and current_size > max_body:
+                    log.warning(
+                        "upload_file rejected path=%r: body exceeds max_single_upload_bytes (%s)",
+                        path_param,
+                        max_body,
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Upload exceeds configured maximum size",
+                    )
+
+                # Quota check during streaming
                 if server_limit is not None:
                     if total_used_before - old_size + current_size > server_limit:
                         raise HTTPException(status_code=507, detail="Server storage limit reached")

@@ -60,6 +60,12 @@ Tauri uses the native tray APIs on Linux; no venv-based workaround is needed. Th
 
 **Large files (e.g. MP4):** On "request or response body error" or "error sending request": client retries 3 times with delay. If all fail, increase timeouts on the **server** (Raspberry Pi) or proxy (e.g. uvicorn with `--timeout-keep-alive 300`, nginx `proxy_read_timeout` / `client_max_body_size`).
 
+## Security posture (capabilities & shell)
+
+- **Plugins in use:** `tauri_plugin_opener`, `tauri_plugin_notification` — reflected in **`src-tauri/capabilities/default.json`** alongside `core:default`, window controls, and `core:path:default` (needed for `open_sync_folder` and sync path access from Rust).
+- **Principle:** Prefer **least privilege** — when adding commands or plugins, extend **capabilities** intentionally; follow **`.agents/skills/tauri-v2/SKILL.md`** and [Tauri v2 security](https://v2.tauri.app/security/).
+- **CSP:** `tauri.conf.json` currently leaves **`csp` unset** (`null`) so the bundled Vite app loads without extra tuning; tightening CSP is a **follow-up** once inline scripts and asset origins are audited.
+
 ## Project structure
 
 - **Frontend (React)**: `src/` – Login, Settings, tray menu setup (Material UI)

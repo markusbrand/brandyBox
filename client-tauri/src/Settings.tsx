@@ -31,6 +31,7 @@ import {
 import ExpandMore from "@mui/icons-material/ExpandMore";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import Refresh from "@mui/icons-material/Refresh";
+import { formatUserFacingError } from "./errors";
 
 function formatBytes(n: number): string {
   if (n < 0) return "0 B";
@@ -67,9 +68,12 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const [newPwd, setNewPwd] = useState("");
   const [changePwdError, setChangePwdError] = useState("");
   const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [createUserError, setCreateUserError] = useState("");
+  const [adminActionError, setAdminActionError] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserFirst, setNewUserFirst] = useState("");
   const [newUserLast, setNewUserLast] = useState("");
+  const [syncFolderError, setSyncFolderError] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<{ phase: string; current: number; total: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -205,11 +209,12 @@ export default function Settings({ email, onLogout }: SettingsProps) {
       setCurrentPwd("");
       setNewPwd("");
     } catch (e) {
-      setChangePwdError(String(e));
+      setChangePwdError(formatUserFacingError(e));
     }
   };
 
   const handleCreateUser = async () => {
+    setCreateUserError("");
     try {
       await invoke("api_create_user", {
         email: newUserEmail,
@@ -220,18 +225,22 @@ export default function Settings({ email, onLogout }: SettingsProps) {
       setNewUserEmail("");
       setNewUserFirst("");
       setNewUserLast("");
+      setAdminActionError(null);
       loadUsers();
     } catch (e) {
+      setCreateUserError(formatUserFacingError(e));
       console.error(e);
     }
   };
 
   const handleDeleteUser = async (userEmail: string) => {
     if (!confirm(`Delete user ${userEmail}?`)) return;
+    setAdminActionError(null);
     try {
       await invoke("api_delete_user", { email: userEmail });
       loadUsers();
     } catch (e) {
+      setAdminActionError(formatUserFacingError(e));
       console.error(e);
     }
   };
@@ -246,8 +255,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
     } catch (e) {
       setSyncing(false);
       setSyncProgress(null);
-      const msg = e instanceof Error ? e.message : String(e);
-      setSyncError(msg);
+      setSyncError(formatUserFacingError(e));
       console.error(e);
     }
   };
@@ -386,15 +394,22 @@ export default function Settings({ email, onLogout }: SettingsProps) {
               size="small"
               fullWidth
               value={syncFolder}
-              onChange={(e) => setSyncFolder(e.target.value)}
+              onChange={(e) => {
+                setSyncFolder(e.target.value);
+                setSyncFolderError(null);
+              }}
               onBlur={async () => {
+                setSyncFolderError(null);
                 try {
                   await invoke("set_sync_folder_path", { folder: syncFolder });
-                } catch {
-                  // ignore
+                } catch (e) {
+                  setSyncFolderError(formatUserFacingError(e));
+                  console.error(e);
                 }
               }}
               placeholder="e.g. ~/brandyBox"
+              error={Boolean(syncFolderError)}
+              helperText={syncFolderError ?? "Path is saved when you leave this field"}
             />
           </Box>
         </CardContent>
@@ -452,7 +467,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
             Sync now
           </Button>
           {syncError && (
-            <Alert severity="error" onClose={() => setSyncError(null)} sx={{ mt: 1 }}>
+            <Alert severity="error" role="alert" onClose={() => setSyncError(null)} sx={{ mt: 1 }}>
               {syncError}
             </Alert>
           )}
@@ -464,6 +479,9 @@ export default function Settings({ email, onLogout }: SettingsProps) {
               )}
             </Box>
           )}
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+            Same account on multiple devices: if two copies of a file change before sync, the version that uploads last replaces the other (no merge dialog). Server is source of truth after you confirm the sync folder.
+          </Typography>
         </CardContent>
       </Card>
 
@@ -479,7 +497,18 @@ export default function Settings({ email, onLogout }: SettingsProps) {
           </Button>
           <Collapse in={adminOpen}>
             <Box sx={{ mt: 1 }}>
-              <Button size="small" onClick={() => setCreateUserOpen(true)}>
+              {adminActionError && (
+                <Alert severity="error" sx={{ mb: 1 }} onClose={() => setAdminActionError(null)}>
+                  {adminActionError}
+                </Alert>
+              )}
+              <Button
+                size="small"
+                onClick={() => {
+                  setCreateUserError("");
+                  setCreateUserOpen(true);
+                }}
+              >
                 Create user
               </Button>
               <List dense>
@@ -512,9 +541,22 @@ export default function Settings({ email, onLogout }: SettingsProps) {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={createUserOpen} onClose={() => setCreateUserOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={createUserOpen}
+        onClose={() => {
+          setCreateUserOpen(false);
+          setCreateUserError("");
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>Create user</DialogTitle>
         <DialogContent>
+          {createUserError && (
+            <Alert severity="error" sx={{ mb: 1 }}>
+              {createUserError}
+            </Alert>
+          )}
           <TextField fullWidth label="Email" type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} margin="dense" />
           <TextField fullWidth label="First name" value={newUserFirst} onChange={(e) => setNewUserFirst(e.target.value)} margin="dense" />
           <TextField fullWidth label="Last name" value={newUserLast} onChange={(e) => setNewUserLast(e.target.value)} margin="dense" />

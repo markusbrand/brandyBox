@@ -27,7 +27,7 @@ The backend image is published to [GitHub Container Registry (GHCR)](https://git
    curl -sL https://raw.githubusercontent.com/markusbrand/brandyBox/master/backend/.env.example -o .env
    # Edit .env and set BRANDYBOX_JWT_SECRET, SMTP, admin, etc. (no quotes needed for values)
    ```
-   Set at least: `BRANDYBOX_JWT_SECRET` (e.g. `openssl rand -hex 32`), SMTP vars, `BRANDYBOX_ADMIN_EMAIL`, `BRANDYBOX_ADMIN_INITIAL_PASSWORD`, and `BRANDYBOX_CORS_ORIGINS` (e.g. `https://brandybox.brandstaetter.rocks`). Bcrypt limits passwords to 72 bytes.
+   Set at least: `BRANDYBOX_JWT_SECRET` (e.g. `openssl rand -hex 32`), SMTP vars, `BRANDYBOX_ADMIN_EMAIL`, `BRANDYBOX_ADMIN_INITIAL_PASSWORD`, and `BRANDYBOX_CORS_ORIGINS` (e.g. `https://brandybox.brandstaetter.rocks`). Bcrypt limits passwords to 72 bytes. Optional: `BRANDYBOX_MAX_SINGLE_UPLOAD_BYTES` (integer) caps one upload body with HTTP 413 — useful if a reverse proxy enforces a lower max body than your quotas (see `backend/.env.example`).
 
 3. **Run the backend** (one Docker command):
    ```bash
