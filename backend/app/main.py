@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -116,11 +116,52 @@ app.include_router(meta_router)
 app.include_router(telemetry_router)
 app.include_router(files_router)
 
-_static_dir = get_settings().static_dist_path
-if _static_dir and Path(_static_dir).is_dir() and (Path(_static_dir) / "index.html").is_file():
-    app.mount(
-        "/",
-        StaticFiles(directory=str(Path(_static_dir).resolve()), html=True),
-        name="spa",
-    )
-    log.info("Serving web SPA from %s", _static_dir)
+_spa_root: Path | None = None
+_static_settings = get_settings()
+if _static_settings.static_dist_path:
+    _sr = Path(_static_settings.static_dist_path).resolve()
+    if _sr.is_dir() and (_sr / "index.html").is_file():
+        _spa_root = _sr
+        _assets = _sr / "assets"
+        if _assets.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(_assets)), name="spa_assets")
+        log.info("Serving web SPA from %s (assets under /assets)", _sr)
+
+
+def _spa_index_response() -> FileResponse:
+    if not _spa_root:
+        raise HTTPException(status_code=404, detail="Web UI not configured")
+    idx = _spa_root / "index.html"
+    if not idx.is_file():
+        raise HTTPException(status_code=404, detail="index.html missing")
+    return FileResponse(idx)
+
+
+@app.get("/")
+@limiter.exempt
+async def spa_root() -> FileResponse:
+    """Serve SPA for root (Vite build)."""
+    return _spa_index_response()
+
+
+@app.get("/{path:path}")
+@limiter.exempt
+async def spa_or_asset(path: str) -> FileResponse:
+    """
+    Serve hashed assets from dist/ or SPA index.html for client routes (/login, /files, …).
+    API routes under /api are handled by routers registered above.
+    """
+    if not _spa_root:
+        raise HTTPException(status_code=404, detail="Not found")
+    if path.startswith("api"):
+        raise HTTPException(status_code=404, detail="Not found")
+    if path in ("openapi.json", "docs", "redoc") or path.startswith("docs/") or path.startswith("redoc/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    candidate = (_spa_root / path).resolve()
+    try:
+        candidate.relative_to(_spa_root)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found") from None
+    if candidate.is_file():
+        return FileResponse(candidate)
+    return _spa_index_response()
