@@ -285,10 +285,15 @@ export async function adminDeleteUser(email: string): Promise<void> {
 export async function fetchMetaVersion(): Promise<{
   api_version: string;
   min_supported_client_version: string;
+  google_signin_available: boolean;
 }> {
   const res = await fetch("/api/meta/version");
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
-  return res.json() as Promise<{ api_version: string; min_supported_client_version: string }>;
+  return res.json() as Promise<{
+    api_version: string;
+    min_supported_client_version: string;
+    google_signin_available: boolean;
+  }>;
 }

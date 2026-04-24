@@ -31,6 +31,7 @@ def test_meta_version(client: TestClient) -> None:
     j = r.json()
     assert "api_version" in j
     assert "min_supported_client_version" in j
+    assert j.get("google_signin_available") is False
 
 
 def test_preferences_roundtrip(client: TestClient) -> None:

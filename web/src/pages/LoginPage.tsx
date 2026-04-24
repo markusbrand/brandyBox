@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { loginPassword, oauthComplete } from "../api/http";
+import { fetchMetaVersion, loginPassword, oauthComplete } from "../api/http";
 import { useAuth } from "../context/AuthContext";
 
 const errMap: Record<string, string> = {
@@ -30,6 +30,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleAvailable, setGoogleAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void fetchMetaVersion()
+      .then((m) => setGoogleAvailable(m.google_signin_available))
+      .catch(() => setGoogleAvailable(false));
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -84,6 +91,9 @@ export default function LoginPage() {
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 2 }}>
           Sign in to access your files in the browser.
+          {googleAvailable === false ? (
+            <> Google sign-in is not enabled on this server; use email and password.</>
+          ) : null}
         </Typography>
         {error ? (
           <Alert severity="error" sx={{ mb: 2 }}>
@@ -112,9 +122,11 @@ export default function LoginPage() {
           <Button variant="contained" disabled={busy} onClick={() => void onPassword()}>
             Sign in
           </Button>
-          <Button variant="outlined" startIcon={<GoogleIcon />} disabled={busy} onClick={googleStart}>
-            Continue with Google
-          </Button>
+          {googleAvailable ? (
+            <Button variant="outlined" startIcon={<GoogleIcon />} disabled={busy} onClick={googleStart}>
+              Continue with Google
+            </Button>
+          ) : null}
         </Box>
       </Paper>
     </Container>
