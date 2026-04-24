@@ -13,5 +13,7 @@ cd "$BACKEND_DIR"
 
 echo "Pulling latest image and restarting backend..."
 docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull
-docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+# Force a new container so a changed image digest is always applied (compose can
+# otherwise leave "Running" without recreating when the service spec looks unchanged).
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d --force-recreate
 echo "Backend updated."

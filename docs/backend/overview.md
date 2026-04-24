@@ -33,7 +33,7 @@ Logging is configured at startup from env: `BRANDYBOX_LOG_LEVEL` (default `INFO`
 On the Raspberry Pi, updates to the backend image can be applied automatically when GitHub Actions has finished building:
 
 - **`webhook_listener.py`** – Small Flask app (port 9000) that receives GitHub webhook POSTs. Verifies `X-Hub-Signature-256` using `GITHUB_WEBHOOK_SECRET`. When a `workflow_run` event has `action: completed` and `conclusion: success`, it runs `update_brandybox.sh` in the background.
-- **`update_brandybox.sh`** – Script in `backend/`. Changes into the backend directory and runs `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull` then `up -d`, so the latest GHCR image is used and the container is recreated with existing `.env` and volumes.
+- **`update_brandybox.sh`** – Script in `backend/`. Changes into the backend directory and runs `docker compose -f docker-compose.yml -f docker-compose.ghcr.yml pull` then `up -d --force-recreate`, so the latest GHCR image is always applied to a new container while keeping existing `.env` and volumes.
 - **Cron:** To start the webhook listener after a Pi reboot, run `crontab -e` and add:
   ```cron
   @reboot cd /home/pi/brandyBox/backend && nohup python3 webhook_listener.py >> webhook.log 2>&1 &
