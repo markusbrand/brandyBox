@@ -1,8 +1,9 @@
-# Brandy Box backend - run on Raspberry Pi
-# Usage:
-#   Set env vars (see below), then: docker compose up -d
-#   Host port defaults to 8081 to avoid conflict with other services on 8080.
-#   To use 8080 instead, add HOST_PORT=8080 to .env
+# Brandy Box backend + web UI - run on Raspberry Pi
+# Usage (from this directory):
+#   cp .env.example .env && edit .env, then: docker compose up -d --build
+#   Build context is the repository root (parent); image includes the React web app.
+#   Host port maps container 8080 → HOST_PORT (default 8081). Set HOST_PORT in .env to change
+#   the LAN URL (e.g. http://192.168.0.150:8081). Cloudflare tunnel should target the same port.
 #
 # To use the pre-built image from GitHub Container Registry instead of building locally:
 #   docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
@@ -10,7 +11,9 @@
 
 services:
   brandybox:
-    build: .
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     container_name: brandybox-backend
     ports:
       - "${HOST_PORT:-8081}:8080"

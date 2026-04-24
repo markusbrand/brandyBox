@@ -1,16 +1,26 @@
-# Brandy Box backend - Raspberry Pi
+# Brandy Box backend + optional web SPA (multi-stage). Build from repository root:
+#   docker build -f backend/Dockerfile .
+
+FROM node:22-bookworm AS webbuild
+WORKDIR /web
+COPY web/package.json ./
+RUN npm install
+COPY web/ ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Application
-COPY app/ ./app/
+COPY backend/app/ ./app/
+
+COPY --from=webbuild /web/dist ./web_dist
+
+ENV BRANDYBOX_STATIC_DIST_PATH=/app/web_dist
 
 EXPOSE 8080
 
-# No secrets in CMD; use env for BRANDYBOX_*
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

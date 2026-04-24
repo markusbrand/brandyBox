@@ -13,6 +13,9 @@ backend/webhook.log
 *.db-wal
 *.db-shm
 
+# Node
+node_modules/
+
 # Python
 __pycache__/
 *.py[cod]

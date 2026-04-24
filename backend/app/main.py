@@ -2,8 +2,10 @@
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
@@ -13,6 +15,9 @@ from app.config import get_settings
 from app.db.session import get_session, init_db
 from app.files.hash_model import FileHash  # noqa: F401  # register for create_all
 from app.files.routes import router as files_router
+from app.meta.routes import router as meta_router
+from app.oauth.routes import router as oauth_router
+from app.telemetry.routes import router as telemetry_router
 from app.users.routes import router as users_router
 from app.users.service import ensure_admin_exists
 
@@ -98,12 +103,24 @@ from app.limiter import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-app.include_router(users_router)
-app.include_router(files_router)
-
-
 @app.get("/health")
 @limiter.exempt
 def health() -> JSONResponse:
     """Health check for Docker and tunnel. Exempt from rate limiting."""
     return JSONResponse(content={"status": "ok"})
+
+
+app.include_router(users_router)
+app.include_router(oauth_router)
+app.include_router(meta_router)
+app.include_router(telemetry_router)
+app.include_router(files_router)
+
+_static_dir = get_settings().static_dist_path
+if _static_dir and Path(_static_dir).is_dir() and (Path(_static_dir) / "index.html").is_file():
+    app.mount(
+        "/",
+        StaticFiles(directory=str(Path(_static_dir).resolve()), html=True),
+        name="spa",
+    )
+    log.info("Serving web SPA from %s", _static_dir)

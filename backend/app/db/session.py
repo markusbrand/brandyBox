@@ -30,11 +30,27 @@ def _add_storage_limit_column_if_missing(conn) -> None:
     conn.execute(text("ALTER TABLE users ADD COLUMN storage_limit_bytes INTEGER"))
 
 
+def _add_google_sub_preferences_columns(conn) -> None:
+    """Add users.google_sub and users.preferences_json if missing."""
+    cursor = conn.execute(text("PRAGMA table_info(users)"))
+    rows = cursor.fetchall()
+    names = {row[1] for row in rows}
+    if "google_sub" not in names:
+        conn.execute(text("ALTER TABLE users ADD COLUMN google_sub VARCHAR(255)"))
+    if "preferences_json" not in names:
+        conn.execute(text("ALTER TABLE users ADD COLUMN preferences_json TEXT"))
+
+
 async def init_db() -> None:
     """Create tables if they do not exist, then run migrations."""
+    # Register models so create_all includes oauth + telemetry tables.
+    from app.oauth import models as _oauth_models  # noqa: F401
+    from app.telemetry import models as _telemetry_models  # noqa: F401
+
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_add_storage_limit_column_if_missing)
+        await conn.run_sync(_add_google_sub_preferences_columns)
 
 
 @asynccontextmanager

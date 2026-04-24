@@ -28,6 +28,24 @@ jobs:
       - name: Run pytest
         run: cd backend && python -m pytest -v --tb=short
 
+  web:
+    name: Web (npm build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Install and build
+        run: |
+          cd web
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm run build
+
   client-tauri:
     name: Client-tauri (cargo test + build)
     runs-on: ubuntu-latest
@@ -77,7 +95,7 @@ jobs:
   e2e:
     name: E2E (sync scenario)
     runs-on: ubuntu-latest
-    needs: [backend, client-tauri]
+    needs: [backend, client-tauri, web]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -110,7 +128,7 @@ jobs:
           pip install keyrings.alt
 
       - name: Build backend image for E2E
-        run: docker build -t brandybox-backend-e2e ./backend
+        run: docker build -f backend/Dockerfile -t brandybox-backend-e2e .
 
       - name: Start backend container
         run: |

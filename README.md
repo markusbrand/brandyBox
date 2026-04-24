@@ -6,8 +6,9 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 
 ## Architecture
 
-- **Backend**: Python (FastAPI) in Docker on Raspberry Pi. Storage under `/mnt/shared_storage/brandyBox/<email>/`. JWT auth, user CRUD (admin), file list/upload/download.
-- **Client (primary)**: **Tauri + React** in `client-tauri/` – modern desktop app (Windows, Linux, Mac) with robust sync engine. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8081` when on LAN. Tray and sync work out of the box on Linux (incl. Wayland/KDE).
+- **Backend**: Python (FastAPI) in Docker on Raspberry Pi. Storage under `/mnt/shared_storage/brandyBox/<email>/`. JWT auth, user CRUD (admin), file list/upload/download. The same container serves the **web UI** (static SPA) at `/` when built from the repo image, so **API + browser app share one port** (default host port **8081**, configurable via `HOST_PORT` in `backend/.env` for `docker compose`).
+- **Web (browser)**: **React + MUI** in `web/` — login (password or Google SSO if configured), file list/upload/download, storage meter, settings (theme, optional background image, favorites), and admin/diagnostics for admins. Use `https://brandybox.brandstaetter.rocks` or `http://<pi-ip>:8081` (or your `HOST_PORT`) in the browser; no separate web port.
+- **Client (primary)**: **Tauri + React** in `client-tauri/` – modern desktop app (Windows, Linux, Mac) with robust sync engine. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8081` when on LAN. Tray and sync work out of the box on Linux (incl. Wayland/KDE). After each sync, the client reports version and outcome to the server (`POST /api/clients/ping`) for operator diagnostics.
 - **Client (fallback)**: Python/Tk client in `client/` – **deprecated**, use only if Tauri cannot be built or run. Same config format and keyring; under Linux the venv-based install may be needed for correct tray behavior.
 
 ## Backend (Raspberry Pi)
@@ -27,7 +28,7 @@ The backend image is published to [GitHub Container Registry (GHCR)](https://git
    curl -sL https://raw.githubusercontent.com/markusbrand/brandyBox/master/backend/.env.example -o .env
    # Edit .env and set BRANDYBOX_JWT_SECRET, SMTP, admin, etc. (no quotes needed for values)
    ```
-   Set at least: `BRANDYBOX_JWT_SECRET` (e.g. `openssl rand -hex 32`), SMTP vars, `BRANDYBOX_ADMIN_EMAIL`, `BRANDYBOX_ADMIN_INITIAL_PASSWORD`, and `BRANDYBOX_CORS_ORIGINS` (e.g. `https://brandybox.brandstaetter.rocks`). Bcrypt limits passwords to 72 bytes. Optional: `BRANDYBOX_MAX_SINGLE_UPLOAD_BYTES` (integer) caps one upload body with HTTP 413 — useful if a reverse proxy enforces a lower max body than your quotas (see `backend/.env.example`).
+   Set at least: `BRANDYBOX_JWT_SECRET` (e.g. `openssl rand -hex 32`), SMTP vars, `BRANDYBOX_ADMIN_EMAIL`, `BRANDYBOX_ADMIN_INITIAL_PASSWORD`, and `BRANDYBOX_CORS_ORIGINS` (comma-separated; include **both** your HTTPS tunnel origin and any **LAN** browser origin, e.g. `http://192.168.0.150:8081`, or the web UI cannot call the API from the phone on Wi‑Fi). Bcrypt limits passwords to 72 bytes. Optional: `BRANDYBOX_MAX_SINGLE_UPLOAD_BYTES` (integer) caps one upload body with HTTP 413 — useful if a reverse proxy enforces a lower max body than your quotas (see `backend/.env.example`). For **Google sign-in**, set `BRANDYBOX_GOOGLE_CLIENT_ID`, `BRANDYBOX_GOOGLE_CLIENT_SECRET`, and `BRANDYBOX_PUBLIC_BASE_URL`; redirect URI in Google Cloud must be `{BRANDYBOX_PUBLIC_BASE_URL}/api/auth/google/callback`. Google only signs in users **already created** by an admin.
 
 3. **Run the backend** (one Docker command):
    ```bash

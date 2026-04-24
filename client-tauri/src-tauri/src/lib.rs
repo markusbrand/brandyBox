@@ -233,6 +233,8 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
         let mut client = ApiClient::new(base_url);
         client.set_access_token(Some(token));
         let result = sync::run_sync(&mut client, &root);
+        let sync_ok = result.is_ok();
+        let last_sync_at = chrono::Utc::now().to_rfc3339();
         match &result {
             Ok((bytes_downloaded, bytes_uploaded, warning)) => {
                 if let Some(msg) = warning {
@@ -249,6 +251,9 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
                 eprintln!("Brandy Box sync error: {}", e);
                 sync::set_sync_status(sync::SyncStatus::Error(e.clone()));
             }
+        }
+        if let Err(e) = client.client_ping(Some(sync_ok), Some(last_sync_at)) {
+            log::warn!("client_ping failed: {}", e);
         }
         let _ = app.emit("sync-status", sync::get_sync_status_payload());
     });

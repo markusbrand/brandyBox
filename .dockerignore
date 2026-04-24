@@ -1,0 +1,14 @@
+# Backend image only needs `backend/` and `web/`.
+.git
+.venv
+client-tauri
+client
+tests
+docs
+site
+.cursor
+**/__pycache__
+*.pyc
+.pytest_cache
+**/node_modules
+web/dist

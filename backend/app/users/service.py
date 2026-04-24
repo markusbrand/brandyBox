@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import hash_password
 from app.config import get_settings
-from app.users.models import User, UserCreate
+from app.users.models import User, UserCreate, UserPreferences, UserPreferencesPatch
 
 log = logging.getLogger(__name__)
 
@@ -136,3 +136,39 @@ async def ensure_admin_exists(session: AsyncSession) -> None:
         is_admin=True,
     )
     session.add(user)
+
+
+def read_user_preferences(user: User) -> UserPreferences:
+    """Parse preferences_json or return defaults."""
+    if not user.preferences_json or not str(user.preferences_json).strip():
+        return UserPreferences()
+    try:
+        return UserPreferences.model_validate_json(user.preferences_json)
+    except Exception:
+        log.warning("Invalid preferences_json for user=%s; resetting view to defaults", user.email)
+        return UserPreferences()
+
+
+async def patch_user_preferences(
+    user: User,
+    patch: UserPreferencesPatch,
+    session: AsyncSession,
+) -> UserPreferences:
+    """Merge patch into stored JSON."""
+    cur = read_user_preferences(user)
+    data = cur.model_dump()
+    if patch.theme is not None:
+        t = patch.theme.strip().lower()
+        if t in ("light", "dark", "system"):
+            data["theme"] = t
+    if patch.content_background_image is not None:
+        data["content_background_image"] = patch.content_background_image
+    if patch.content_background_opacity is not None:
+        o = patch.content_background_opacity
+        data["content_background_opacity"] = max(0.0, min(1.0, float(o)))
+    if patch.favorite_paths is not None:
+        data["favorite_paths"] = list(patch.favorite_paths)
+    merged = UserPreferences.model_validate(data)
+    user.preferences_json = merged.model_dump_json()
+    await session.flush()
+    return merged

@@ -29,12 +29,19 @@ from app.users.models import (
     User,
     UserCreate,
     UserCreateResponse,
-    UserResponse,
     UserLogin,
+    UserPreferences,
+    UserPreferencesPatch,
+    UserResponse,
     UserStorageLimitUpdate,
 )
 from app.limiter import limiter
-from app.users.service import create_user as do_create_user, get_user_by_email
+from app.users.service import (
+    create_user as do_create_user,
+    get_user_by_email,
+    patch_user_preferences,
+    read_user_preferences,
+)
 
 router = APIRouter(prefix="/api", tags=["users"])
 log = logging.getLogger(__name__)
@@ -111,6 +118,24 @@ async def me(
         server_limit, current_user.storage_limit_bytes
     )
     return UserResponse(**data)
+
+
+@router.get("/users/me/preferences", response_model=UserPreferences)
+async def get_my_preferences(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> UserPreferences:
+    """Return persisted appearance and favorites for the current user."""
+    return read_user_preferences(current_user)
+
+
+@router.patch("/users/me/preferences", response_model=UserPreferences)
+async def patch_my_preferences(
+    payload: UserPreferencesPatch,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> UserPreferences:
+    """Update appearance and favorites (partial)."""
+    return await patch_user_preferences(current_user, payload, session)
 
 
 @router.post("/auth/change-password")

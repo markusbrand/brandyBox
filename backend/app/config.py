@@ -1,10 +1,19 @@
 """Configuration from environment (no hardcoded secrets)."""
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _empty_to_none_str(v: object) -> Optional[str]:
+    if v is None or v == "":
+        return None
+    if isinstance(v, str):
+        s = v.strip()
+        return s if s else None
+    return str(v)
 
 
 class Settings(BaseSettings):
@@ -57,6 +66,36 @@ class Settings(BaseSettings):
 
     # Server
     port: int = 8080
+
+    # Optional: path to built web SPA (index.html). Unset = do not mount static app.
+    static_dist_path: Optional[Path] = None
+
+    # Public URL used for OAuth redirect_uri when reverse proxies hide the real host (e.g. Cloudflare).
+    # Example: https://brandybox.brandstaetter.rocks — must match Google Cloud redirect URI registration.
+    public_base_url: Optional[str] = None
+
+    # Google OAuth (optional; leave client_id empty to disable "Sign in with Google")
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
+    @field_validator("static_dist_path", mode="before")
+    @classmethod
+    def parse_static_dist(cls, v: object) -> Optional[Path]:
+        if v is None or v == "":
+            return None
+        return Path(str(v))
+
+    @field_validator("public_base_url", mode="before")
+    @classmethod
+    def parse_public_base(cls, v: object) -> Optional[str]:
+        return _empty_to_none_str(v)
+
+    # API / client compatibility (shown in /api/meta/version and client ping)
+    api_version: str = "0.2.0"
+    min_supported_client_version: str = "0.1.0"
+
+    # Telemetry: prune server_events older than this many days (0 = no prune on write path)
+    server_events_retention_days: int = 30
 
     # Logging (empty log_file = stderr only; level DEBUG|INFO|WARNING|ERROR)
     log_level: str = "INFO"

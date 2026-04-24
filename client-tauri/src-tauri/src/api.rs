@@ -384,6 +384,29 @@ impl ApiClient {
         r.json().map_err(|e| e.to_string())
     }
 
+    /// Report client version and last sync outcome to the server (best-effort).
+    pub fn client_ping(&self, last_sync_ok: Option<bool>, last_sync_at_rfc3339: Option<String>) -> Result<(), String> {
+        let url = format!("{}/api/clients/ping", self.base_url.trim_end_matches('/'));
+        let body = serde_json::json!({
+            "client_type": "tauri",
+            "client_version": env!("CARGO_PKG_VERSION"),
+            "last_sync_ok": last_sync_ok,
+            "last_sync_at": last_sync_at_rfc3339,
+        });
+        let r = self
+            .client()
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .header("Content-Type", "application/json")
+            .send()
+            .map_err(|e| e.to_string())?;
+        if r.status() == reqwest::StatusCode::NO_CONTENT || r.status().is_success() {
+            return Ok(());
+        }
+        Err(format!("{}", r.status()))
+    }
+
     pub fn delete_user(&self, email: &str) -> Result<(), String> {
         let encoded = urlencoding::encode(email);
         let url = format!("{}/api/users/{}", self.base_url.trim_end_matches('/'), encoded);

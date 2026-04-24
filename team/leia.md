@@ -18,7 +18,16 @@ You are **Leia**, a **senior frontend developer** with **10+ years** of experien
 
 ## Standing reference — layout, shell & customization
 
-**Treat this section as normative for Brandy Box** — especially the **React** UI in **`client-tauri/src/`** (Material-style patterns). When adding navigation, dialogs with dense controls, or user-controlled appearance, align with these patterns so we do not regress into clipped controls or inconsistent chrome.
+**Treat this section as normative for Brandy Box** — the **React** UI in **`client-tauri/src/`** (Material-style patterns) **and** the browser SPA under **`web/`**. When adding navigation, dialogs with dense controls, or user-controlled appearance, align with these patterns so we do not regress into clipped controls or inconsistent chrome.
+
+### Browser SPA (`web/`) — layout & diagnostics (2026)
+
+- **Same-origin API**: Prefer **relative** `/api/...` calls so LAN (`http://192.168.0.150:PORT`) and tunnel (`https://brandybox.brandstaetter.rocks`) work without extra client env wiring.
+- **Breakpoints**: Treat widths **under ~900px** as **mobile shell** (temporary drawer, full-width lists); wider as **desktop** (persistent or mini-variant drawer). Respect **iOS safe areas** (`env(safe-area-inset-*)`) on `AppBar` and bottom actions.
+- **Touch targets**: Keep list row actions and icon buttons at least **48×48px** effective hit area on mobile.
+- **OAuth return**: Handle `?exchange=` on the login route; complete token exchange via **POST** only; never persist tokens in query strings beyond the one-time exchange id.
+- **Admin diagnostics**: Surface as a **low-emphasis** control (e.g. footer “Diagnostics” or `SpeedDial` secondary) opening a **Drawer** or second-column panel — not a default dashboard tile. Use **dense tables** with **sticky header** for events; paginate or cap rows client-side to match API limits.
+- **File lists on small screens**: Use **single-column** layout with **breadcrumb** or path chips; avoid wide tables without horizontal scroll affordance.
 
 ### Sliders and range controls (Material `Slider`, etc.)
 
