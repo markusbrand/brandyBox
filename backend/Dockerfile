@@ -23,4 +23,6 @@ ENV BRANDYBOX_STATIC_DIST_PATH=/app/web_dist
 
 EXPOSE 8080
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Trust X-Forwarded-Proto / X-Forwarded-Host from the reverse proxy (e.g. Cloudflare Tunnel → Docker).
+# Without this, OAuth redirect_uri can be http://internal:8080 while Google expects your public https URL.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
