@@ -49,7 +49,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # When build_ref is set (e.g. master), build from that ref and still upload to release_tag
           ref: ${{ github.event.inputs.build_ref || github.event.release.tag_name || github.event.inputs.release_tag || github.ref }}
@@ -61,7 +61,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 'lts/*'
           cache: 'npm'

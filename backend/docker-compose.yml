@@ -24,7 +24,7 @@ services:
       # Max storage for all users: e.g. 70% (default), 500GB, 1TB
       # BRANDYBOX_STORAGE_LIMIT=70%
       # DB lives in /data (mounted volume); default /data/brandybox.db
-      # Set in .env: JWT_SECRET, SMTP_*, ADMIN_*
+      # Set in .env: JWT_SECRET, SMTP_*, ADMIN_*, optional Google OAuth (must be listed here or the container never sees them)
       - BRANDYBOX_JWT_SECRET=${BRANDYBOX_JWT_SECRET}
       - BRANDYBOX_SMTP_HOST=${BRANDYBOX_SMTP_HOST}
       - BRANDYBOX_SMTP_PORT=${BRANDYBOX_SMTP_PORT:-587}
@@ -34,6 +34,9 @@ services:
       - BRANDYBOX_ADMIN_EMAIL=${BRANDYBOX_ADMIN_EMAIL}
       - BRANDYBOX_ADMIN_INITIAL_PASSWORD=${BRANDYBOX_ADMIN_INITIAL_PASSWORD}
       - BRANDYBOX_CORS_ORIGINS=${BRANDYBOX_CORS_ORIGINS:-https://brandybox.brandstaetter.rocks}
+      - BRANDYBOX_PUBLIC_BASE_URL=${BRANDYBOX_PUBLIC_BASE_URL:-}
+      - BRANDYBOX_GOOGLE_CLIENT_ID=${BRANDYBOX_GOOGLE_CLIENT_ID:-}
+      - BRANDYBOX_GOOGLE_CLIENT_SECRET=${BRANDYBOX_GOOGLE_CLIENT_SECRET:-}
     volumes:
       # Persist SQLite DB
       - brandybox_data:/data
