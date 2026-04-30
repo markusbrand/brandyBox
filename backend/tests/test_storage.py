@@ -6,7 +6,9 @@ from unittest.mock import MagicMock
 
 from app.files.storage import (
     delete_file,
+    list_directories_recursive,
     list_files_recursive,
+    make_directory,
     resolve_user_path,
     user_base_path,
 )
@@ -48,12 +50,13 @@ def test_list_files_recursive_empty_dir(tmp_path):
 
 
 def test_list_files_recursive_one_file(tmp_path):
-    """Single file is listed with path and mtime."""
+    """Single file is listed with path, mtime and size (added in API 0.3.0)."""
     (tmp_path / "a.txt").write_text("hi")
     result = list_files_recursive(tmp_path)
     assert len(result) == 1
     assert result[0]["path"] == "a.txt"
     assert "mtime" in result[0]
+    assert result[0]["size"] == 2  # "hi" is 2 bytes
 
 
 def test_delete_file(monkeypatch, tmp_path):
@@ -186,3 +189,74 @@ def test_list_files_recursive_nested(tmp_path) -> None:
     paths = {r["path"] for r in result}
     assert paths == {"root.txt", "a/b.txt", "a/c.txt"}
     assert len(result) == 3
+    sizes = {r["path"]: r["size"] for r in result}
+    assert sizes == {"root.txt": 1, "a/b.txt": 1, "a/c.txt": 1}
+
+
+def test_list_directories_recursive_empty(tmp_path) -> None:
+    """Empty root returns no directories."""
+    assert list_directories_recursive(tmp_path) == []
+
+
+def test_list_directories_recursive_nested(tmp_path) -> None:
+    """All nested directories are listed with relative paths; root excluded."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "b").mkdir()
+    (tmp_path / "a" / "b" / "c").mkdir()
+    (tmp_path / "x").mkdir()
+    (tmp_path / "a" / "file.txt").write_text("f")
+    result = list_directories_recursive(tmp_path)
+    paths = {r["path"] for r in result}
+    assert paths == {"a", "a/b", "a/b/c", "x"}
+    for r in result:
+        assert "mtime" in r
+
+
+def test_make_directory_creates_new(monkeypatch, tmp_path) -> None:
+    """Creating a new folder returns created=True and creates parents."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = tmp_path
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    user_dir = tmp_path / "u@x.co"
+    user_dir.mkdir()
+    res = make_directory("u@x.co", "vacations/2024")
+    assert res == {"path": "vacations/2024", "created": True}
+    assert (user_dir / "vacations" / "2024").is_dir()
+
+
+def test_make_directory_idempotent(monkeypatch, tmp_path) -> None:
+    """Creating an existing folder returns created=False (no error)."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = tmp_path
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    user_dir = tmp_path / "u@x.co"
+    user_dir.mkdir()
+    (user_dir / "already").mkdir()
+    res = make_directory("u@x.co", "already")
+    assert res == {"path": "already", "created": False}
+
+
+def test_make_directory_conflict_with_file(monkeypatch, tmp_path) -> None:
+    """If a file exists at the path, mkdir raises FileExistsError."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = tmp_path
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    user_dir = tmp_path / "u@x.co"
+    user_dir.mkdir()
+    (user_dir / "blocker").write_text("I am a file")
+    with pytest.raises(FileExistsError):
+        make_directory("u@x.co", "blocker")
+
+
+def test_make_directory_rejects_traversal(monkeypatch, tmp_path) -> None:
+    """Unsafe path segments raise ValueError."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = tmp_path
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    (tmp_path / "u@x.co").mkdir()
+    with pytest.raises(ValueError):
+        make_directory("u@x.co", "../escape")

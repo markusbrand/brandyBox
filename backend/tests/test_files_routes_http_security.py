@@ -113,3 +113,103 @@ def test_user_cannot_download_other_users_file(client: TestClient) -> None:
         headers=admin,
     )
     assert dl.status_code == 404
+
+
+# --- /api/files/folders -----------------------------------------------------
+
+
+def test_list_folders_empty(client: TestClient) -> None:
+    """A fresh user has no folders."""
+    r = client.get("/api/files/folders", headers=_bearer(client))
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_list_folders_after_upload(client: TestClient) -> None:
+    """Uploading a/b/c.txt creates folders 'a' and 'a/b' visible via /folders."""
+    headers = _bearer(client)
+    up = client.post(
+        "/api/files/upload?path=a/b/c.txt",
+        content=b"hi",
+        headers=headers,
+    )
+    assert up.status_code == 200, up.text
+
+    r = client.get("/api/files/folders", headers=headers)
+    assert r.status_code == 200, r.text
+    paths = {row["path"] for row in r.json()}
+    assert paths == {"a", "a/b"}
+
+
+def test_list_files_returns_size(client: TestClient) -> None:
+    """API 0.3.0: each file row in /list includes a 'size' field in bytes."""
+    headers = _bearer(client)
+    body = b"x" * 17
+    up = client.post(
+        "/api/files/upload?path=sized.bin",
+        content=body,
+        headers=headers,
+    )
+    assert up.status_code == 200, up.text
+
+    r = client.get("/api/files/list", headers=headers)
+    assert r.status_code == 200
+    rows = {row["path"]: row for row in r.json()}
+    assert "sized.bin" in rows
+    assert rows["sized.bin"]["size"] == len(body)
+
+
+# --- /api/files/mkdir -------------------------------------------------------
+
+
+def test_mkdir_creates_empty_folder(client: TestClient) -> None:
+    """POST /api/files/mkdir creates an empty folder visible via /folders."""
+    headers = _bearer(client)
+    r = client.post("/api/files/mkdir?path=Photos/2024", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["path"] == "Photos/2024"
+    assert body["created"] is True
+
+    folders = client.get("/api/files/folders", headers=headers).json()
+    paths = {row["path"] for row in folders}
+    assert "Photos" in paths
+    assert "Photos/2024" in paths
+
+
+def test_mkdir_idempotent(client: TestClient) -> None:
+    """Calling mkdir twice returns created=False the second time."""
+    headers = _bearer(client)
+    first = client.post("/api/files/mkdir?path=Same", headers=headers)
+    assert first.status_code == 200
+    assert first.json()["created"] is True
+    second = client.post("/api/files/mkdir?path=Same", headers=headers)
+    assert second.status_code == 200
+    assert second.json()["created"] is False
+
+
+def test_mkdir_conflict_with_file(client: TestClient) -> None:
+    """If a file already lives at the path, mkdir returns 409."""
+    headers = _bearer(client)
+    up = client.post(
+        "/api/files/upload?path=blocker.txt",
+        content=b"f",
+        headers=headers,
+    )
+    assert up.status_code == 200
+    r = client.post("/api/files/mkdir?path=blocker.txt", headers=headers)
+    assert r.status_code == 409
+
+
+def test_mkdir_rejects_traversal(client: TestClient) -> None:
+    """mkdir rejects unsafe path segments with 400."""
+    headers = _bearer(client)
+    r = client.post("/api/files/mkdir?path=../etc", headers=headers)
+    assert r.status_code == 400
+
+
+def test_mkdir_requires_path(client: TestClient) -> None:
+    """Missing 'path' query param returns 400."""
+    headers = _bearer(client)
+    r = client.post("/api/files/mkdir", headers=headers)
+    assert r.status_code == 400

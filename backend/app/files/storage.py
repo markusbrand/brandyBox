@@ -112,8 +112,10 @@ def delete_file(email: str, relative_path: str) -> None:
 
 def list_files_recursive(root: Path) -> List[dict]:
     """
-    List all files under root with relative path and mtime.
-    Returns list of {"path": str, "mtime": float} for files only.
+    List all files under root with relative path, mtime and size.
+    Returns list of ``{"path": str, "mtime": float, "size": int}`` for files only.
+
+    The ``size`` field was added in API 0.3.0; older API clients ignore it.
     """
     result: List[dict] = []
     try:
@@ -121,12 +123,59 @@ def list_files_recursive(root: Path) -> List[dict]:
             if f.is_file():
                 try:
                     rel = f.relative_to(root)
+                    st = f.stat()
                     result.append({
                         "path": str(rel).replace("\\", "/"),
-                        "mtime": f.stat().st_mtime,
+                        "mtime": st.st_mtime,
+                        "size": st.st_size,
                     })
                 except (OSError, ValueError):
                     continue
     except OSError as e:
         log.warning("list_files_recursive cannot read tree under %s: %s", root, e)
     return result
+
+
+def list_directories_recursive(root: Path) -> List[dict]:
+    """
+    List all directories under ``root`` with relative path and mtime.
+
+    Returns a list of ``{"path": str, "mtime": float}`` for every directory
+    beneath ``root`` (the root itself is not included). Used by the web UI
+    so it can render *empty* user-created folders that the file listing
+    cannot infer (because they contain no files at any depth).
+    """
+    result: List[dict] = []
+    try:
+        for d in root.rglob("*"):
+            if d.is_dir():
+                try:
+                    rel = d.relative_to(root)
+                    result.append({
+                        "path": str(rel).replace("\\", "/"),
+                        "mtime": d.stat().st_mtime,
+                    })
+                except (OSError, ValueError):
+                    continue
+    except OSError as e:
+        log.warning("list_directories_recursive cannot read tree under %s: %s", root, e)
+    return result
+
+
+def make_directory(email: str, relative_path: str) -> dict:
+    """
+    Create an empty directory under the user's folder.
+
+    Idempotent: if the directory already exists, returns ``created=False``.
+    Raises ``ValueError`` for traversal/unsafe segments and ``FileExistsError``
+    if a *file* already exists at that path.
+
+    Returns ``{"path": str, "created": bool}``.
+    """
+    target = resolve_user_path(email, relative_path)
+    if target.exists():
+        if target.is_dir():
+            return {"path": relative_path, "created": False}
+        raise FileExistsError(f"A file already exists at: {relative_path}")
+    target.mkdir(parents=True, exist_ok=True)
+    return {"path": relative_path, "created": True}

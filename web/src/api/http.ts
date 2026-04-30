@@ -158,7 +158,13 @@ export async function patchPreferences(p: Partial<Preferences>): Promise<Prefere
   return res.json() as Promise<Preferences>;
 }
 
-export type FileRow = { path: string; mtime: number; hash?: string | null };
+export type FileRow = {
+  path: string;
+  mtime: number;
+  /** File size in bytes. Added in API 0.3.0; older backends may omit this. */
+  size?: number;
+  hash?: string | null;
+};
 
 export async function listFiles(): Promise<FileRow[]> {
   const res = await apiFetchAuth("/api/files/list");
@@ -166,6 +172,39 @@ export async function listFiles(): Promise<FileRow[]> {
     throw new Error(await readErrorMessage(res));
   }
   return res.json() as Promise<FileRow[]>;
+}
+
+export type FolderRow = { path: string; mtime: number };
+
+/**
+ * List all directories under the user's root. Added in API 0.3.0 so the web
+ * UI can render empty user-created folders. Older backends respond 404; in
+ * that case we treat it as "no extra folders" so the UI gracefully degrades.
+ */
+export async function listFolders(): Promise<FolderRow[]> {
+  const res = await apiFetchAuth("/api/files/folders");
+  if (res.status === 404) {
+    return [];
+  }
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json() as Promise<FolderRow[]>;
+}
+
+/**
+ * Create an empty folder under the user's root. Idempotent: returns
+ * ``created=false`` if the folder already exists. Throws on validation
+ * errors (bad path) or conflict (a file already lives at that path).
+ */
+export async function createFolder(path: string): Promise<{ path: string; created: boolean }> {
+  const res = await apiFetchAuth(`/api/files/mkdir?path=${encodeURIComponent(path)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json() as Promise<{ path: string; created: boolean }>;
 }
 
 export type StorageInfo = {

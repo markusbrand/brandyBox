@@ -28,7 +28,13 @@ from app.files.quota import (
 )
 from app.config import get_settings
 from app.files.storage import delete_file as storage_delete_file
-from app.files.storage import list_files_recursive, resolve_user_path, user_base_path
+from app.files.storage import (
+    list_directories_recursive,
+    list_files_recursive,
+    make_directory,
+    resolve_user_path,
+    user_base_path,
+)
 from app.limiter import limiter
 from app.users.models import User
 
@@ -90,7 +96,12 @@ async def list_files(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> List[dict]:
-    """List all files for the current user (recursive, path + mtime + optional content_hash)."""
+    """List all files for the current user (recursive, ``path`` + ``mtime`` + ``size`` + optional ``hash``).
+
+    The ``size`` field was added in API 0.3.0 and is sent as bytes (int).
+    Older clients ignore unknown fields, so the response stays backward
+    compatible.
+    """
     base = user_base_path(current_user.email)
     base.mkdir(parents=True, exist_ok=True)
     result = list_files_recursive(base)
@@ -100,6 +111,75 @@ async def list_files(
         if r["path"] in hashes:
             r["hash"] = hashes[r["path"]]
     log.info("list_files user=%s count=%d", current_user.email, len(result))
+    return result
+
+
+@router.get("/folders", response_model=List[dict])
+@limiter.limit("60/minute")
+async def list_folders(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> List[dict]:
+    """List all directories for the current user (recursive, ``path`` + ``mtime``).
+
+    Added in API 0.3.0 to let the web file browser render *empty* folders
+    that the user created via ``POST /api/files/mkdir`` (folders that hold
+    no files cannot be inferred from the file list). The user's root itself
+    is not included. Sync clients do not need to call this endpoint —
+    creating empty folders is purely a web UI feature.
+    """
+    base = user_base_path(current_user.email)
+    base.mkdir(parents=True, exist_ok=True)
+    result = list_directories_recursive(base)
+    log.info("list_folders user=%s count=%d", current_user.email, len(result))
+    return result
+
+
+@router.post("/mkdir")
+@limiter.limit("60/minute")
+async def make_folder(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Create an empty folder under the user's root.
+
+    Idempotent: returns ``{"path": ..., "created": false}`` if the folder
+    already exists. Returns 409 if a file with that name already exists.
+    Path segments are sanitized (no traversal, no unsafe characters).
+
+    Added in API 0.3.0; primarily used by the web file browser so users can
+    create folders before uploading anything into them.
+    """
+    path_param = _normalize_path_param(request.query_params.get("path"))
+    if not path_param or not path_param.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query parameter 'path' is required",
+        )
+    try:
+        result = make_directory(current_user.email, path_param)
+    except ValueError as e:
+        log.warning("make_folder rejected path=%r: %s", path_param, e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except FileExistsError as e:
+        log.warning("make_folder conflict path=%r: %s", path_param, e)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e),
+        )
+    except OSError as e:
+        log.exception("make_folder failed path=%r: %s", path_param, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not create folder",
+        )
+    log.info(
+        "make_folder user=%s path=%s created=%s",
+        current_user.email, path_param, result["created"],
+    )
     return result
 
 

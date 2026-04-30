@@ -100,7 +100,7 @@ class Settings(BaseSettings):
         return _empty_to_none_str(v)
 
     # API / client compatibility (shown in /api/meta/version and client ping)
-    api_version: str = "0.2.0"
+    api_version: str = "0.3.0"
     min_supported_client_version: str = "0.1.0"
 
     # Telemetry: prune server_events older than this many days (0 = no prune on write path)
