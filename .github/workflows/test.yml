@@ -87,7 +87,7 @@ jobs:
           tar czf tauri-release.tar.gz -C client-tauri/src-tauri/target release/
 
       - name: Upload Tauri release for E2E
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: tauri-release-linux
           path: tauri-release.tar.gz
@@ -101,7 +101,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Restore Tauri release
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: tauri-release-linux
 
