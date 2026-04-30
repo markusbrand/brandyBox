@@ -16,10 +16,19 @@ def _empty_to_none_str(v: object) -> Optional[str]:
     return str(v)
 
 
+# backend/.env — loaded when present (local dev); Docker/production typically inject env instead.
+_BACKEND_ENV = Path(__file__).resolve().parent.parent / ".env"
+
+
 class Settings(BaseSettings):
     """Backend settings from env."""
 
-    model_config = SettingsConfigDict(env_prefix="BRANDYBOX_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="BRANDYBOX_",
+        extra="ignore",
+        env_file=_BACKEND_ENV,
+        env_file_encoding="utf-8",
+    )
 
     # Storage
     storage_base_path: Path = Path("/mnt/shared_storage/brandyBox")
