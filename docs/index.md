@@ -10,6 +10,8 @@ These features rely on **API 0.3.0** additions which stay backward compatible:
 - ``GET /api/files/folders`` returns every directory under the user's root with ``path`` + ``mtime`` (used so the web UI can render empty folders).
 - ``POST /api/files/mkdir?path=…`` creates an empty folder. Idempotent, returns 409 if a file already exists at that path. Sync clients (Tauri, legacy Python) do not need to call these new endpoints.
 
+In **Settings → Appearance**, the web app can set the full-page background from an **image file on your computer** (JPEG/PNG/GIF/WebP, max 5 MB) via ``POST /api/users/me/background-image``, or still use a **URL** or clear the background. The stored file is served at ``GET /api/users/me/background-image`` (Bearer auth); preferences store the sentinel ``bb:server-background`` so the SPA can fetch bytes and apply them as a blob URL (plain CSS ``url()`` cannot send the JWT). ``DELETE /api/users/me/background-image`` removes the file and clears the preference.
+
 ## Quick links
 
 - [ADR 006 — Sync semantics & trust boundaries](adrs/006-sync-semantics-trust-boundaries.md)

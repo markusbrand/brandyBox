@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import hash_password
 from app.config import get_settings
+from app.users.background_image import USER_BACKGROUND_SENTINEL, clear_user_background_image_files
 from app.users.models import User, UserCreate, UserPreferences, UserPreferencesPatch
 
 log = logging.getLogger(__name__)
@@ -154,20 +155,31 @@ async def patch_user_preferences(
     patch: UserPreferencesPatch,
     session: AsyncSession,
 ) -> UserPreferences:
-    """Merge patch into stored JSON."""
+    """Merge patch into stored JSON.
+
+    Uses ``model_dump(exclude_unset=True)`` so JSON ``null`` for
+    ``content_background_image`` clears the field (and uploaded file on disk),
+    instead of being treated as "omit this key".
+    """
     cur = read_user_preferences(user)
     data = cur.model_dump()
-    if patch.theme is not None:
-        t = patch.theme.strip().lower()
+    patch_dict = patch.model_dump(exclude_unset=True)
+
+    if "theme" in patch_dict:
+        t = (patch_dict["theme"] or "").strip().lower()
         if t in ("light", "dark", "system"):
             data["theme"] = t
-    if patch.content_background_image is not None:
-        data["content_background_image"] = patch.content_background_image
-    if patch.content_background_opacity is not None:
-        o = patch.content_background_opacity
+    if "content_background_image" in patch_dict:
+        new_val = patch_dict["content_background_image"]
+        # Uploaded image lives on disk; clear it when switching to URL, data URL, or off.
+        if new_val != USER_BACKGROUND_SENTINEL:
+            clear_user_background_image_files(user.email)
+        data["content_background_image"] = new_val
+    if "content_background_opacity" in patch_dict:
+        o = patch_dict["content_background_opacity"]
         data["content_background_opacity"] = max(0.0, min(1.0, float(o)))
-    if patch.favorite_paths is not None:
-        data["favorite_paths"] = list(patch.favorite_paths)
+    if "favorite_paths" in patch_dict:
+        data["favorite_paths"] = list(patch_dict["favorite_paths"])
     merged = UserPreferences.model_validate(data)
     user.preferences_json = merged.model_dump_json()
     await session.flush()

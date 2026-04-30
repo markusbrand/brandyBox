@@ -138,6 +138,13 @@ export type Preferences = {
   favorite_paths: string[];
 };
 
+/**
+ * Preferences value meaning the image bytes are served from
+ * ``GET /api/users/me/background-image`` (Bearer auth). Must match the backend
+ * constant in ``app/users/background_image.py``.
+ */
+export const USER_BACKGROUND_IMAGE_SENTINEL = "bb:server-background";
+
 export async function fetchPreferences(): Promise<Preferences> {
   const res = await apiFetchAuth("/api/users/me/preferences");
   if (!res.ok) {
@@ -152,6 +159,28 @@ export async function patchPreferences(p: Partial<Preferences>): Promise<Prefere
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(p),
   });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json() as Promise<Preferences>;
+}
+
+/** Upload a JPEG/PNG/GIF/WebP (max 5 MB) as the full-page web background. */
+export async function uploadBackgroundImage(file: File): Promise<Preferences> {
+  const res = await apiFetchAuth("/api/users/me/background-image", {
+    method: "POST",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json() as Promise<Preferences>;
+}
+
+/** Remove the uploaded background file and clear the preference. */
+export async function deleteBackgroundImage(): Promise<Preferences> {
+  const res = await apiFetchAuth("/api/users/me/background-image", { method: "DELETE" });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }

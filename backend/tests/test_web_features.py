@@ -1,5 +1,6 @@
 """Web-related API: preferences, meta version, client ping, OAuth exchange."""
 
+import base64
 import uuid
 
 import pytest
@@ -48,6 +49,66 @@ def test_preferences_roundtrip(client: TestClient) -> None:
     assert r2.json()["theme"] == "dark"
     assert r2.json()["favorite_paths"] == ["a/b.txt"]
     assert r2.json()["content_background_opacity"] == 0.5
+
+
+# 1×1 transparent PNG (minimal valid file)
+_TINY_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAAKm+XfQAAAAASUVORK5CYII=",
+)
+
+
+def test_upload_background_image_sets_sentinel_and_get_streams_png(client: TestClient) -> None:
+    h = _auth_headers(client)
+    r = client.post(
+        "/api/users/me/background-image",
+        headers={**h, "Content-Type": "image/png"},
+        content=_TINY_PNG,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["content_background_image"] == "bb:server-background"
+
+    r2 = client.get("/api/users/me/background-image", headers=h)
+    assert r2.status_code == 200
+    assert r2.headers.get("content-type", "").startswith("image/png")
+    assert r2.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_delete_background_image_clears_file_and_preference(client: TestClient) -> None:
+    h = _auth_headers(client)
+    up = client.post(
+        "/api/users/me/background-image",
+        headers={**h, "Content-Type": "image/png"},
+        content=_TINY_PNG,
+    )
+    assert up.status_code == 200
+
+    rd = client.delete("/api/users/me/background-image", headers=h)
+    assert rd.status_code == 200, rd.text
+    assert rd.json().get("content_background_image") is None
+
+    rg = client.get("/api/users/me/background-image", headers=h)
+    assert rg.status_code == 404
+
+
+def test_patch_preferences_to_url_removes_uploaded_background_file(client: TestClient) -> None:
+    h = _auth_headers(client)
+    up = client.post(
+        "/api/users/me/background-image",
+        headers={**h, "Content-Type": "image/png"},
+        content=_TINY_PNG,
+    )
+    assert up.status_code == 200
+
+    rp = client.patch(
+        "/api/users/me/preferences",
+        headers=h,
+        json={"content_background_image": "https://example.com/bg.png"},
+    )
+    assert rp.status_code == 200, rp.text
+    assert rp.json()["content_background_image"] == "https://example.com/bg.png"
+
+    rg = client.get("/api/users/me/background-image", headers=h)
+    assert rg.status_code == 404
 
 
 def test_client_ping(client: TestClient) -> None:

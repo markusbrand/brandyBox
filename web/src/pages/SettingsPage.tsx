@@ -1,3 +1,4 @@
+import ImageIcon from "@mui/icons-material/Image";
 import {
   Alert,
   Box,
@@ -12,6 +13,7 @@ import {
   MenuItem,
   Select,
   Slider,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -20,15 +22,18 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import {
   adminClients,
   adminCreateUser,
   adminDeleteUser,
   adminEvents,
   adminListUsers,
+  deleteBackgroundImage,
   fetchMetaVersion,
   patchPreferences,
+  uploadBackgroundImage,
+  USER_BACKGROUND_IMAGE_SENTINEL,
   type ClientConn,
   type MeUser,
   type ServerEvent,
@@ -51,7 +56,8 @@ export default function SettingsPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setBg(prefs.content_background_image ?? "");
+    const v = prefs.content_background_image ?? "";
+    setBg(v === USER_BACKGROUND_IMAGE_SENTINEL ? "" : v);
     setOp(prefs.content_background_opacity);
   }, [prefs]);
 
@@ -94,15 +100,52 @@ export default function SettingsPage() {
 
   const saveAppearance = async () => {
     try {
+      const trimmed = bg.trim();
+      let nextImage: string | null;
+      if (trimmed) {
+        nextImage = trimmed;
+      } else if (prefs.content_background_image === USER_BACKGROUND_IMAGE_SENTINEL) {
+        nextImage = USER_BACKGROUND_IMAGE_SENTINEL;
+      } else {
+        nextImage = null;
+      }
       const p = await patchPreferences({
         theme: prefs.theme,
-        content_background_image: bg.trim() || null,
+        content_background_image: nextImage,
         content_background_opacity: op,
       });
       setPrefsLocal(p);
       setOpenAppear(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
+    }
+  };
+
+  const onUploadBackground = async (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) {
+      return;
+    }
+    try {
+      const p = await uploadBackgroundImage(file);
+      setPrefsLocal(p);
+      setBg("");
+      setErr(null);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Upload failed");
+    }
+  };
+
+  const removeUploadedBackground = async () => {
+    try {
+      const p = await deleteBackgroundImage();
+      setPrefsLocal(p);
+      setBg("");
+      setErr(null);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Remove failed");
     }
   };
 
@@ -203,13 +246,39 @@ export default function SettingsPage() {
       <Dialog open={openAppear} onClose={() => setOpenAppear(false)} scroll="paper" fullWidth maxWidth="sm">
         <DialogTitle>Appearance</DialogTitle>
         <DialogContent dividers sx={{ overflowY: "auto", maxHeight: "70vh" }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
+            <Button variant="outlined" component="label" startIcon={<ImageIcon />}>
+              Upload from computer
+              <input
+                type="file"
+                hidden
+                accept="image/jpeg,image/png,image/gif,image/webp"
+                onChange={onUploadBackground}
+              />
+            </Button>
+            {prefs.content_background_image === USER_BACKGROUND_IMAGE_SENTINEL ? (
+              <Button color="warning" variant="text" size="small" onClick={() => void removeUploadedBackground()}>
+                Remove uploaded image
+              </Button>
+            ) : null}
+          </Stack>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+            JPEG, PNG, GIF, or WebP — max 5 MB. The image is stored on the server under your account (not inside the
+            preferences JSON).
+          </Typography>
+          {prefs.content_background_image === USER_BACKGROUND_IMAGE_SENTINEL ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              An uploaded image is active. Enter a URL below to switch to a link instead (the uploaded file will be
+              removed when you save).
+            </Alert>
+          ) : null}
           <TextField
             label="Background image URL"
             fullWidth
             margin="normal"
             value={bg}
             onChange={(e) => setBg(e.target.value)}
-            helperText="Optional; shown behind file list with opacity below."
+            helperText="Optional; use an https link, or upload a file above. Shown behind the main area with opacity below."
           />
           <Typography gutterBottom sx={{ mt: 2 }}>
             Image opacity

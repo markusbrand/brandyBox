@@ -4,6 +4,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +37,12 @@ from app.users.models import (
     UserStorageLimitUpdate,
 )
 from app.limiter import limiter
+from app.users.background_image import (
+    USER_BACKGROUND_SENTINEL,
+    clear_user_background_image_files,
+    find_stored_background_path,
+    save_user_background_image_bytes,
+)
 from app.users.service import (
     create_user as do_create_user,
     get_user_by_email,
@@ -136,6 +143,81 @@ async def patch_my_preferences(
 ) -> UserPreferences:
     """Update appearance and favorites (partial)."""
     return await patch_user_preferences(current_user, payload, session)
+
+
+@router.get("/users/me/background-image")
+@limiter.limit("120/minute")
+async def get_my_background_image(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> FileResponse:
+    """Stream the image uploaded for the web full-page background (Bearer auth required)."""
+    found = find_stored_background_path(current_user.email)
+    if not found:
+        log.warning("get_my_background_image: no file for user=%s", current_user.email)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No background image uploaded",
+        )
+    path, media_type = found
+    log.info("get_my_background_image user=%s path=%s", current_user.email, path.name)
+    return FileResponse(path=path, media_type=media_type)
+
+
+@router.post("/users/me/background-image", response_model=UserPreferences)
+@limiter.limit("30/minute")
+async def upload_my_background_image(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> UserPreferences:
+    """
+    Upload a full-page background image (JPEG, PNG, GIF, or WebP), max 5 MB raw body.
+
+    Stores the file under the user's ``.brandybox/`` folder and sets
+    ``content_background_image`` to ``bb:server-background`` so the web client
+    can load it with Bearer auth via this route and use a blob URL in CSS.
+    """
+    body = await request.body()
+    try:
+        save_user_background_image_bytes(current_user.email, body)
+    except ValueError as e:
+        log.warning("upload_my_background_image rejected user=%s: %s", current_user.email, e)
+        msg = str(e)
+        if "too large" in msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=msg,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=msg,
+        )
+    merged = await patch_user_preferences(
+        current_user,
+        UserPreferencesPatch(content_background_image=USER_BACKGROUND_SENTINEL),
+        session,
+    )
+    log.info("upload_my_background_image user=%s ok", current_user.email)
+    return merged
+
+
+@router.delete("/users/me/background-image", response_model=UserPreferences)
+@limiter.limit("30/minute")
+async def delete_my_background_image(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> UserPreferences:
+    """Remove the uploaded background file and clear ``content_background_image``."""
+    clear_user_background_image_files(current_user.email)
+    merged = await patch_user_preferences(
+        current_user,
+        UserPreferencesPatch(content_background_image=None),
+        session,
+    )
+    log.info("delete_my_background_image user=%s", current_user.email)
+    return merged
 
 
 @router.post("/auth/change-password")

@@ -15,8 +15,9 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { apiFetchAuth, USER_BACKGROUND_IMAGE_SENTINEL } from "../api/http";
 import { useAuth } from "../context/AuthContext";
 
 const drawerWidth = 240;
@@ -28,6 +29,60 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const loc = useLocation();
   const { user, prefs, logout } = useAuth();
+
+  /** Blob URL when prefs use the server-stored upload sentinel (CSS url() cannot send JWT). */
+  const [bgBlobUrl, setBgBlobUrl] = useState<string | null>(null);
+  const bgBlobRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    const raw = prefs.content_background_image?.trim();
+
+    if (raw !== USER_BACKGROUND_IMAGE_SENTINEL) {
+      if (bgBlobRef.current) {
+        URL.revokeObjectURL(bgBlobRef.current);
+        bgBlobRef.current = null;
+      }
+      setBgBlobUrl(null);
+      return () => ac.abort();
+    }
+
+    if (bgBlobRef.current) {
+      URL.revokeObjectURL(bgBlobRef.current);
+      bgBlobRef.current = null;
+    }
+    setBgBlobUrl(null);
+
+    void (async () => {
+      try {
+        const res = await apiFetchAuth("/api/users/me/background-image", { signal: ac.signal });
+        if (!res.ok) {
+          return;
+        }
+        const blob = await res.blob();
+        if (ac.signal.aborted) {
+          return;
+        }
+        const u = URL.createObjectURL(blob);
+        if (bgBlobRef.current) {
+          URL.revokeObjectURL(bgBlobRef.current);
+        }
+        bgBlobRef.current = u;
+        setBgBlobUrl(u);
+      } catch {
+        /* aborted or network */
+      }
+    })();
+
+    return () => {
+      ac.abort();
+      if (bgBlobRef.current) {
+        URL.revokeObjectURL(bgBlobRef.current);
+        bgBlobRef.current = null;
+      }
+      setBgBlobUrl(null);
+    };
+  }, [prefs.content_background_image]);
 
   const drawer = (
     <Box sx={{ width: drawerWidth, pt: 2 }}>
@@ -51,7 +106,9 @@ export default function AppLayout() {
     </Box>
   );
 
-  const bgUrl = prefs.content_background_image?.trim();
+  const rawBg = prefs.content_background_image?.trim();
+  const bgUrl =
+    rawBg === USER_BACKGROUND_IMAGE_SENTINEL ? bgBlobUrl : rawBg && rawBg.length > 0 ? rawBg : null;
   const opacity = prefs.content_background_opacity ?? 0.12;
 
   return (
