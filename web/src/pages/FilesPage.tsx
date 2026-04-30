@@ -46,16 +46,21 @@ export default function FilesPage() {
   const { prefs, setPrefsLocal } = useAuth();
   const [files, setFiles] = useState<FileRow[]>([]);
   const [storage, setStorage] = useState<StorageInfo | null>(null);
+  const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
     try {
       const [fl, st] = await Promise.all([listFiles(), fetchStorage()]);
       setFiles(fl);
       setStorage(st);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Load failed");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -151,10 +156,20 @@ export default function FilesPage() {
           Upload
           <input type="file" hidden onChange={onUpload} />
         </Button>
-        <Button sx={{ ml: 1 }} onClick={() => void load()}>
+        <Button sx={{ ml: 1 }} onClick={() => void load()} disabled={loading}>
           Refresh
         </Button>
       </Box>
+      {loading ? (
+        <Typography variant="body2" color="text.secondary">
+          Loading files…
+        </Typography>
+      ) : !err && files.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          No files in your account yet. Upload from here or sync from the desktop app — files are listed from the
+          server folder for your signed-in email.
+        </Typography>
+      ) : null}
       {[...grouped.entries()].map(([folder, rows]) => (
         <Box key={folder} sx={{ mb: 2 }}>
           <Typography variant="subtitle2" color="text.secondary">

@@ -1,11 +1,14 @@
 """Safe path resolution under base dir (no directory traversal)."""
 
+import logging
 import re
 import unicodedata
 from pathlib import Path
 from typing import List, Optional
 
 from app.config import get_settings
+
+log = logging.getLogger(__name__)
 
 # Safe path segment: letters, numbers, common punctuation. No / \ (traversal).
 # Allow: . _ - space ( ) + ~ # ! & ' , ; = [ ] @ for "File (1).txt", "user@host.txt", etc.
@@ -124,6 +127,6 @@ def list_files_recursive(root: Path) -> List[dict]:
                     })
                 except (OSError, ValueError):
                     continue
-    except OSError:
-        pass
+    except OSError as e:
+        log.warning("list_files_recursive cannot read tree under %s: %s", root, e)
     return result

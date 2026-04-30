@@ -92,6 +92,23 @@ export async function refreshTokens(): Promise<boolean> {
   return true;
 }
 
+/**
+ * Same as apiFetch but retries once after refreshing tokens on 401 (matches fetchMe).
+ * Use for all Bearer-authenticated API calls except login/oauth/refresh.
+ */
+export async function apiFetchAuth(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  let res = await apiFetch(path, init);
+  if (res.status === 401) {
+    if (await refreshTokens()) {
+      res = await apiFetch(path, init);
+    }
+  }
+  return res;
+}
+
 export function logout() {
   localStorage.removeItem("bb_access_token");
   localStorage.removeItem("bb_refresh_token");
@@ -107,12 +124,7 @@ export type MeUser = {
 };
 
 export async function fetchMe(): Promise<MeUser> {
-  let res = await apiFetch("/api/users/me");
-  if (res.status === 401) {
-    if (await refreshTokens()) {
-      res = await apiFetch("/api/users/me");
-    }
-  }
+  const res = await apiFetchAuth("/api/users/me");
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
@@ -127,7 +139,7 @@ export type Preferences = {
 };
 
 export async function fetchPreferences(): Promise<Preferences> {
-  const res = await apiFetch("/api/users/me/preferences");
+  const res = await apiFetchAuth("/api/users/me/preferences");
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
@@ -135,7 +147,7 @@ export async function fetchPreferences(): Promise<Preferences> {
 }
 
 export async function patchPreferences(p: Partial<Preferences>): Promise<Preferences> {
-  const res = await apiFetch("/api/users/me/preferences", {
+  const res = await apiFetchAuth("/api/users/me/preferences", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(p),
@@ -149,7 +161,7 @@ export async function patchPreferences(p: Partial<Preferences>): Promise<Prefere
 export type FileRow = { path: string; mtime: number; hash?: string | null };
 
 export async function listFiles(): Promise<FileRow[]> {
-  const res = await apiFetch("/api/files/list");
+  const res = await apiFetchAuth("/api/files/list");
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
@@ -164,7 +176,7 @@ export type StorageInfo = {
 };
 
 export async function fetchStorage(): Promise<StorageInfo> {
-  const res = await apiFetch("/api/files/storage");
+  const res = await apiFetchAuth("/api/files/storage");
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
@@ -172,7 +184,7 @@ export async function fetchStorage(): Promise<StorageInfo> {
 }
 
 export async function deleteFile(path: string): Promise<void> {
-  const res = await apiFetch(`/api/files/delete?path=${encodeURIComponent(path)}`, {
+  const res = await apiFetchAuth(`/api/files/delete?path=${encodeURIComponent(path)}`, {
     method: "DELETE",
   });
   if (!res.ok) {
@@ -181,7 +193,7 @@ export async function deleteFile(path: string): Promise<void> {
 }
 
 export async function uploadFile(path: string, file: File): Promise<void> {
-  const res = await apiFetch(`/api/files/upload?path=${encodeURIComponent(path)}`, {
+  const res = await apiFetchAuth(`/api/files/upload?path=${encodeURIComponent(path)}`, {
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
     body: file,
@@ -192,7 +204,7 @@ export async function uploadFile(path: string, file: File): Promise<void> {
 }
 
 export async function downloadBlob(path: string): Promise<Blob> {
-  const res = await apiFetch(`/api/files/download?path=${encodeURIComponent(path)}`);
+  const res = await apiFetchAuth(`/api/files/download?path=${encodeURIComponent(path)}`);
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
@@ -203,7 +215,7 @@ export async function clientPing(opts: {
   last_sync_ok?: boolean | null;
   last_sync_at?: string | null;
 }): Promise<void> {
-  await apiFetch("/api/clients/ping", {
+  await apiFetchAuth("/api/clients/ping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -236,7 +248,7 @@ export type ClientConn = {
 };
 
 export async function adminEvents(limit = 100): Promise<ServerEvent[]> {
-  const res = await apiFetch(`/api/admin/events?limit=${limit}`);
+  const res = await apiFetchAuth(`/api/admin/events?limit=${limit}`);
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
@@ -244,7 +256,7 @@ export async function adminEvents(limit = 100): Promise<ServerEvent[]> {
 }
 
 export async function adminClients(): Promise<ClientConn[]> {
-  const res = await apiFetch("/api/admin/clients");
+  const res = await apiFetchAuth("/api/admin/clients");
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
@@ -252,7 +264,7 @@ export async function adminClients(): Promise<ClientConn[]> {
 }
 
 export async function adminListUsers(): Promise<MeUser[]> {
-  const res = await apiFetch("/api/users");
+  const res = await apiFetchAuth("/api/users");
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
@@ -264,7 +276,7 @@ export async function adminCreateUser(body: {
   first_name: string;
   last_name: string;
 }): Promise<unknown> {
-  const res = await apiFetch("/api/users", {
+  const res = await apiFetchAuth("/api/users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -276,7 +288,7 @@ export async function adminCreateUser(body: {
 }
 
 export async function adminDeleteUser(email: string): Promise<void> {
-  const res = await apiFetch(`/api/users/${encodeURIComponent(email)}`, { method: "DELETE" });
+  const res = await apiFetchAuth(`/api/users/${encodeURIComponent(email)}`, { method: "DELETE" });
   if (!res.ok) {
     throw new Error(await readErrorMessage(res));
   }
