@@ -25,6 +25,8 @@ class User(Base):
     )
     # Optional per-user storage limit (bytes). None = use server limit only.
     storage_limit_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # Cached storage usage (bytes).
+    storage_used_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     # Google account subject (sub), set after successful Google sign-in for this user.
     google_sub: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, unique=True)
     # JSON string: theme, content_background_image, content_background_opacity, favorite_paths (see UserPreferences).

@@ -39,6 +39,8 @@ def _add_google_sub_preferences_columns(conn) -> None:
         conn.execute(text("ALTER TABLE users ADD COLUMN google_sub VARCHAR(255)"))
     if "preferences_json" not in names:
         conn.execute(text("ALTER TABLE users ADD COLUMN preferences_json TEXT"))
+    if "storage_used_bytes" not in names:
+        conn.execute(text("ALTER TABLE users ADD COLUMN storage_used_bytes BIGINT DEFAULT 0 NOT NULL"))
 
 
 async def init_db() -> None:

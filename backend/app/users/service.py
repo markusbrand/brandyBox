@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import hash_password
 from app.config import get_settings
+from app.files.quota import get_disk_usage_bytes
+from app.files.storage import user_base_path
 from app.users.background_image import USER_BACKGROUND_SENTINEL, clear_user_background_image_files
 from app.users.models import User, UserCreate, UserPreferences, UserPreferencesPatch
 
@@ -136,6 +138,13 @@ async def ensure_admin_exists(session: AsyncSession) -> None:
         password_hash=hash_password(settings.admin_initial_password),
         is_admin=True,
     )
+    # Recalculate usage for bootstrap admin
+    try:
+        base = user_base_path(user.email)
+        if base.exists():
+            user.storage_used_bytes = get_disk_usage_bytes(base)
+    except Exception:
+        pass
     session.add(user)
 
 
