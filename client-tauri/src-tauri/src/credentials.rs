@@ -80,6 +80,6 @@ pub fn clear_stored() {
         let _ = std::fs::remove_file(e2e_credentials_path());
     }
     let service = service_name();
-    let _ = keyring::Entry::new(service, KEY_EMAIL).and_then(|e| e.delete_password());
-    let _ = keyring::Entry::new(service, KEY_REFRESH_TOKEN).and_then(|e| e.delete_password());
+    let _ = keyring::Entry::new(service, KEY_EMAIL).and_then(|e| e.delete_credential());
+    let _ = keyring::Entry::new(service, KEY_REFRESH_TOKEN).and_then(|e| e.delete_credential());
 }
