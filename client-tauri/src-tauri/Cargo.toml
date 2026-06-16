@@ -10,10 +10,10 @@ name = "brandybox_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.3", features = [] }
+tauri-build = { version = "2.5", features = [] }
 
 [dependencies]
-tauri = { version = "2.3", features = ["tray-icon", "image-png"] }
+tauri = { version = "2.11", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2.5"
 tauri-plugin-notification = "2.3"
 serde = { version = "1.0", features = ["derive"] }

@@ -387,12 +387,12 @@ impl ApiClient {
                         } else {
                             // Read from temp file into Vec<u8> (still memory-intensive but respects streaming from network)
                             // In a full refactor, sync.rs should handle the file path directly.
-                            let mut buf = Vec::new();
+                            let mut read_buf = Vec::new();
                             let mut read_file = File::open(&tmp_file_path).map_err(|e| e.to_string())?;
                             use std::io::Read;
-                            read_file.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+                            read_file.read_to_end(&mut read_buf).map_err(|e| e.to_string())?;
                             let _ = std::fs::remove_file(&tmp_file_path);
-                            return Ok(buf);
+                            return Ok(read_buf);
                         }
                     }
                 }
