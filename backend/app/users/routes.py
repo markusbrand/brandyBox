@@ -116,10 +116,11 @@ async def refresh(
 @router.get("/users/me", response_model=UserResponse)
 async def me(
     current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserResponse:
     """Return current authenticated user with storage used/limit."""
     data = UserResponse.model_validate(current_user).model_dump()
-    data["storage_used_bytes"] = get_user_used_bytes(current_user.email)
+    data["storage_used_bytes"] = await get_user_used_bytes(session, current_user.email)
     server_limit = get_server_storage_limit_bytes()
     data["storage_limit_bytes"] = get_user_storage_limit_bytes(
         server_limit, current_user.storage_limit_bytes
@@ -292,7 +293,7 @@ async def admin_list_users(
     out = []
     for u in users:
         data = UserResponse.model_validate(u).model_dump()
-        data["storage_used_bytes"] = get_user_used_bytes(u.email)
+        data["storage_used_bytes"] = u.storage_used_bytes
         data["storage_limit_bytes"] = get_user_storage_limit_bytes(
             server_limit, u.storage_limit_bytes
         )
@@ -321,7 +322,7 @@ async def admin_update_user_storage_limit(
     await session.refresh(user)
     log.info("Admin %s set storage_limit for %s to %s", current_user.email, email, payload.storage_limit_bytes)
     data = UserResponse.model_validate(user).model_dump()
-    data["storage_used_bytes"] = get_user_used_bytes(user.email)
+    data["storage_used_bytes"] = await get_user_used_bytes(session, user.email)
     data["storage_limit_bytes"] = get_user_storage_limit_bytes(
         get_server_storage_limit_bytes(), user.storage_limit_bytes
     )

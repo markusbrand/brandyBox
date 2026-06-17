@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import get_settings
 from app.files.storage import user_base_path
 
@@ -102,31 +104,19 @@ def get_server_storage_limit_bytes() -> Optional[int]:
     return None
 
 
-def get_user_used_bytes(email: str) -> int:
-    """Return bytes used by the given user's storage directory."""
-    try:
-        base = user_base_path(email)
-    except ValueError:
-        return 0
-    if not base.exists():
-        return 0
-    return get_disk_usage_bytes(base)
+async def get_user_used_bytes(session: AsyncSession, email: str) -> int:
+    """Return bytes used by the given user (from database cache)."""
+    from app.users.models import User
+    user = await session.get(User, email)
+    return user.storage_used_bytes if user else 0
 
 
-def get_total_used_bytes() -> int:
-    """Return total bytes used by all user directories under storage_base_path."""
-    settings = get_settings()
-    base = settings.storage_base_path
-    if not base.exists():
-        return 0
-    total = 0
-    try:
-        for entry in base.iterdir():
-            if entry.is_dir():
-                total += get_disk_usage_bytes(entry)
-    except OSError:
-        pass
-    return total
+async def get_total_used_bytes(session: AsyncSession) -> int:
+    """Return total bytes used by all users (from database)."""
+    from app.users.models import User
+    from sqlalchemy import func, select
+    result = await session.execute(select(func.sum(User.storage_used_bytes)))
+    return result.scalar() or 0
 
 
 def get_user_storage_limit_bytes(

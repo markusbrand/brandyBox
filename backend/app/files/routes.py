@@ -5,6 +5,8 @@ import logging
 import os
 import shutil
 import tempfile
+import uuid
+from pathlib import Path
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -52,9 +54,10 @@ def _normalize_path_param(path: Optional[str]) -> str:
 async def get_storage(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """Return current user's storage used/limit and server (Pi) disk usage in bytes (for settings UI)."""
-    used = get_user_used_bytes(current_user.email)
+    used = await get_user_used_bytes(session, current_user.email)
     server_limit = get_server_storage_limit_bytes()
     effective_limit = get_user_storage_limit_bytes(server_limit, current_user.storage_limit_bytes)
     result = {"used_bytes": used, "limit_bytes": effective_limit}
@@ -183,6 +186,153 @@ async def make_folder(
     return result
 
 
+@router.post("/upload/init")
+@limiter.limit("60/minute")
+async def upload_init(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Initialize a chunked upload. Returns an upload_id."""
+    path_param = _normalize_path_param(request.query_params.get("path"))
+    if not path_param:
+        raise HTTPException(status_code=400, detail="path required")
+
+    upload_id = str(uuid.uuid4())
+    user_base = user_base_path(current_user.email)
+    upload_dir = user_base / ".uploads" / upload_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Store the intended path in a metadata file
+    (upload_dir / ".path").write_text(path_param, encoding="utf-8")
+
+    log.info("upload_init user=%s path=%s upload_id=%s", current_user.email, path_param, upload_id)
+    return {"upload_id": upload_id}
+
+
+@router.post("/upload/chunk")
+@limiter.limit("600/minute")
+async def upload_chunk(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+    upload_id: str,
+    index: int,
+) -> dict:
+    """Upload a single chunk for a chunked upload."""
+    user_base = user_base_path(current_user.email)
+    upload_dir = user_base / ".uploads" / upload_id
+    if not upload_dir.is_dir():
+        log.warning("upload_chunk failed: upload_id %s not found", upload_id)
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    chunk_path = upload_dir / f"chunk_{index:06d}"
+
+    bytes_written = 0
+    with open(chunk_path, "wb") as f:
+        async for chunk in request.stream():
+            f.write(chunk)
+            bytes_written += len(chunk)
+
+    return {"index": index, "size": bytes_written}
+
+
+@router.post("/upload/finalize")
+@limiter.limit("60/minute")
+async def upload_finalize(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    upload_id: str,
+) -> dict:
+    """Finalize a chunked upload by assembling all chunks."""
+    user_base = user_base_path(current_user.email)
+    upload_dir = user_base / ".uploads" / upload_id
+    if not upload_dir.is_dir():
+        log.warning("upload_finalize failed: upload_id %s not found", upload_id)
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    path_file = upload_dir / ".path"
+    if not path_file.exists():
+        raise HTTPException(status_code=400, detail="Invalid upload state")
+
+    path_param = path_file.read_text(encoding="utf-8")
+    try:
+        target = resolve_user_path(current_user.email, path_param)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Sort chunks by index
+    chunks = sorted([f for f in upload_dir.iterdir() if f.name.startswith("chunk_")])
+    if not chunks:
+        raise HTTPException(status_code=400, detail="No chunks found")
+
+    # Determine quotas before assembling
+    old_size = 0
+    if target.exists() and target.is_file():
+        try:
+            old_size = target.stat().st_size
+        except OSError:
+            pass
+
+    server_limit = get_server_storage_limit_bytes()
+    user_limit = get_user_storage_limit_bytes(server_limit, current_user.storage_limit_bytes)
+    total_used_before = await get_total_used_bytes(session)
+    user_used_before = await get_user_used_bytes(session, current_user.email)
+
+    # Assemble chunks in a temporary file on the target filesystem
+    temp_dir = target.parent
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(dir=temp_dir, prefix=".bb_assemble_")
+
+    hasher = get_hasher()
+    total_size = 0
+    try:
+        with os.fdopen(fd, "wb") as f:
+            for chunk_path in chunks:
+                with open(chunk_path, "rb") as cf:
+                    while True:
+                        data = cf.read(1024 * 1024)
+                        if not data:
+                            break
+
+                        # Quota check during assembly
+                        current_total = total_size + len(data)
+                        if server_limit is not None:
+                            if total_used_before - old_size + current_total > server_limit:
+                                raise HTTPException(status_code=507, detail="Server storage limit reached")
+                        if user_limit is not None:
+                            if user_used_before - old_size + current_total > user_limit:
+                                raise HTTPException(status_code=507, detail="Your storage limit has been reached")
+
+                        f.write(data)
+                        hasher.update(data)
+                        total_size += len(data)
+
+        # Atomic move to final destination
+        shutil.move(temp_path, target)
+
+        # Update cached usage
+        current_user.storage_used_bytes += (total_size - old_size)
+        session.add(current_user)
+        content_hash = hasher.hexdigest()
+        await set_hash(session, current_user.email, path_param, content_hash)
+
+        # Cleanup
+        shutil.rmtree(upload_dir)
+
+        log.info(
+            "upload_finalize user=%s path=%s size=%d hash=%s",
+            current_user.email, path_param, total_size, content_hash
+        )
+        return {"path": path_param, "size": total_size, "hash": content_hash}
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        if isinstance(e, HTTPException):
+            raise e
+        log.exception("upload_finalize failed for %s: %s", path_param, e)
+        raise HTTPException(status_code=500, detail="Internal server error during finalization")
+
+
 @router.post("/upload")
 @limiter.limit("600/minute")  # Bulk sync
 async def upload_file(
@@ -219,8 +369,8 @@ async def upload_file(
 
     server_limit = get_server_storage_limit_bytes()
     user_limit = get_user_storage_limit_bytes(server_limit, current_user.storage_limit_bytes)
-    total_used_before = get_total_used_bytes()
-    user_used_before = get_user_used_bytes(current_user.email)
+    total_used_before = await get_total_used_bytes(session)
+    user_used_before = await get_user_used_bytes(session, current_user.email)
 
     settings = get_settings()
     max_body = settings.max_single_upload_bytes
@@ -267,6 +417,10 @@ async def upload_file(
         shutil.move(temp_path, target)
         content_hash = hasher.hexdigest()
         await set_hash(session, current_user.email, path_param, content_hash)
+
+        # Update cached usage
+        current_user.storage_used_bytes += (bytes_written - old_size)
+        session.add(current_user)
 
         log.info(
             "upload_file user=%s path=%s size=%d resolved=%s",
@@ -337,7 +491,20 @@ async def delete_file(
             detail="Query parameter 'path' is required",
         )
     try:
+        # Get file size before deletion for quota update
+        target = resolve_user_path(current_user.email, path_param)
+        file_size = 0
+        if target.exists() and target.is_file():
+            file_size = target.stat().st_size
+
         storage_delete_file(current_user.email, path_param)
+
+        # Update cached usage
+        current_user.storage_used_bytes -= file_size
+        if current_user.storage_used_bytes < 0:
+            current_user.storage_used_bytes = 0
+        session.add(current_user)
+
     except ValueError as e:
         log.warning("delete_file rejected path=%r: %s", path_param, e)
         raise HTTPException(

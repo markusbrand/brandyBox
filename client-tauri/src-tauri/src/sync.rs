@@ -56,9 +56,17 @@ fn list_local(root: &Path) -> Vec<(String, f64)> {
 }
 
 fn compute_file_hash(path: &Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
+    let mut file = std::fs::File::open(path).ok()?;
     let mut hasher = Sha256::new();
-    hasher.update(&bytes);
+    let mut buffer = [0u8; 65536]; // 64KB buffer
+    use std::io::Read;
+    loop {
+        let n = file.read(&mut buffer).ok()?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
     Some(format!("{:x}", hasher.finalize()))
 }
 

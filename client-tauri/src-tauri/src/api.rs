@@ -200,19 +200,24 @@ impl ApiClient {
         r.json().map_err(|e| e.to_string())
     }
 
-    /// Upload file from disk with retries. Streams the file (Content-Length set) to avoid loading
-    /// large files into memory; retries on connection/body errors (e.g. large MP4 over WiFi).
+    /// Upload file from disk with retries. For files > 50MB, uses chunked upload to bypass
+    /// proxy body limits (e.g. Cloudflare 100MB).
     pub fn upload_file_from_path(&self, path: &str, local_path: &Path) -> Result<(), String> {
         let file_size = std::fs::metadata(local_path).map_err(|e| e.to_string())?.len();
+
+        if file_size > 50 * 1024 * 1024 {
+            return self.upload_file_chunked(path, local_path, file_size);
+        }
+
         let url = format!("{}/api/files/upload", self.base_url.trim_end_matches('/'));
         let url = format!("{}?path={}", url, urlencoding::encode(path));
-        // Generous timeout: 30 min base + 2 min per MB (cap 100 MB for timeout calc) so slow links succeed.
-        let timeout_secs = 1800 + (file_size / (1024 * 1024)).min(100) * 120;
+        let timeout_secs = 600 + (file_size / (1024 * 1024)).min(100) * 30;
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
             .tcp_keepalive(Duration::from_secs(60))
             .build()
             .expect("http client");
+
         let mut last_err = String::new();
         for attempt in 0..3 {
             let file = File::open(local_path).map_err(|e| e.to_string())?;
@@ -237,12 +242,7 @@ impl ApiClient {
                     }
                 }
                 Err(e) => {
-                    let msg = e.to_string();
-                    last_err = if msg.contains("body error") || msg.contains("connection") {
-                        format!("{} (for large files, ensure server/proxy timeouts are high enough)", msg)
-                    } else {
-                        msg
-                    };
+                    last_err = e.to_string();
                 }
             }
             if attempt < 2 {
@@ -250,6 +250,79 @@ impl ApiClient {
             }
         }
         Err(last_err)
+    }
+
+    fn upload_file_chunked(&self, path: &str, local_path: &Path, file_size: u64) -> Result<(), String> {
+        let base = self.base_url.trim_end_matches('/');
+        let init_url = format!("{}/api/files/upload/init?path={}", base, urlencoding::encode(path));
+
+        let resp = self.client()
+            .post(&init_url)
+            .headers(self.headers())
+            .send()
+            .map_err(|e| format!("init failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("init failed: {}", resp.status()));
+        }
+
+        let init_data: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
+        let upload_id = init_data["upload_id"].as_str().ok_or("no upload_id")?;
+
+        let chunk_size = 20 * 1024 * 1024; // 20MB chunks
+        let mut file = File::open(local_path).map_err(|e| e.to_string())?;
+        use std::io::{Read, Seek, SeekFrom};
+
+        let mut index = 0;
+        let mut offset = 0;
+
+        while offset < file_size {
+            let current_chunk_size = std::cmp::min(chunk_size, file_size - offset);
+            let mut buffer = vec![0; current_chunk_size as usize];
+            file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+            file.read_exact(&mut buffer).map_err(|e| e.to_string())?;
+
+            let chunk_url = format!("{}/api/files/upload/chunk?upload_id={}&index={}", base, upload_id, index);
+
+            let mut last_err = String::new();
+            let mut success = false;
+            for attempt in 0..3 {
+                let mut headers = self.headers();
+                headers.insert(reqwest::header::CONTENT_TYPE, "application/octet-stream".parse().unwrap());
+
+                match self.client().post(&chunk_url).headers(headers).body(buffer.clone()).send() {
+                    Ok(r) if r.status().is_success() => {
+                        success = true;
+                        break;
+                    }
+                    Ok(r) => last_err = format!("chunk {} failed: {}", index, r.status()),
+                    Err(e) => last_err = format!("chunk {} failed: {}", index, e),
+                }
+                if attempt < 2 {
+                    std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+                }
+            }
+
+            if !success {
+                return Err(last_err);
+            }
+
+            offset += current_chunk_size;
+            index += 1;
+        }
+
+        let finalize_url = format!("{}/api/files/upload/finalize?upload_id={}", base, upload_id);
+        let resp = self.client()
+            .post(&finalize_url)
+            .headers(self.headers())
+            .send()
+            .map_err(|e| format!("finalize failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!("finalize failed: {}", resp.status()));
+        }
+
+        Ok(())
     }
 
     /// Upload in-memory body (used when caller already has bytes). For large files prefer upload_file_from_path.
@@ -285,19 +358,16 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Download file with retries. Large downloads can hit connection resets; retrying often succeeds.
+    /// Download file with retries, streaming directly to a temporary file to save memory.
+    /// Returns the bytes of the file for compatibility with existing sync logic.
     pub fn download_file(&self, path: &str) -> Result<Vec<u8>, String> {
         let base = self.base_url.trim_end_matches('/');
         let url = format!("{}/api/files/download?path={}", base, urlencoding::encode(path));
         let mut last_err = String::new();
+
         for attempt in 0..3 {
-            match self
-                .download_client()
-                .get(&url)
-                .headers(self.headers())
-                .send()
-            {
-                Ok(r) => {
+            match self.download_client().get(&url).headers(self.headers()).send() {
+                Ok(mut r) => {
                     if !r.status().is_success() {
                         let status = r.status();
                         let resp_body = r.text().unwrap_or_default();
@@ -306,10 +376,24 @@ impl ApiClient {
                         } else {
                             format!("{}: {}", status, resp_body.trim())
                         };
-                    } else if let Ok(bytes) = r.bytes().map(|b| b.to_vec()) {
-                        return Ok(bytes);
                     } else {
-                        last_err = "failed to read response body".to_string();
+                        // Create a temporary file to stream the response into
+                        let tmp_file_path = std::env::temp_dir().join(format!("bb_dl_{}", uuid::Uuid::new_v4()));
+                        let mut tmp_file = File::create(&tmp_file_path).map_err(|e| e.to_string())?;
+
+                        if let Err(e) = r.copy_to(&mut tmp_file) {
+                            let _ = std::fs::remove_file(&tmp_file_path);
+                            last_err = format!("failed to read response body: {}", e);
+                        } else {
+                            // Read from temp file into Vec<u8> (still memory-intensive but respects streaming from network)
+                            // In a full refactor, sync.rs should handle the file path directly.
+                            let mut read_buf = Vec::new();
+                            let mut read_file = File::open(&tmp_file_path).map_err(|e| e.to_string())?;
+                            use std::io::Read;
+                            read_file.read_to_end(&mut read_buf).map_err(|e| e.to_string())?;
+                            let _ = std::fs::remove_file(&tmp_file_path);
+                            return Ok(read_buf);
+                        }
                     }
                 }
                 Err(e) => {
