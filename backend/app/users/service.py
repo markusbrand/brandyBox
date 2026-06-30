@@ -123,6 +123,10 @@ async def ensure_admin_exists(session: AsyncSession) -> None:
         return
     existing = await get_user_by_email(session, settings.admin_email)
     if existing:
+        if not existing.is_admin:
+            log.info("Promoting existing user %s to admin", settings.admin_email)
+            existing.is_admin = True
+            await session.commit()
         return
     log.info("Creating bootstrap admin user email=%s", settings.admin_email)
     from app.users.models import UserCreate as UC
