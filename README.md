@@ -9,7 +9,6 @@ Dropbox-like desktop app that syncs a local folder to a Raspberry Pi over Cloudf
 - **Backend**: Python (FastAPI) in Docker on Raspberry Pi. Storage under `/mnt/shared_storage/brandyBox/<email>/`. JWT auth, user CRUD (admin), file list/upload/download. The same container serves the **web UI** (static SPA) at `/` when built from the repo image, so **API + browser app share one port** (default host port **8081**, configurable via `HOST_PORT` in `backend/.env` for `docker compose`).
 - **Web (browser)**: **React + MUI** in `web/` — login (password or Google SSO if configured), file list/upload/download, storage meter, settings (theme, optional background image, favorites), and admin/diagnostics for admins. Use `https://brandybox.brandstaetter.rocks` or `http://<pi-ip>:8081` (or your `HOST_PORT`) in the browser; no separate web port.
 - **Client (primary)**: **Tauri + React** in `client-tauri/` – modern desktop app (Windows, Linux, Mac) with robust sync engine. Uses `https://brandybox.brandstaetter.rocks` via Cloudflare tunnel, or `http://192.168.0.150:8081` when on LAN. Tray and sync work out of the box on Linux (incl. Wayland/KDE). After each sync, the client reports version and outcome to the server (`POST /api/clients/ping`) for operator diagnostics.
-- **Client (fallback)**: Python/Tk client in `client/` – **deprecated**, use only if Tauri cannot be built or run. Same config format and keyring; under Linux the venv-based install may be needed for correct tray behavior.
 
 ## Backend (Raspberry Pi)
 
@@ -88,7 +87,7 @@ On first start, the backend creates an admin user from `BRANDYBOX_ADMIN_EMAIL` a
 
 ## Client (Desktop)
 
-The **Tauri client** (`client-tauri/`) is the recommended desktop app. The Python client (`client/`) is deprecated and kept as fallback only.
+The **Tauri client** (`client-tauri/`) is the recommended desktop app.
 
 ### Install (download pre-built) – Tauri client
 
@@ -118,9 +117,6 @@ npm run tauri dev
 `cd client-tauri && npm install && npm run tauri:build`. Output under `src-tauri/target/release/bundle/`. See [client-tauri/README.md](client-tauri/README.md).
 
 ---
-
-**Python client** (deprecated, fallback only):  
-Use only if Tauri cannot be built or run. Development: `cd client && pip install -e . && cd .. && python -m brandybox.main`. Linux venv install (for correct tray): prerequisites `sudo pacman -S python-gobject libappindicator-gtk3`, then `python -m venv .venv --system-site-packages`, `source .venv/bin/activate`, `cd client && pip install -e .`, `./assets/installers/linux_install.sh --venv`. PyInstaller build: `pyinstaller client/brandybox.spec`. See [Client troubleshooting](docs/client/troubleshooting.md).
 
 ### Usage
 

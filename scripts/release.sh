@@ -44,10 +44,7 @@ sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT/client-taur
 # client-tauri/src-tauri/Cargo.toml (Tauri app crate)
 sed -i "s/^version = \"[^\"]*\"$/version = \"$VERSION\"/" "$ROOT/client-tauri/src-tauri/Cargo.toml"
 
-# client/pyproject.toml (Python client; keep in sync for consistency)
-sed -i "s/^version = \"[^\"]*\"$/version = \"$VERSION\"/" "$ROOT/client/pyproject.toml"
-
-git -C "$ROOT" add client-tauri/package.json client-tauri/package-lock.json client-tauri/src-tauri/tauri.conf.json client-tauri/src-tauri/Cargo.toml client/pyproject.toml
+git -C "$ROOT" add client-tauri/package.json client-tauri/package-lock.json client-tauri/src-tauri/tauri.conf.json client-tauri/src-tauri/Cargo.toml
 git -C "$ROOT" commit -m "Bump version to $VERSION"
 git -C "$ROOT" tag -a "$TAG" -m "Release $TAG"
 
