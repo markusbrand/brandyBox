@@ -261,13 +261,52 @@ export async function deleteFile(path: string): Promise<void> {
 }
 
 export async function uploadFile(path: string, file: File): Promise<void> {
-  const res = await apiFetchAuth(`/api/files/upload?path=${encodeURIComponent(path)}`, {
+  const CHUNK_SIZE = 20 * 1024 * 1024; // 20MB chunks
+  if (file.size <= 50 * 1024 * 1024) {
+    const res = await apiFetchAuth(`/api/files/upload?path=${encodeURIComponent(path)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: file,
+    });
+    if (!res.ok) {
+      throw new Error(await readErrorMessage(res));
+    }
+    return;
+  }
+
+  // Chunked upload for large files
+  const initRes = await apiFetchAuth(`/api/files/upload/init?path=${encodeURIComponent(path)}`, {
     method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: file,
   });
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res));
+  if (!initRes.ok) {
+    throw new Error(await readErrorMessage(initRes));
+  }
+  const { upload_id } = (await initRes.json()) as { upload_id: string };
+
+  let offset = 0;
+  let index = 0;
+  while (offset < file.size) {
+    const chunk = file.slice(offset, offset + CHUNK_SIZE);
+    const chunkRes = await apiFetchAuth(
+      `/api/files/upload/chunk?upload_id=${upload_id}&index=${index}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: chunk,
+      },
+    );
+    if (!chunkRes.ok) {
+      throw new Error(await readErrorMessage(chunkRes));
+    }
+    offset += CHUNK_SIZE;
+    index += 1;
+  }
+
+  const finalizeRes = await apiFetchAuth(`/api/files/upload/finalize?upload_id=${upload_id}`, {
+    method: "POST",
+  });
+  if (!finalizeRes.ok) {
+    throw new Error(await readErrorMessage(finalizeRes));
   }
 }
 
