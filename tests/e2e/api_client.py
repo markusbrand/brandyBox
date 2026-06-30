@@ -1,4 +1,4 @@
-import requests
+import httpx
 from typing import Optional, Dict, Any
 
 class BrandyBoxAPI:
@@ -8,11 +8,12 @@ class BrandyBoxAPI:
 
     def login(self, email: str, password: str) -> Dict[str, Any]:
         url = f"{self.base_url}/api/auth/login"
-        resp = requests.post(url, json={"email": email, "password": password})
-        resp.raise_for_status()
-        data = resp.json()
-        self.access_token = data["access_token"]
-        return data
+        with httpx.Client() as client:
+            resp = client.post(url, json={"email": email, "password": password})
+            resp.raise_for_status()
+            data = resp.json()
+            self.access_token = data["access_token"]
+            return data
 
     def _headers(self) -> Dict[str, str]:
         h = {"Accept": "application/json"}
@@ -31,19 +32,32 @@ class BrandyBoxAPI:
             "first_name": first_name,
             "last_name": last_name
         }
-        resp = requests.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        return resp.json()
+        with httpx.Client() as client:
+            resp = client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
 
     def delete_user(self, email: str) -> None:
         import urllib.parse
         encoded_email = urllib.parse.quote(email)
         url = f"{self.base_url}/api/users/{encoded_email}"
-        resp = requests.delete(url, headers=self._headers())
-        resp.raise_for_status()
+        with httpx.Client() as client:
+            resp = client.delete(url, headers=self._headers())
+            resp.raise_for_status()
 
     def list_files(self) -> list:
         url = f"{self.base_url}/api/files/list"
-        resp = requests.get(url, headers=self._headers())
-        resp.raise_for_status()
-        return resp.json()
+        with httpx.Client() as client:
+            resp = client.get(url, headers=self._headers())
+            resp.raise_for_status()
+            return resp.json()
+
+    def delete_file(self, path: str) -> None:
+        import urllib.parse
+        encoded_path = urllib.parse.quote(path, safe="")
+        url = f"{self.base_url}/api/files/delete?path={encoded_path}"
+        with httpx.Client() as client:
+            resp = client.delete(url, headers=self._headers())
+            if resp.status_code == 404:
+                return
+            resp.raise_for_status()
