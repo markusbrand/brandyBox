@@ -103,8 +103,7 @@ def _get_base_url() -> str:
     base = os.environ.get("BRANDYBOX_BASE_URL", "").strip()
     if base:
         return base.rstrip("/")
-    from brandybox.network import get_base_url as _get
-    return _get()
+    return "http://localhost:8081"
 
 
 def _run_all_scenarios_legacy(

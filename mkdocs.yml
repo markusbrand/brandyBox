@@ -9,6 +9,8 @@ nav:
       - Security review checklist: security-review.md
   - Releasing: releasing.md
   - Backend: backend/overview.md
+  - Raspberry Pi:
+    - Pi Installation: pi_install.md
   - Client:
     - Overview: client/overview.md
     - Tauri client: client/tauri.md
