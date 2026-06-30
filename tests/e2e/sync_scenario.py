@@ -143,17 +143,12 @@ def _get_sync_folder() -> Path:
     folder = os.environ.get("BRANDYBOX_SYNC_FOLDER", "").strip()
     if folder:
         return Path(folder).resolve()
-    try:
-        from brandybox.config import get_sync_folder_path
-        return get_sync_folder_path()
-    except Exception:
-        return Path.home() / "brandyBox"
+    return Path.home() / "brandyBox"
 
 
 def _get_api_client():
     """Lazy import to avoid requiring brandybox when only running scenario structure checks."""
-    from brandybox.api.client import BrandyBoxAPI
-    from brandybox.network import get_base_url
+    from tests.e2e.api_client import BrandyBoxAPI
     base_url = os.environ.get("BRANDYBOX_BASE_URL", "").strip() or None
     return BrandyBoxAPI(base_url=base_url)
 

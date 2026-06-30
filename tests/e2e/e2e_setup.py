@@ -107,7 +107,7 @@ def create_test_user(
     Create a test user via admin API and return (test_email, temp_password, refresh_token).
     Sends X-E2E-Return-Temp-Password so the backend returns temp_password and skips email (SMTP not required).
     """
-    from brandybox.api.client import BrandyBoxAPI
+    from tests.e2e.api_client import BrandyBoxAPI
 
     api = BrandyBoxAPI(base_url=base_url)
     api.login(admin_email, admin_password)
@@ -195,7 +195,7 @@ def cleanup_e2e(
 
     # Delete test user (admin API)
     try:
-        from brandybox.api.client import BrandyBoxAPI
+        from tests.e2e.api_client import BrandyBoxAPI
 
         api = BrandyBoxAPI(base_url=base_url)
         api.login(admin_email, admin_password)
