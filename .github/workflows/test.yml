@@ -124,7 +124,7 @@ jobs:
       - name: Install backend deps
         run: |
           pip install -r backend/requirements.txt
-          pip install keyrings.alt
+          pip install keyring keyrings.alt
 
       - name: Build backend image for E2E
         run: docker build -f backend/Dockerfile -t brandybox-backend-e2e .
