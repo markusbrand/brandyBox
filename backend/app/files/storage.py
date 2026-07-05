@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import List, Optional
 
 from app.config import get_settings
-from sqlalchemy.ext.asyncio import AsyncSession
 
 log = logging.getLogger(__name__)
 

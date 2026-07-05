@@ -91,6 +91,8 @@ impl ApiClient {
     fn client(&self) -> reqwest::blocking::Client {
         reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(30))
+            .tcp_keepalive(Duration::from_secs(60))
+            .pool_idle_timeout(Duration::from_secs(90))
             .build()
             .expect("http client")
     }
@@ -100,6 +102,8 @@ impl ApiClient {
     fn download_client(&self) -> reqwest::blocking::Client {
         reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(600))
+            .tcp_keepalive(Duration::from_secs(60))
+            .pool_idle_timeout(Duration::from_secs(90))
             .no_gzip()
             .no_deflate()
             .build()
@@ -219,7 +223,7 @@ impl ApiClient {
             .expect("http client");
 
         let mut last_err = String::new();
-        for attempt in 0..3 {
+        for attempt in 0..4 {
             let file = File::open(local_path).map_err(|e| e.to_string())?;
             let body = reqwest::blocking::Body::sized(file, file_size);
             let mut headers = self.headers();
@@ -237,6 +241,10 @@ impl ApiClient {
                         } else {
                             format!("{}: {}", status, body_text.trim())
                         };
+                        // Don't retry on client errors (4xx) except 429
+                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            return Err(last_err);
+                        }
                     } else {
                         return Ok(());
                     }
@@ -245,8 +253,69 @@ impl ApiClient {
                     last_err = e.to_string();
                 }
             }
-            if attempt < 2 {
-                std::thread::sleep(Duration::from_secs(3 + attempt as u64 * 4));
+            if attempt < 3 {
+                let backoff = Duration::from_secs(2u64.pow(attempt as u32 + 1) + 2);
+                log::warn!("Upload attempt {} failed, retrying in {:?}: {}", attempt + 1, backoff, last_err);
+                std::thread::sleep(backoff);
+            }
+        }
+        Err(last_err)
+    }
+
+    /// Download file with retries, streaming directly to the specified destination path.
+    pub fn download_file_to_path(&self, path: &str, dest_path: &Path) -> Result<u64, String> {
+        let base = self.base_url.trim_end_matches('/');
+        let url = format!("{}/api/files/download?path={}", base, urlencoding::encode(path));
+        let mut last_err = String::new();
+
+        for attempt in 0..4 {
+            match self.download_client().get(&url).headers(self.headers()).send() {
+                Ok(mut r) => {
+                    if !r.status().is_success() {
+                        let status = r.status();
+                        let resp_body = r.text().unwrap_or_default();
+                        last_err = if resp_body.trim().is_empty() {
+                            format!("{}", status)
+                        } else {
+                            format!("{}: {}", status, resp_body.trim())
+                        };
+                        // Don't retry on 404 or other client errors except 429
+                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            return Err(last_err);
+                        }
+                    } else {
+                        if let Some(parent) = dest_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let tmp_path = dest_path.with_extension("tmp_download");
+                        let mut tmp_file = File::create(&tmp_path).map_err(|e| e.to_string())?;
+
+                        match r.copy_to(&mut tmp_file) {
+                            Ok(bytes) => {
+                                drop(tmp_file);
+                                if let Err(e) = std::fs::rename(&tmp_path, dest_path) {
+                                    let _ = std::fs::remove_file(&tmp_path);
+                                    last_err = format!("failed to rename tmp to final: {}", e);
+                                } else {
+                                    return Ok(bytes);
+                                }
+                            }
+                            Err(e) => {
+                                drop(tmp_file);
+                                let _ = std::fs::remove_file(&tmp_path);
+                                last_err = format!("failed to read response body: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                }
+            }
+            if attempt < 3 {
+                let backoff = Duration::from_secs(2u64.pow(attempt as u32 + 1) + 2);
+                log::warn!("Download attempt {} failed, retrying in {:?}: {}", attempt + 1, backoff, last_err);
+                std::thread::sleep(backoff);
             }
         }
         Err(last_err)
@@ -358,54 +427,6 @@ impl ApiClient {
         Ok(())
     }
 
-    /// Download file with retries, streaming directly to a temporary file to save memory.
-    /// Returns the bytes of the file for compatibility with existing sync logic.
-    pub fn download_file(&self, path: &str) -> Result<Vec<u8>, String> {
-        let base = self.base_url.trim_end_matches('/');
-        let url = format!("{}/api/files/download?path={}", base, urlencoding::encode(path));
-        let mut last_err = String::new();
-
-        for attempt in 0..3 {
-            match self.download_client().get(&url).headers(self.headers()).send() {
-                Ok(mut r) => {
-                    if !r.status().is_success() {
-                        let status = r.status();
-                        let resp_body = r.text().unwrap_or_default();
-                        last_err = if resp_body.trim().is_empty() {
-                            format!("{}", status)
-                        } else {
-                            format!("{}: {}", status, resp_body.trim())
-                        };
-                    } else {
-                        // Create a temporary file to stream the response into
-                        let tmp_file_path = std::env::temp_dir().join(format!("bb_dl_{}", uuid::Uuid::new_v4()));
-                        let mut tmp_file = File::create(&tmp_file_path).map_err(|e| e.to_string())?;
-
-                        if let Err(e) = r.copy_to(&mut tmp_file) {
-                            let _ = std::fs::remove_file(&tmp_file_path);
-                            last_err = format!("failed to read response body: {}", e);
-                        } else {
-                            // Read from temp file into Vec<u8> (still memory-intensive but respects streaming from network)
-                            // In a full refactor, sync.rs should handle the file path directly.
-                            let mut read_buf = Vec::new();
-                            let mut read_file = File::open(&tmp_file_path).map_err(|e| e.to_string())?;
-                            use std::io::Read;
-                            read_file.read_to_end(&mut read_buf).map_err(|e| e.to_string())?;
-                            let _ = std::fs::remove_file(&tmp_file_path);
-                            return Ok(read_buf);
-                        }
-                    }
-                }
-                Err(e) => {
-                    last_err = e.to_string();
-                }
-            }
-            if attempt < 2 {
-                std::thread::sleep(Duration::from_secs(2 * (attempt + 1)));
-            }
-        }
-        Err(last_err)
-    }
 
     pub fn delete_file(&self, path: &str) -> Result<(), String> {
         let base = self.base_url.trim_end_matches('/');

@@ -8,7 +8,6 @@ from typing import Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.files.storage import user_base_path
 
 log = logging.getLogger(__name__)
 

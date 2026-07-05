@@ -1,6 +1,5 @@
 """Unit tests for file route helpers (path normalization)."""
 
-import pytest
 
 from app.files.routes import _normalize_path_param
 

@@ -1,12 +1,10 @@
 """File API routes: list, upload, download, delete."""
 
-import hashlib
 import logging
 import os
 import shutil
 import tempfile
 import uuid
-from pathlib import Path
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
