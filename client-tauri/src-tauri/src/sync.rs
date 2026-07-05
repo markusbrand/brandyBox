@@ -12,8 +12,6 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 const SYNC_IGNORE: &[&str] = &[".directory", "Thumbs.db", "Desktop.ini", ".DS_Store"];
-#[allow(dead_code)]
-const SYNC_MAX_WORKERS: usize = 8;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 struct SyncStateFile {
@@ -301,31 +299,9 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                 continue;
             }
         }
-        match client.download_file(path) {
-            Ok(body) => {
-                bytes_downloaded += body.len() as u64;
-                let _content_hash = {
-                    let mut hasher = Sha256::new();
-                    hasher.update(&body);
-                    format!("{:x}", hasher.finalize())
-                };
-                if let Some(parent) = local_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let tmp_path = local_path.with_extension("tmp_download");
-                if let Err(e) = std::fs::write(&tmp_path, &body) {
-                    if e.kind() == std::io::ErrorKind::PermissionDenied {
-                        log::warn!("Download {}: permission denied, skipping", path);
-                        skipped_downloads.insert(path.clone());
-                        done += 1;
-                        continue;
-                    }
-                    return Err(format!("Download {}: {}", path, e));
-                }
-                if let Err(e) = std::fs::rename(&tmp_path, &local_path) {
-                    let _ = std::fs::remove_file(&tmp_path);
-                    return Err(format!("Download {}: failed to rename tmp to final: {}", path, e));
-                }
+        match client.download_file_to_path(path, &local_path) {
+            Ok(bytes) => {
+                bytes_downloaded += bytes;
                 completed_downloads.insert(path.clone());
                 if let Some(h) = remote_hashes.get(path) {
                     state.file_hashes.insert(path.clone(), h.clone());

@@ -20,6 +20,7 @@ from app.oauth.routes import router as oauth_router
 from app.telemetry.routes import router as telemetry_router
 from app.users.routes import router as users_router
 from app.users.service import ensure_admin_exists
+from app.limiter import limiter
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +100,6 @@ async def generic_exception_handler(request: Request, exc: Exception):
         content={"detail": "Internal server error"},
     )
 
-from app.limiter import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

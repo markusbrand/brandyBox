@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.auth.jwt import create_access_token
 from app.files.storage import user_base_path
-import os
 import shutil
 
 client = TestClient(app)

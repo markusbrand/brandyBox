@@ -1,9 +1,9 @@
 """Tests for user service: get_user_by_email, create_user, ensure_admin_exists."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from app.users.models import User, UserCreate
+from app.users.models import UserCreate
 from app.users.service import ensure_admin_exists, create_user, get_user_by_email
 
 

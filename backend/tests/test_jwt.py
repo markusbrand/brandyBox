@@ -1,7 +1,6 @@
 """Tests for JWT and password hashing."""
 
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock
 
 from app.auth.jwt import (
