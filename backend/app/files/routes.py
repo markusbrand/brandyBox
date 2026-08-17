@@ -7,6 +7,8 @@ import tempfile
 import uuid
 from typing import Annotated, List, Optional
 
+import aiofiles
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -225,9 +227,9 @@ async def upload_chunk(
     chunk_path = upload_dir / f"chunk_{index:06d}"
 
     bytes_written = 0
-    with open(chunk_path, "wb") as f:
+    async with aiofiles.open(chunk_path, "wb") as f:
         async for chunk in request.stream():
-            f.write(chunk)
+            await f.write(chunk)
             bytes_written += len(chunk)
 
     return {"index": index, "size": bytes_written}
@@ -284,11 +286,11 @@ async def upload_finalize(
     hasher = get_hasher()
     total_size = 0
     try:
-        with os.fdopen(fd, "wb") as f:
+        async with aiofiles.open(fd, "wb") as f:
             for chunk_path in chunks:
-                with open(chunk_path, "rb") as cf:
+                async with aiofiles.open(chunk_path, "rb") as cf:
                     while True:
-                        data = cf.read(1024 * 1024)
+                        data = await cf.read(1024 * 1024)
                         if not data:
                             break
 
@@ -301,7 +303,7 @@ async def upload_finalize(
                             if user_used_before - old_size + current_total > user_limit:
                                 raise HTTPException(status_code=507, detail="Your storage limit has been reached")
 
-                        f.write(data)
+                        await f.write(data)
                         hasher.update(data)
                         total_size += len(data)
 
@@ -382,7 +384,7 @@ async def upload_file(
 
     fd, temp_path = tempfile.mkstemp(dir=temp_dir, prefix=".bb_upload_")
     try:
-        with os.fdopen(fd, "wb") as f:
+        async with aiofiles.open(fd, "wb") as f:
             async for chunk in request.stream():
                 if not chunk:
                     continue
@@ -407,7 +409,7 @@ async def upload_file(
                     if user_used_before - old_size + current_size > user_limit:
                         raise HTTPException(status_code=507, detail="Your storage limit has been reached")
 
-                f.write(chunk)
+                await f.write(chunk)
                 hasher.update(chunk)
                 bytes_written += len(chunk)
 
