@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    const token = localStorage.getItem("bb_access_token");
+    const token = sessionStorage.getItem("bb_access_token");
     if (!token) {
       setUser(null);
       setPrefs(defaultPrefs);
