@@ -1,8 +1,8 @@
 """E2E scenario: create a large file in sync dir, wait for sync, verify on server, delete, verify removed."""
 
 import logging
-import os
 import time
+from os import environ
 from pathlib import Path
 from typing import List
 
@@ -26,7 +26,7 @@ DEFAULT_LARGE_FILE_SIZE_MB = 2
 
 def _large_file_size_bytes() -> int:
     """Size of the large test file in bytes (from env or default)."""
-    s = os.environ.get("BRANDYBOX_LARGE_FILE_SIZE_MB", str(DEFAULT_LARGE_FILE_SIZE_MB)).strip()
+    s = environ.get("BRANDYBOX_LARGE_FILE_SIZE_MB", str(DEFAULT_LARGE_FILE_SIZE_MB)).strip()
     try:
         mb = float(s)
         return max(1, int(mb * 1024 * 1024))
