@@ -111,8 +111,8 @@ async def list_files(
     paths = [r["path"] for r in result]
     hashes = await get_hashes_for_paths(session, current_user.email, paths)
     for r in result:
-        if r["path"] in hashes:
-            r["hash"] = hashes[r["path"]]
+        if (h := hashes.get(r["path"])) is not None:
+            r["hash"] = h
     log.info("list_files user=%s count=%d", current_user.email, len(result))
     return result
 
