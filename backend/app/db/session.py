@@ -48,6 +48,7 @@ async def init_db() -> None:
     # Register models so create_all includes oauth + telemetry tables.
     from app.oauth import models as _oauth_models  # noqa: F401
     from app.telemetry import models as _telemetry_models  # noqa: F401
+    from app.files import hash_model as _hash_models  # noqa: F401
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

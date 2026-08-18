@@ -13,7 +13,6 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.db.session import get_session, init_db
-from app.files.hash_model import FileHash  # noqa: F401  # register for create_all
 from app.files.routes import router as files_router
 from app.meta.routes import router as meta_router
 from app.oauth.routes import router as oauth_router
