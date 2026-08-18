@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 async def get_hashes_for_paths(session: AsyncSession, user_email: str, paths: List[str]) -> Dict[str, str]:
     """Return dict path -> content_hash for paths that have a stored hash. Missing paths are omitted."""
     out: Dict[str, str] = {}
-    chunk = 500  # stay under SQLite parameter limit
+    chunk = 30000  # stay under SQLite parameter limit (32766 limit in modern SQLite)
     for i in range(0, len(paths), chunk):
         part = paths[i : i + chunk]
         if not part:
