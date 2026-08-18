@@ -31,6 +31,7 @@ export default function TitleBar() {
       </Box>
       <Box sx={{ "-webkit-app-region": "no-drag", appRegion: "no-drag", display: "flex" }}>
         <IconButton
+          aria-label="Minimize"
           size="small"
           sx={{ color: "inherit", borderRadius: 0, "&:hover": { bgcolor: "rgba(255,255,255,0.15)" } }}
           onClick={() => appWindow.minimize()}
@@ -38,6 +39,7 @@ export default function TitleBar() {
           <Remove fontSize="small" />
         </IconButton>
         <IconButton
+          aria-label="Maximize"
           size="small"
           sx={{ color: "inherit", borderRadius: 0, "&:hover": { bgcolor: "rgba(255,255,255,0.15)" } }}
           onClick={() => appWindow.toggleMaximize()}
@@ -45,6 +47,7 @@ export default function TitleBar() {
           <CropSquare fontSize="small" />
         </IconButton>
         <IconButton
+          aria-label="Close"
           size="small"
           sx={{
             color: "inherit",
