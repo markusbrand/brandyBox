@@ -11,41 +11,39 @@ from app.config import get_settings
 
 log = logging.getLogger(__name__)
 
-# Optional: 1–3 digits, optional decimal, then unit: M, MB, G, GB, T, TB (case-insensitive), or digits + %
-_STORAGE_LIMIT_PATTERN = re.compile(
-    r"^\s*(\d+(?:\.\d+)?)\s*%\s*$|^\s*(\d+(?:\.\d+)?)\s*(Mi?B?|Gi?B?|Ti?B?)\s*$",
-    re.IGNORECASE,
-)
+_PERCENTAGE_PATTERN = re.compile(r"^(\d+(?:\.\d+)?)\s*%$")
+_BYTES_PATTERN = re.compile(r"^(\d+(?:\.\d+)?)\s*(Mi?B?|Gi?B?|Ti?B?)$", re.IGNORECASE)
 
 
 def _parse_storage_limit_string(value: str) -> Tuple[Optional[float], Optional[str]]:
     """
     Parse storage_limit config. Returns (number, unit) where unit is '%' or 'bytes'.
-    For percentage, number is 0–100. For bytes, we return (None, None) and size in bytes
-    is computed in get_server_storage_limit_bytes.
+    For percentage, number is 0-100.
+    For bytes, number is the computed total size in bytes.
+    Returns (None, None) if parsing fails or constraints are violated.
     """
-    if not value or not value.strip():
+    if not value or not (val := value.strip()):
         return (70.0, "%")
-    m = _STORAGE_LIMIT_PATTERN.match(value.strip())
-    if not m:
-        return (None, None)
-    if m.group(1) is not None:
+
+    if m := _PERCENTAGE_PATTERN.match(val):
         pct = float(m.group(1))
         if 0 < pct <= 100:
             return (pct, "%")
         return (None, None)
-    # Size: group(2) = number, group(3) = unit (G, GB, GiB, T, TB, TiB)
-    num = float(m.group(2))
-    unit = (m.group(3) or "").upper()
-    if num <= 0:
-        return (None, None)
-    # MiB, MB, M -> 1024**2; GiB, GB, G -> 1024**3; TiB, TB, T -> 1024**4.
-    if "T" in unit:
-        return (num * (1024**4), "bytes")
-    if "G" in unit:
-        return (num * (1024**3), "bytes")
-    if "M" in unit:
-        return (num * (1024**2), "bytes")
+
+    if m := _BYTES_PATTERN.match(val):
+        num = float(m.group(1))
+        if num <= 0:
+            return (None, None)
+
+        unit = m.group(2).upper()
+        if "T" in unit:
+            return (num * (1024**4), "bytes")
+        if "G" in unit:
+            return (num * (1024**3), "bytes")
+        if "M" in unit:
+            return (num * (1024**2), "bytes")
+
     return (None, None)
 
 
