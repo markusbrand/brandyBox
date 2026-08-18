@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     storage_limit: str = "70%"
 
     # JWT
-    jwt_secret: str = Field(min_length=1)
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     # Long-lived refresh token (Dropbox-style): user stays logged in without re-login.
