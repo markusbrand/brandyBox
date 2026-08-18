@@ -176,6 +176,51 @@ def setup_e2e_config(
     return config_dir
 
 
+def _cleanup_test_user(test_email: str, admin_email: str, admin_password: str, base_url: str) -> None:
+    try:
+        from tests.e2e.api_client import BrandyBoxAPI
+
+        api = BrandyBoxAPI(base_url=base_url)
+        api.login(admin_email, admin_password)
+        api.delete_user(test_email)
+        log.info("E2E cleanup: deleted test user %s", test_email)
+    except Exception as e:
+        log.warning("E2E cleanup: could not delete test user %s: %s", test_email, e)
+
+def _cleanup_keyring() -> None:
+    import keyring
+    try:
+        keyring.delete_password(E2E_KEYRING_SERVICE, KEY_EMAIL)
+        keyring.delete_password(E2E_KEYRING_SERVICE, KEY_REFRESH_TOKEN)
+        log.info("E2E cleanup: cleared keyring %s", E2E_KEYRING_SERVICE)
+    except keyring.errors.PasswordDeleteError:
+        pass
+    except Exception as e:
+        log.warning("E2E cleanup: keyring clear failed: %s", e)
+
+def _cleanup_config_dir(e2e_config_dir: Optional[Path]) -> None:
+    if e2e_config_dir and e2e_config_dir.exists():
+        try:
+            (e2e_config_dir / "config.json").unlink(missing_ok=True)
+            (e2e_config_dir / "e2e_credentials.json").unlink(missing_ok=True)
+            (e2e_config_dir / E2E_CLIENT_PID_FILE).unlink(missing_ok=True)
+        except OSError as e:
+            log.warning("E2E cleanup: config dir cleanup failed: %s", e)
+
+def _cleanup_sync_folder(sync_folder: Optional[Path], remove_sync_contents_only: bool) -> None:
+    if sync_folder and sync_folder.exists():
+        try:
+            if remove_sync_contents_only:
+                for p in sync_folder.iterdir():
+                    if p.is_file():
+                        p.unlink()
+                    elif p.is_dir():
+                        shutil.rmtree(p, ignore_errors=True)
+            else:
+                shutil.rmtree(sync_folder, ignore_errors=True)
+        except OSError as e:
+            log.warning("E2E cleanup: sync folder cleanup failed: %s", e)
+
 def cleanup_e2e(
     test_email: str,
     admin_email: str,
@@ -191,51 +236,11 @@ def cleanup_e2e(
     if False and sync_folder was created by us (temp), remove the folder.
     """
     _ensure_keyring_backend()
-    import keyring
 
-    # Delete test user (admin API)
-    try:
-        from tests.e2e.api_client import BrandyBoxAPI
-
-        api = BrandyBoxAPI(base_url=base_url)
-        api.login(admin_email, admin_password)
-        api.delete_user(test_email)
-        log.info("E2E cleanup: deleted test user %s", test_email)
-    except Exception as e:
-        log.warning("E2E cleanup: could not delete test user %s: %s", test_email, e)
-
-    # Clear keyring
-    try:
-        keyring.delete_password(E2E_KEYRING_SERVICE, KEY_EMAIL)
-        keyring.delete_password(E2E_KEYRING_SERVICE, KEY_REFRESH_TOKEN)
-        log.info("E2E cleanup: cleared keyring %s", E2E_KEYRING_SERVICE)
-    except keyring.errors.PasswordDeleteError:
-        pass
-    except Exception as e:
-        log.warning("E2E cleanup: keyring clear failed: %s", e)
-
-    # Config dir: remove config, credentials file, and pid file so next run starts clean
-    if e2e_config_dir and e2e_config_dir.exists():
-        try:
-            (e2e_config_dir / "config.json").unlink(missing_ok=True)
-            (e2e_config_dir / "e2e_credentials.json").unlink(missing_ok=True)
-            (e2e_config_dir / E2E_CLIENT_PID_FILE).unlink(missing_ok=True)
-        except OSError as e:
-            log.warning("E2E cleanup: config dir cleanup failed: %s", e)
-
-    # Sync folder: only remove contents if we want a clean slate; do not remove the dir
-    if sync_folder and sync_folder.exists():
-        try:
-            if remove_sync_contents_only:
-                for p in sync_folder.iterdir():
-                    if p.is_file():
-                        p.unlink()
-                    elif p.is_dir():
-                        shutil.rmtree(p, ignore_errors=True)
-            else:
-                shutil.rmtree(sync_folder, ignore_errors=True)
-        except OSError as e:
-            log.warning("E2E cleanup: sync folder cleanup failed: %s", e)
+    _cleanup_test_user(test_email, admin_email, admin_password, base_url)
+    _cleanup_keyring()
+    _cleanup_config_dir(e2e_config_dir)
+    _cleanup_sync_folder(sync_folder, remove_sync_contents_only)
 
 
 def run_with_autonomous_setup(
