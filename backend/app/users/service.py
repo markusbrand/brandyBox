@@ -146,7 +146,7 @@ async def ensure_admin_exists(session: AsyncSession) -> None:
     try:
         base = user_base_path(user.email)
         if base.exists():
-            user.storage_used_bytes = get_disk_usage_bytes(base)
+            user.storage_used_bytes = await get_disk_usage_bytes(base)
     except Exception:
         pass
     session.add(user)
