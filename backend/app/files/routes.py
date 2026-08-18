@@ -3,12 +3,10 @@
 import logging
 import os
 import shutil
+import aiofiles
 import tempfile
 import uuid
-import anyio
 from typing import Annotated, List, Optional
-
-import aiofiles
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, StreamingResponse
@@ -108,12 +106,12 @@ async def list_files(
     """
     base = user_base_path(current_user.email)
     base.mkdir(parents=True, exist_ok=True)
-    result = await anyio.to_thread.run_sync(list_files_recursive, base)
+    result = list_files_recursive(base)
     paths = [r["path"] for r in result]
     hashes = await get_hashes_for_paths(session, current_user.email, paths)
     for r in result:
-        if (h := hashes.get(r["path"])) is not None:
-            r["hash"] = h
+        if r["path"] in hashes:
+            r["hash"] = hashes[r["path"]]
     log.info("list_files user=%s count=%d", current_user.email, len(result))
     return result
 
@@ -134,7 +132,7 @@ async def list_folders(
     """
     base = user_base_path(current_user.email)
     base.mkdir(parents=True, exist_ok=True)
-    result = await anyio.to_thread.run_sync(list_directories_recursive, base)
+    result = list_directories_recursive(base)
     log.info("list_folders user=%s count=%d", current_user.email, len(result))
     return result
 

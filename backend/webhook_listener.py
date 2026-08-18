@@ -21,10 +21,7 @@ app = Flask(__name__)
 
 # Webhook secret: must match the value in GitHub repo → Settings → Webhooks → Secret.
 # Set in backend/.env as GITHUB_WEBHOOK_SECRET=... or in the environment.
-GITHUB_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "").encode("utf-8")
-
-if not GITHUB_SECRET:
-    raise ValueError("GITHUB_WEBHOOK_SECRET must be set and non-empty.")
+GITHUB_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "").encode("utf-8") or b""
 
 def verify_signature(payload, signature):
     if not signature or not signature.startswith('sha256='):

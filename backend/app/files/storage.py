@@ -118,33 +118,21 @@ def list_files_recursive(root: Path) -> List[dict]:
     The ``size`` field was added in API 0.3.0; older API clients ignore it.
     """
     result: List[dict] = []
-    root_str = str(root)
-    # Using os.scandir in a loop is much faster than Path.rglob (up to 6x faster).
-    import os
-    stack = [(root_str, "")]
-    while stack:
-        current_dir, rel_path = stack.pop()
-        try:
-            with os.scandir(current_dir) as it:
-                for entry in it:
-                    try:
-                        if entry.is_dir(follow_symlinks=False):
-                            next_rel = f"{rel_path}/{entry.name}" if rel_path else entry.name
-                            stack.append((entry.path, next_rel))
-                        elif entry.is_file(follow_symlinks=False):
-                            st = entry.stat(follow_symlinks=False)
-                            next_rel = f"{rel_path}/{entry.name}" if rel_path else entry.name
-                            result.append({
-                                "path": next_rel,
-                                "mtime": st.st_mtime,
-                                "size": st.st_size,
-                            })
-                    except (OSError, ValueError):
-                        continue
-        except OSError as e:
-            if current_dir == root_str:
-                log.warning("list_files_recursive cannot read tree under %s: %s", root, e)
-            continue
+    try:
+        for f in root.rglob("*"):
+            if f.is_file():
+                try:
+                    rel = f.relative_to(root)
+                    st = f.stat()
+                    result.append({
+                        "path": str(rel).replace("\\", "/"),
+                        "mtime": st.st_mtime,
+                        "size": st.st_size,
+                    })
+                except (OSError, ValueError):
+                    continue
+    except OSError as e:
+        log.warning("list_files_recursive cannot read tree under %s: %s", root, e)
     return result
 
 
@@ -158,29 +146,19 @@ def list_directories_recursive(root: Path) -> List[dict]:
     cannot infer (because they contain no files at any depth).
     """
     result: List[dict] = []
-    root_str = str(root)
-    import os
-    stack = [(root_str, "")]
-    while stack:
-        current_dir, rel_path = stack.pop()
-        try:
-            with os.scandir(current_dir) as it:
-                for entry in it:
-                    try:
-                        if entry.is_dir(follow_symlinks=False):
-                            next_rel = f"{rel_path}/{entry.name}" if rel_path else entry.name
-                            st = entry.stat(follow_symlinks=False)
-                            result.append({
-                                "path": next_rel,
-                                "mtime": st.st_mtime,
-                            })
-                            stack.append((entry.path, next_rel))
-                    except (OSError, ValueError):
-                        continue
-        except OSError as e:
-            if current_dir == root_str:
-                log.warning("list_directories_recursive cannot read tree under %s: %s", root, e)
-            continue
+    try:
+        for d in root.rglob("*"):
+            if d.is_dir():
+                try:
+                    rel = d.relative_to(root)
+                    result.append({
+                        "path": str(rel).replace("\\", "/"),
+                        "mtime": d.stat().st_mtime,
+                    })
+                except (OSError, ValueError):
+                    continue
+    except OSError as e:
+        log.warning("list_directories_recursive cannot read tree under %s: %s", root, e)
     return result
 
 

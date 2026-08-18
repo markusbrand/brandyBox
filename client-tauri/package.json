@@ -10,8 +10,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "GTK_MODULES= npm run tauri dev",
-    "tauri:build": "cross-env CI=false npm run tauri build",
-    "test": "vitest run"
+    "tauri:build": "cross-env CI=false npm run tauri build"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -26,12 +25,11 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "~2.11.0",
+    "cross-env": "^7.0.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.7.0",
-    "cross-env": "^7.0.3",
     "typescript": "~5.8.3",
-    "vite": "^7.3.1",
-    "vitest": "^4.1.10"
+    "vite": "^7.3.1"
   }
 }
