@@ -49,19 +49,32 @@ def _parse_storage_limit_string(value: str) -> Tuple[Optional[float], Optional[s
     return (None, None)
 
 
-def get_disk_usage_bytes(path: Path) -> int:
+async def get_disk_usage_bytes(path: Path) -> int:
     """Return total size in bytes of all files under path (recursive)."""
-    total = 0
-    try:
-        for f in path.rglob("*"):
-            if f.is_file():
-                try:
-                    total += f.stat().st_size
-                except OSError:
-                    pass
-    except OSError:
-        pass
-    return total
+    import asyncio
+    import os
+
+    def _scan() -> int:
+        total = 0
+        def _walk(p: str):
+            nonlocal total
+            try:
+                with os.scandir(p) as it:
+                    for entry in it:
+                        if entry.is_file(follow_symlinks=False):
+                            try:
+                                total += entry.stat(follow_symlinks=False).st_size
+                            except OSError:
+                                pass
+                        elif entry.is_dir(follow_symlinks=False):
+                            _walk(entry.path)
+            except OSError:
+                pass
+        _walk(str(path))
+        return total
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _scan)
 
 
 def get_drive_stats(path: Path) -> Tuple[int, int]:

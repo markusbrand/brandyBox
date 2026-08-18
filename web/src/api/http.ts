@@ -7,7 +7,7 @@ export function getWebVersion(): string {
 }
 
 function authHeader(): HeadersInit {
-  const t = localStorage.getItem("bb_access_token");
+  const t = sessionStorage.getItem("bb_access_token");
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
@@ -52,8 +52,8 @@ export async function loginPassword(email: string, password: string) {
     refresh_token: string;
     expires_in: number;
   };
-  localStorage.setItem("bb_access_token", data.access_token);
-  localStorage.setItem("bb_refresh_token", data.refresh_token);
+  sessionStorage.setItem("bb_access_token", data.access_token);
+  sessionStorage.setItem("bb_refresh_token", data.refresh_token);
 }
 
 export async function oauthComplete(exchange: string) {
@@ -69,12 +69,12 @@ export async function oauthComplete(exchange: string) {
     access_token: string;
     refresh_token: string;
   };
-  localStorage.setItem("bb_access_token", data.access_token);
-  localStorage.setItem("bb_refresh_token", data.refresh_token);
+  sessionStorage.setItem("bb_access_token", data.access_token);
+  sessionStorage.setItem("bb_refresh_token", data.refresh_token);
 }
 
 export async function refreshTokens(): Promise<boolean> {
-  const rt = localStorage.getItem("bb_refresh_token");
+  const rt = sessionStorage.getItem("bb_refresh_token");
   if (!rt) {
     return false;
   }
@@ -87,8 +87,8 @@ export async function refreshTokens(): Promise<boolean> {
     return false;
   }
   const data = (await res.json()) as { access_token: string; refresh_token: string };
-  localStorage.setItem("bb_access_token", data.access_token);
-  localStorage.setItem("bb_refresh_token", data.refresh_token);
+  sessionStorage.setItem("bb_access_token", data.access_token);
+  sessionStorage.setItem("bb_refresh_token", data.refresh_token);
   return true;
 }
 
@@ -110,8 +110,8 @@ export async function apiFetchAuth(
 }
 
 export function logout() {
-  localStorage.removeItem("bb_access_token");
-  localStorage.removeItem("bb_refresh_token");
+  sessionStorage.removeItem("bb_access_token");
+  sessionStorage.removeItem("bb_refresh_token");
 }
 
 export type MeUser = {
