@@ -516,7 +516,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
                   <ListItem key={u.email}>
                     <ListItemText primary={u.email} secondary={u.first_name || u.last_name ? `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() : undefined} />
                     <ListItemSecondaryAction>
-                      <IconButton edge="end" size="small" onClick={() => handleDeleteUser(u.email)} color="error">
+                      <IconButton aria-label="Delete user" edge="end" size="small" onClick={() => handleDeleteUser(u.email)} color="error">
                         Delete
                       </IconButton>
                     </ListItemSecondaryAction>
