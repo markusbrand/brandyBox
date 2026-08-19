@@ -44,9 +44,10 @@ class LargeFileSyncScenario(BaseScenario):
     def __init__(self) -> None:
         # Large files may need longer sync; use 2x default timeout
         super().__init__(max_step_duration_seconds=SYNC_WAIT_TIMEOUT * 2)
+        self._file_name = LARGE_FILE_NAME
         self._sync_folder = _get_sync_folder()
         self._api = _get_api_client()
-        self._test_file_path = self._sync_folder / LARGE_FILE_NAME
+        self._test_file_path = self._sync_folder / self._file_name
         self._file_size_bytes = _large_file_size_bytes()
         self._had_successful_login = False
 
@@ -72,7 +73,7 @@ class LargeFileSyncScenario(BaseScenario):
                     f.write(chunk[:write_size])
                     remaining -= write_size
             duration = time.monotonic() - start
-            log.info("Created %s (%d bytes) in %.1fs", LARGE_FILE_NAME, self._file_size_bytes, duration)
+            log.info("Created %s (%d bytes) in %.1fs", self._file_name, self._file_size_bytes, duration)
         except Exception as e:
             return StepResult("create_large_file", False, str(e))
         return StepResult(
@@ -88,7 +89,7 @@ class LargeFileSyncScenario(BaseScenario):
         self._had_successful_login = True
         log.info(
             "Waiting for %s on server (sync folder: %s). Polling every %ds for up to %.0fs.",
-            LARGE_FILE_NAME,
+            self._file_name,
             self._sync_folder,
             SYNC_POLL_INTERVAL,
             self.max_step_duration_seconds,
@@ -100,7 +101,7 @@ class LargeFileSyncScenario(BaseScenario):
             _, files = _login_and_list(self._api)
             if files is not None:
                 last_paths = {f["path"] for f in files}
-                if LARGE_FILE_NAME in last_paths:
+                if self._file_name in last_paths:
                     duration = time.monotonic() - start
                     log.info("Large file appeared on server after %.1fs", duration)
                     return StepResult(
@@ -119,7 +120,7 @@ class LargeFileSyncScenario(BaseScenario):
         return StepResult(
             "wait_sync_create",
             False,
-            f"Timeout waiting for {LARGE_FILE_NAME} on server",
+            f"Timeout waiting for {self._file_name} on server",
             details={"paths_seen": list(last_paths), "sync_wait_seconds": round(duration, 2)},
         )
 
@@ -128,8 +129,8 @@ class LargeFileSyncScenario(BaseScenario):
         if err:
             return StepResult("verify_after_create", False, err)
         paths = {f["path"] for f in files}
-        if LARGE_FILE_NAME not in paths:
-            return StepResult("verify_after_create", False, f"Server missing {LARGE_FILE_NAME}", details=paths)
+        if self._file_name not in paths:
+            return StepResult("verify_after_create", False, f"Server missing {self._file_name}", details=paths)
         return StepResult("verify_after_create", True)
 
     def _step5_delete_local_file(self) -> StepResult:
@@ -150,14 +151,14 @@ class LargeFileSyncScenario(BaseScenario):
             _, files = _login_and_list(self._api)
             if files is not None:
                 last_paths = {f["path"] for f in files}
-                if LARGE_FILE_NAME not in last_paths:
+                if self._file_name not in last_paths:
                     return StepResult("wait_sync_delete", True)
             time.sleep(SYNC_POLL_INTERVAL)
-        still = [p for p in last_paths if p == LARGE_FILE_NAME]
+        still = [p for p in last_paths if p == self._file_name]
         return StepResult(
             "wait_sync_delete",
             False,
-            f"Timeout waiting for removal of {LARGE_FILE_NAME} on server",
+            f"Timeout waiting for removal of {self._file_name} on server",
             details={"paths_still_present": still},
         )
 
@@ -166,7 +167,7 @@ class LargeFileSyncScenario(BaseScenario):
         if err:
             return StepResult("verify_after_delete", False, err)
         paths = {f["path"] for f in files}
-        if LARGE_FILE_NAME in paths:
+        if self._file_name in paths:
             return StepResult(
                 "verify_after_delete",
                 False,
@@ -189,7 +190,7 @@ class LargeFileSyncScenario(BaseScenario):
         if err:
             return
         try:
-            self._api.delete_file(LARGE_FILE_NAME)
+            self._api.delete_file(self._file_name)
         except Exception:
             pass
 
