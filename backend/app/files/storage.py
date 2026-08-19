@@ -1,6 +1,7 @@
 """Safe path resolution under base dir (no directory traversal)."""
 
 import logging
+import os
 import re
 import unicodedata
 from pathlib import Path
@@ -118,21 +119,28 @@ def list_files_recursive(root: Path) -> List[dict]:
     The ``size`` field was added in API 0.3.0; older API clients ignore it.
     """
     result: List[dict] = []
-    try:
-        for f in root.rglob("*"):
-            if f.is_file():
-                try:
-                    rel = f.relative_to(root)
-                    st = f.stat()
-                    result.append({
-                        "path": str(rel).replace("\\", "/"),
-                        "mtime": st.st_mtime,
-                        "size": st.st_size,
-                    })
-                except (OSError, ValueError):
-                    continue
-    except OSError as e:
-        log.warning("list_files_recursive cannot read tree under %s: %s", root, e)
+    root_str = str(root)
+    dirs = [root_str]
+    while dirs:
+        current_dir = dirs.pop()
+        try:
+            with os.scandir(current_dir) as it:
+                for entry in it:
+                    if entry.is_file(follow_symlinks=False):
+                        try:
+                            st = entry.stat(follow_symlinks=False)
+                            rel = os.path.relpath(entry.path, root_str)
+                            result.append({
+                                "path": rel.replace("\\", "/"),
+                                "mtime": st.st_mtime,
+                                "size": st.st_size,
+                            })
+                        except OSError:
+                            continue
+                    elif entry.is_dir(follow_symlinks=False):
+                        dirs.append(entry.path)
+        except OSError as e:
+            log.warning("list_files_recursive cannot read directory %s: %s", current_dir, e)
     return result
 
 
@@ -146,19 +154,26 @@ def list_directories_recursive(root: Path) -> List[dict]:
     cannot infer (because they contain no files at any depth).
     """
     result: List[dict] = []
-    try:
-        for d in root.rglob("*"):
-            if d.is_dir():
-                try:
-                    rel = d.relative_to(root)
-                    result.append({
-                        "path": str(rel).replace("\\", "/"),
-                        "mtime": d.stat().st_mtime,
-                    })
-                except (OSError, ValueError):
-                    continue
-    except OSError as e:
-        log.warning("list_directories_recursive cannot read tree under %s: %s", root, e)
+    root_str = str(root)
+    dirs = [root_str]
+    while dirs:
+        current_dir = dirs.pop()
+        try:
+            with os.scandir(current_dir) as it:
+                for entry in it:
+                    if entry.is_dir(follow_symlinks=False):
+                        try:
+                            st = entry.stat(follow_symlinks=False)
+                            rel = os.path.relpath(entry.path, root_str)
+                            result.append({
+                                "path": rel.replace("\\", "/"),
+                                "mtime": st.st_mtime,
+                            })
+                            dirs.append(entry.path)
+                        except OSError:
+                            continue
+        except OSError as e:
+            log.warning("list_directories_recursive cannot read directory %s: %s", current_dir, e)
     return result
 
 
