@@ -642,6 +642,7 @@ export default function FilesPage() {
                   <ListItemSecondaryAction>
                     <Tooltip title={fav ? "Remove from favorites" : "Add to favorites"}>
                       <IconButton
+                        aria-label={fav ? "Remove from favorites" : "Add to favorites"}
                         edge="end"
                         size="small"
                         onClick={(ev) => {
@@ -654,6 +655,7 @@ export default function FilesPage() {
                     </Tooltip>
                     <Tooltip title="Download">
                       <IconButton
+                        aria-label="Download file"
                         edge="end"
                         size="small"
                         onClick={(ev) => {
@@ -666,6 +668,7 @@ export default function FilesPage() {
                     </Tooltip>
                     <Tooltip title="Delete">
                       <IconButton
+                        aria-label="Delete file"
                         edge="end"
                         size="small"
                         onClick={(ev) => {

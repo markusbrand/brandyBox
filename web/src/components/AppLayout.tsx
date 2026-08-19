@@ -121,7 +121,7 @@ export default function AppLayout() {
         }}
       >
         <Toolbar>
-          <IconButton color="inherit" edge="start" onClick={() => setOpen((o) => !o)} sx={{ mr: 1 }}>
+          <IconButton aria-label="Toggle navigation menu" color="inherit" edge="start" onClick={() => setOpen((o) => !o)} sx={{ mr: 1 }}>
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
