@@ -80,11 +80,11 @@ jobs:
         run: cd client-tauri/src-tauri && cargo test
 
       - name: Build Tauri client
-        run: cd client-tauri && npm run tauri:build
+        run: cd client-tauri && npm run tauri:build -- --no-bundle
 
       - name: Tar Tauri release for E2E
         run: |
-          tar czf tauri-release.tar.gz -C client-tauri/src-tauri/target release/
+          tar czf tauri-release.tar.gz -C client-tauri/src-tauri/target release/brandybox
 
       - name: Upload Tauri release for E2E
         uses: actions/upload-artifact@v7
