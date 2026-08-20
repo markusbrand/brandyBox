@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     storage_limit: str = "70%"
 
     # JWT
-    jwt_secret: str = ""
+    jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     # Long-lived refresh token (Dropbox-style): user stays logged in without re-login.
@@ -86,6 +86,14 @@ class Settings(BaseSettings):
     # Google OAuth (optional; leave client_id empty to disable "Sign in with Google")
     google_client_id: str = ""
     google_client_secret: str = ""
+
+
+    @field_validator("jwt_secret", mode="after")
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("BRANDYBOX_JWT_SECRET must be at least 32 characters long for security.")
+        return v
 
     @field_validator("static_dist_path", mode="before")
     @classmethod
