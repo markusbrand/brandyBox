@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  CircularProgress,
   Container,
   Paper,
   TextField,
@@ -119,8 +120,13 @@ export default function LoginPage() {
           autoComplete="current-password"
         />
         <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-          <Button variant="contained" disabled={busy} onClick={() => void onPassword()}>
-            Sign in
+          <Button
+            variant="contained"
+            disabled={busy}
+            onClick={() => void onPassword()}
+            startIcon={busy ? <CircularProgress size={20} color="inherit" /> : null}
+          >
+            {busy ? "Signing in…" : "Sign in"}
           </Button>
           {googleAvailable ? (
             <Button variant="outlined" startIcon={<GoogleIcon />} disabled={busy} onClick={googleStart}>
