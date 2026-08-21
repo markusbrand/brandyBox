@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import aiofiles
+import anyio
 import tempfile
 import uuid
 from typing import Annotated, List, Optional
@@ -106,7 +107,9 @@ async def list_files(
     """
     base = user_base_path(current_user.email)
     base.mkdir(parents=True, exist_ok=True)
-    result = list_files_recursive(base)
+    # Offload blocking recursive filesystem traversal to a worker thread
+    # so we don't block the async event loop during large directory scans
+    result = await anyio.to_thread.run_sync(list_files_recursive, base)
     paths = [r["path"] for r in result]
     hashes = await get_hashes_for_paths(session, current_user.email, paths)
     for r in result:
@@ -132,7 +135,8 @@ async def list_folders(
     """
     base = user_base_path(current_user.email)
     base.mkdir(parents=True, exist_ok=True)
-    result = list_directories_recursive(base)
+    # Offload blocking recursive filesystem traversal to a worker thread
+    result = await anyio.to_thread.run_sync(list_directories_recursive, base)
     log.info("list_folders user=%s count=%d", current_user.email, len(result))
     return result
 
