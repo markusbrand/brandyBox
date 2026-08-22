@@ -49,16 +49,30 @@ def _parse_storage_limit_string(value: str) -> Tuple[Optional[float], Optional[s
 
 def get_disk_usage_bytes(path: Path) -> int:
     """Return total size in bytes of all files under path (recursive)."""
+    # ⚡ Bolt Optimization: Using iterative os.scandir instead of pathlib.rglob
+    # rglob builds full Path objects and uses recursion, which is slow and memory-intensive.
+    # scandir yields lightweight DirEntry objects. Iterative stack prevents stack overflows.
+    # Catching OSError per directory ensures a single permission error doesn't kill the scan.
+    import os
+
     total = 0
-    try:
-        for f in path.rglob("*"):
-            if f.is_file():
-                try:
-                    total += f.stat().st_size
-                except OSError:
-                    pass
-    except OSError:
-        pass
+    dirs_to_scan = [str(path)]
+
+    while dirs_to_scan:
+        current_dir = dirs_to_scan.pop()
+        try:
+            with os.scandir(current_dir) as it:
+                for entry in it:
+                    try:
+                        if entry.is_file(follow_symlinks=False):
+                            total += entry.stat(follow_symlinks=False).st_size
+                        elif entry.is_dir(follow_symlinks=False):
+                            dirs_to_scan.append(entry.path)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
     return total
 
 
