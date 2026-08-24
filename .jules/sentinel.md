@@ -1,4 +1,4 @@
-## 2024-05-18 - [Enforce Fail-Secure Configuration for JWT Secrets]
-**Vulnerability:** The application used an empty string `""` as a default fallback for `BRANDYBOX_JWT_SECRET` in `backend/app/config.py`.
-**Learning:** Hardcoded, default, or empty fallbacks for cryptographic keys violate fail-secure principles, potentially allowing the application to silently boot up with a known, insecure secret. This can lead to arbitrary JWT token forging.
-**Prevention:** Remove default fallbacks for sensitive environment variables in `pydantic` configuration settings. Always use `@field_validator` to enforce strong length constraints (e.g., minimum 32 characters for `HS256`).
+## 2023-10-27 - Path Traversal in Chunked Uploads
+**Vulnerability:** Path traversal in `/upload/chunk` and `/upload/finalize` endpoints where `upload_id` (user input) was directly appended to the path without validation.
+**Learning:** The chunked upload implementation bypassed the normal file path resolution (`resolve_user_path`), which had traversal checks, and manually appended `upload_id` to `.uploads/` directory instead.
+**Prevention:** Always use proper type validation for user input in FastAPI (e.g. `upload_id: uuid.UUID` instead of `str`) before passing it into file operations, especially if it creates directories.
