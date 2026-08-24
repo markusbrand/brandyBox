@@ -197,8 +197,9 @@ async def upload_init(
         raise HTTPException(status_code=400, detail="path required")
 
     upload_id = str(uuid.uuid4())
+
     user_base = user_base_path(current_user.email)
-    upload_dir = user_base / ".uploads" / upload_id
+    upload_dir = user_base / ".uploads" / str(upload_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     # Store the intended path in a metadata file
@@ -213,12 +214,12 @@ async def upload_init(
 async def upload_chunk(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    upload_id: str,
+    upload_id: uuid.UUID,
     index: int,
 ) -> dict:
     """Upload a single chunk for a chunked upload."""
     user_base = user_base_path(current_user.email)
-    upload_dir = user_base / ".uploads" / upload_id
+    upload_dir = user_base / ".uploads" / str(upload_id)
     if not upload_dir.is_dir():
         log.warning("upload_chunk failed: upload_id %s not found", upload_id)
         raise HTTPException(status_code=404, detail="Upload not found")
@@ -240,11 +241,11 @@ async def upload_finalize(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
-    upload_id: str,
+    upload_id: uuid.UUID,
 ) -> dict:
     """Finalize a chunked upload by assembling all chunks."""
     user_base = user_base_path(current_user.email)
-    upload_dir = user_base / ".uploads" / upload_id
+    upload_dir = user_base / ".uploads" / str(upload_id)
     if not upload_dir.is_dir():
         log.warning("upload_finalize failed: upload_id %s not found", upload_id)
         raise HTTPException(status_code=404, detail="Upload not found")
