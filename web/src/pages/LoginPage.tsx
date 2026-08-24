@@ -101,35 +101,53 @@ export default function LoginPage() {
             {error}
           </Alert>
         ) : null}
-        <TextField
-          label="Email"
-          type="email"
-          fullWidth
-          margin="normal"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="username"
-        />
-        <TextField
-          label="Password"
-          type="password"
-          fullWidth
-          margin="normal"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-        />
-        <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-          <Button variant="contained" disabled={busy} onClick={() => void onPassword()}>
-            {busy ? <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} /> : null}
-            {busy ? "Signing in..." : "Sign in"}
-          </Button>
-          {googleAvailable ? (
-            <Button variant="outlined" startIcon={!busy ? <GoogleIcon /> : <CircularProgress size={20} color="inherit" />} disabled={busy} onClick={googleStart}>
-              {busy ? "Please wait..." : "Continue with Google"}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void onPassword();
+          }}
+        >
+          <TextField
+            label="Email"
+            type="email"
+            fullWidth
+            margin="normal"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+          />
+          <TextField
+            label="Password"
+            type="password"
+            fullWidth
+            margin="normal"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+          <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>
+            <Button type="submit" variant="contained" disabled={busy}>
+              {busy ? (
+                <>
+                  <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
+                  Signing in...
+                </>
+              ) : (
+                "Sign in"
+              )}
             </Button>
-          ) : null}
-        </Box>
+            {googleAvailable ? (
+              <Button
+                variant="outlined"
+                startIcon={!busy ? <GoogleIcon /> : <CircularProgress size={20} color="inherit" />}
+                disabled={busy}
+                onClick={googleStart}
+              >
+                {busy ? "Please wait..." : "Continue with Google"}
+              </Button>
+            ) : null}
+          </Box>
+        </form>
       </Paper>
     </Container>
   );
