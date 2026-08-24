@@ -221,7 +221,7 @@ async def upload_init(
 async def upload_chunk(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    upload_id: str,
+    upload_id: uuid.UUID,
     index: int,
 ) -> dict:
     """Upload a single chunk for a chunked upload."""
@@ -248,7 +248,7 @@ async def upload_finalize(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
-    upload_id: str,
+    upload_id: uuid.UUID,
 ) -> dict:
     """Finalize a chunked upload by assembling all chunks."""
     user_base = user_base_path(current_user.email)
