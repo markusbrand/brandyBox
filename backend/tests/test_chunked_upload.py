@@ -72,11 +72,11 @@ def test_chunked_upload_success(auth_headers):
     assert target.read_bytes() == chunk1 + chunk2
 
 def test_chunked_upload_invalid_id(auth_headers):
-    response = client.post("/api/files/upload/chunk?upload_id=invalid&index=0", content=b"data", headers=auth_headers)
+    response = client.post("/api/files/upload/chunk?upload_id=00000000-0000-0000-0000-000000000000&index=0", content=b"data", headers=auth_headers)
     assert response.status_code == 404
 
 def test_chunked_upload_finalize_not_found(auth_headers):
-    response = client.post("/api/files/upload/finalize?upload_id=nonexistent", headers=auth_headers)
+    response = client.post("/api/files/upload/finalize?upload_id=00000000-0000-0000-0000-000000000000", headers=auth_headers)
     assert response.status_code == 404
 
 def test_chunked_upload_large_number_of_chunks(auth_headers):
@@ -96,3 +96,7 @@ def test_chunked_upload_large_number_of_chunks(auth_headers):
     target = user_base_path("test@example.com") / path
     assert target.exists()
     assert target.read_bytes() == chunk_data * num_chunks
+
+def test_chunked_upload_invalid_uuid(auth_headers):
+    response = client.post("/api/files/upload/chunk?upload_id=invalid&index=0", content=b"data", headers=auth_headers)
+    assert response.status_code == 422

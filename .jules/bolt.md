@@ -1,3 +1,6 @@
 ## 2024-08-19 - Replacing pathlib.rglob with os.scandir for high-performance file tree traversal
 **Learning:** `pathlib.Path.rglob` is slow and memory-intensive because it yields full `Path` objects and recursively walks trees. For large, deep directories, an iterative `os.scandir` implementation with a stack handles I/O much faster and prevents stack overflow errors.
 **Action:** When working on server-side functions that traverse the file system recursively, use a non-recursive `os.scandir` queue or stack. Additionally, catch `OSError` per-directory rather than on the entire traversal, so permission issues in one subdirectory don't abort the entire scan.
+## 2024-08-26 - Blocking FastAPI event loop with recursive disk I/O
+**Learning:** `list_files_recursive` and `list_directories_recursive` in `backend/app/files/storage.py` are synchronous functions due to `os.scandir` usage. Calling them directly inside `async def` routes blocks the main asyncio event loop, causing severe latency degradation under concurrent load for the `/api/files/list` and `/api/files/folders` endpoints.
+**Action:** When a server-side endpoint needs to traverse the filesystem or execute a heavy synchronous function, always use `await anyio.to_thread.run_sync()` to offload it to a worker thread in FastAPI applications.
