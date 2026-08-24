@@ -120,25 +120,26 @@ def list_files_recursive(root: Path) -> List[dict]:
     """
     result: List[dict] = []
     root_str = str(root)
-    dirs = [root_str]
+    dirs = [(root_str, "")]
     while dirs:
-        current_dir = dirs.pop()
+        current_dir, current_rel = dirs.pop()
         try:
             with os.scandir(current_dir) as it:
                 for entry in it:
                     if entry.is_file(follow_symlinks=False):
                         try:
                             st = entry.stat(follow_symlinks=False)
-                            rel = os.path.relpath(entry.path, root_str)
+                            rel = f"{current_rel}/{entry.name}" if current_rel else entry.name
                             result.append({
-                                "path": rel.replace("\\", "/"),
+                                "path": rel,
                                 "mtime": st.st_mtime,
                                 "size": st.st_size,
                             })
                         except OSError:
                             continue
                     elif entry.is_dir(follow_symlinks=False):
-                        dirs.append(entry.path)
+                        rel = f"{current_rel}/{entry.name}" if current_rel else entry.name
+                        dirs.append((entry.path, rel))
         except OSError as e:
             log.warning("list_files_recursive cannot read directory %s: %s", current_dir, e)
     return result
@@ -155,21 +156,21 @@ def list_directories_recursive(root: Path) -> List[dict]:
     """
     result: List[dict] = []
     root_str = str(root)
-    dirs = [root_str]
+    dirs = [(root_str, "")]
     while dirs:
-        current_dir = dirs.pop()
+        current_dir, current_rel = dirs.pop()
         try:
             with os.scandir(current_dir) as it:
                 for entry in it:
                     if entry.is_dir(follow_symlinks=False):
                         try:
                             st = entry.stat(follow_symlinks=False)
-                            rel = os.path.relpath(entry.path, root_str)
+                            rel = f"{current_rel}/{entry.name}" if current_rel else entry.name
                             result.append({
-                                "path": rel.replace("\\", "/"),
+                                "path": rel,
                                 "mtime": st.st_mtime,
                             })
-                            dirs.append(entry.path)
+                            dirs.append((entry.path, rel))
                         except OSError:
                             continue
         except OSError as e:
