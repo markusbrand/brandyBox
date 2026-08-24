@@ -25,8 +25,14 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(_truncate_for_bcrypt(password))
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    """Verify a plain password against a hash."""
+def verify_password(plain: str, hashed: Optional[str]) -> bool:
+    """
+    Verify a plain password against a hash.
+    If hashed is None, performs a dummy verification to mitigate timing attacks.
+    """
+    if not hashed:
+        pwd_context.dummy_verify()
+        return False
     return pwd_context.verify(_truncate_for_bcrypt(plain), hashed)
 
 
