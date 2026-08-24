@@ -4,3 +4,6 @@
 ## 2024-08-26 - Blocking FastAPI event loop with recursive disk I/O
 **Learning:** `list_files_recursive` and `list_directories_recursive` in `backend/app/files/storage.py` are synchronous functions due to `os.scandir` usage. Calling them directly inside `async def` routes blocks the main asyncio event loop, causing severe latency degradation under concurrent load for the `/api/files/list` and `/api/files/folders` endpoints.
 **Action:** When a server-side endpoint needs to traverse the filesystem or execute a heavy synchronous function, always use `await anyio.to_thread.run_sync()` to offload it to a worker thread in FastAPI applications.
+## 2024-09-04 - Replacing os.path.relpath with stacked path tracking for file tree traversal
+**Learning:** `os.path.relpath` does extensive path normalization (calling `abspath`, splitting by separator, and computing common prefixes), which becomes extremely slow when executed inside a tight loop over millions of files during recursive directory traversal.
+**Action:** When tracking relative paths during an iterative `os.scandir` tree traversal, push a tuple `(absolute_path, relative_path)` to the traversal stack and simply concatenate the current entry's name instead of dynamically recomputing the relative path using `os.path.relpath`.
