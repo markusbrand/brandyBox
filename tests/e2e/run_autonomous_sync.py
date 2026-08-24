@@ -33,7 +33,6 @@ if os.environ.get("CI") == "true":
 from tests.e2e.env_loader import load_e2e_env
 load_e2e_env(_repo_root)
 
-from tests.e2e.scenario_base import BaseScenario
 from tests.e2e.sync_scenario import SyncE2EScenario
 
 log = logging.getLogger(__name__)
@@ -79,78 +78,6 @@ def _get_base_url() -> str:
     return "http://localhost:8081"
 
 
-def _run_scenario_with_retries(
-    scenario: BaseScenario,
-    max_attempts: int,
-) -> tuple[bool, str | None]:
-    """Run a scenario up to max_attempts times with retries and rate limit handling."""
-    last_error = None
-    for attempt in range(1, max_attempts + 1):
-        log.info("=== Attempt %d/%d: %s ===", attempt, max_attempts, scenario.name)
-        success, error = scenario.run()
-        last_error = error
-        if success:
-            log.info("Scenario passed on attempt %d", attempt)
-            return True, None
-
-        log.warning("Scenario failed: %s", error)
-        if _is_credentials_missing(error or ""):
-            log.error("Credentials not set. See tests/e2e/README.md")
-            return False, error
-        if _is_auth_error(error or ""):
-            log.error("Login failed (401). Check test credentials. No retry.")
-            return False, error
-        if _is_client_not_started(error or ""):
-            log.error("Client did not start. No retry.")
-            return False, error
-
-        if _is_rate_limited(error or "") and attempt < max_attempts:
-            time.sleep(RATE_LIMIT_WAIT_SECONDS)
-        if attempt < max_attempts:
-            scenario.cleanup()
-
-    return False, last_error or f"All {max_attempts} attempts failed"
-
-
-def _run_autonomous_mode(
-    admin_email: str,
-    admin_password: str,
-    max_attempts: int,
-) -> int:
-    """Run E2E test using autonomous test user creation and cleanup."""
-    from tests.e2e.e2e_setup import run_with_autonomous_setup
-
-    sync_folder_env = os.environ.get("BRANDYBOX_SYNC_FOLDER", "").strip()
-    sync_folder = Path(sync_folder_env).resolve() if sync_folder_env else None
-    base_url = _get_base_url()
-
-    def scenario_runner() -> tuple[bool, str | None]:
-        scenario = SyncE2EScenario()
-        return _run_scenario_with_retries(scenario, max_attempts)
-
-    success, error = run_with_autonomous_setup(
-        admin_email,
-        admin_password,
-        base_url,
-        sync_folder=sync_folder,
-        scenario_runner=scenario_runner,
-    )
-    if success:
-        return 0
-    log.error("Scenario failed: %s", error)
-    return 1
-
-
-def _run_legacy_mode(max_attempts: int) -> int:
-    """Run E2E test using existing manual test user credentials in env."""
-    scenario = SyncE2EScenario()
-    success, error = _run_scenario_with_retries(scenario, max_attempts)
-    if success:
-        return 0
-    log.error("Scenario failed: %s", error)
-    return 1
-
-
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -163,11 +90,69 @@ def main() -> int:
     test_password = os.environ.get("BRANDYBOX_TEST_PASSWORD", "").strip()
     max_attempts = int(os.environ.get("BRANDYBOX_E2E_MAX_ATTEMPTS", str(DEFAULT_MAX_ATTEMPTS)))
 
-    if admin_email and admin_password:
-        return _run_autonomous_mode(admin_email, admin_password, max_attempts)
+    use_autonomous = bool(admin_email and admin_password)
+    use_legacy = bool(test_email and test_password)
 
-    if test_email and test_password:
-        return _run_legacy_mode(max_attempts)
+    if use_autonomous:
+        from tests.e2e.e2e_setup import run_with_autonomous_setup
+        sync_folder_env = os.environ.get("BRANDYBOX_SYNC_FOLDER", "").strip()
+        sync_folder = Path(sync_folder_env).resolve() if sync_folder_env else None
+        base_url = _get_base_url()
+
+        def run_scenario_with_retries():
+            scenario = SyncE2EScenario()
+            last_error = None
+            for attempt in range(1, max_attempts + 1):
+                log.info("=== Attempt %d/%d: %s ===", attempt, max_attempts, scenario.name)
+                success, error = scenario.run()
+                last_error = error
+                if success:
+                    log.info("Scenario passed on attempt %d", attempt)
+                    return True, None
+                log.warning("Scenario failed: %s", error)
+                if _is_client_not_started(error or ""):
+                    return False, error
+                if _is_rate_limited(error or "") and attempt < max_attempts:
+                    time.sleep(RATE_LIMIT_WAIT_SECONDS)
+                if attempt < max_attempts:
+                    scenario.cleanup()
+            return False, last_error or "All attempts failed"
+
+        success, error = run_with_autonomous_setup(
+            admin_email,
+            admin_password,
+            base_url,
+            sync_folder=sync_folder,
+            scenario_runner=run_scenario_with_retries,
+        )
+        if success:
+            return 0
+        log.error("Scenario failed: %s", error)
+        return 1
+    if use_legacy:
+        scenario = SyncE2EScenario()
+        for attempt in range(1, max_attempts + 1):
+            log.info("=== Attempt %d/%d: %s ===", attempt, max_attempts, scenario.name)
+            success, error = scenario.run()
+            if success:
+                log.info("Scenario passed on attempt %d", attempt)
+                return 0
+            log.warning("Scenario failed: %s", error)
+            if _is_credentials_missing(error or ""):
+                log.error("Credentials not set. See tests/e2e/README.md")
+                return 1
+            if _is_auth_error(error or ""):
+                log.error("Login failed (401). Check test credentials. No retry.")
+                return 1
+            if _is_client_not_started(error or ""):
+                log.error("Client did not start. No retry.")
+                return 1
+            if _is_rate_limited(error or "") and attempt < max_attempts:
+                time.sleep(RATE_LIMIT_WAIT_SECONDS)
+            if attempt < max_attempts:
+                scenario.cleanup()
+        log.error("All %d attempts failed", max_attempts)
+        return 1
 
     log.error(
         "Set either (autonomous) BRANDYBOX_ADMIN_EMAIL and BRANDYBOX_ADMIN_PASSWORD, "
