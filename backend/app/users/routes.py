@@ -63,7 +63,10 @@ async def login(
 ) -> TokenPair:
     """Login with email and password; returns access and refresh tokens."""
     user = await get_user_by_email(session, body.email)
-    if not user or not verify_password(body.password, user.password_hash):
+
+    # Evaluate password even if user is not found to prevent timing attacks
+    hashed_password = user.password_hash if user else None
+    if not verify_password(body.password, hashed_password) or not user:
         log.warning("Login failed for email=%s", body.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
