@@ -7,6 +7,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  CircularProgress,
   Drawer,
   FormControl,
   InputLabel,
@@ -53,6 +54,7 @@ export default function SettingsPage() {
   const [newEmail, setNewEmail] = useState("");
   const [newFirst, setNewFirst] = useState("");
   const [newLast, setNewLast] = useState("");
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -150,6 +152,7 @@ export default function SettingsPage() {
   };
 
   const createUser = async () => {
+    setIsCreatingUser(true);
     try {
       await adminCreateUser({
         email: newEmail.trim(),
@@ -162,6 +165,8 @@ export default function SettingsPage() {
       await loadUsers();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Create user failed");
+    } finally {
+      setIsCreatingUser(false);
     }
   };
 
@@ -202,12 +207,12 @@ export default function SettingsPage() {
             Admin
           </Typography>
           <Typography variant="subtitle2">Create user</Typography>
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, my: 1 }}>
-            <TextField size="small" label="Email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+          <Box component="form" onSubmit={(e: React.FormEvent) => { e.preventDefault(); void createUser(); }} sx={{ display: "flex", flexWrap: "wrap", gap: 1, my: 1 }}>
+            <TextField size="small" label="Email" type="email" required value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
             <TextField size="small" label="First" value={newFirst} onChange={(e) => setNewFirst(e.target.value)} />
             <TextField size="small" label="Last" value={newLast} onChange={(e) => setNewLast(e.target.value)} />
-            <Button variant="contained" onClick={() => void createUser()}>
-              Create
+            <Button type="submit" variant="contained" disabled={isCreatingUser} startIcon={isCreatingUser ? <CircularProgress size={20} color="inherit" /> : null}>
+              {isCreatingUser ? "Creating..." : "Create"}
             </Button>
           </Box>
           <Table size="small" sx={{ mb: 2 }}>
