@@ -221,14 +221,14 @@ async def upload_init(
 async def upload_chunk(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    upload_id: uuid.UUID,
+    upload_id: str,
     index: int,
 ) -> dict:
     """Upload a single chunk for a chunked upload."""
     try:
         uuid.UUID(upload_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid upload_id format")
+        raise HTTPException(status_code=422, detail="Invalid upload_id format")
 
     user_base = user_base_path(current_user.email)
     upload_dir = user_base / ".uploads" / str(upload_id)
@@ -253,13 +253,13 @@ async def upload_finalize(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
-    upload_id: uuid.UUID,
+    upload_id: str,
 ) -> dict:
     """Finalize a chunked upload by assembling all chunks."""
     try:
         uuid.UUID(upload_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid upload_id format")
+        raise HTTPException(status_code=422, detail="Invalid upload_id format")
 
     user_base = user_base_path(current_user.email)
     upload_dir = user_base / ".uploads" / str(upload_id)
