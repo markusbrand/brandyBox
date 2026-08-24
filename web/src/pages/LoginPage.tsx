@@ -137,8 +137,13 @@ export default function LoginPage() {
               )}
             </Button>
             {googleAvailable ? (
-              <Button variant="outlined" startIcon={<GoogleIcon />} disabled={busy} onClick={googleStart}>
-                Continue with Google
+              <Button
+                variant="outlined"
+                startIcon={!busy ? <GoogleIcon /> : <CircularProgress size={20} color="inherit" />}
+                disabled={busy}
+                onClick={googleStart}
+              >
+                {busy ? "Please wait..." : "Continue with Google"}
               </Button>
             ) : null}
           </Box>
