@@ -107,13 +107,6 @@ class Settings(BaseSettings):
     def parse_public_base(cls, v: object) -> Optional[str]:
         return _empty_to_none_str(v)
 
-    @field_validator("jwt_secret", mode="after")
-    @classmethod
-    def validate_jwt_secret(cls, v: str) -> str:
-        if len(v) < 32:
-            raise ValueError("BRANDYBOX_JWT_SECRET must be at least 32 characters long")
-        return v
-
     # API / client compatibility (shown in /api/meta/version and client ping)
     api_version: str = "0.3.0"
     min_supported_client_version: str = "0.1.0"
