@@ -9,11 +9,14 @@ import pytest
 # Set before app.db.session or app.config are used so engine and settings use test paths
 _tmp = tempfile.mkdtemp(prefix="brandybox_test_")
 _db_path = os.path.join(_tmp, "test.db")
-os.environ.setdefault("BRANDYBOX_DB_PATH", _db_path)
-os.environ.setdefault("BRANDYBOX_JWT_SECRET", "test-jwt-secret-at-least-32-characters-long")
+os.environ["BRANDYBOX_DB_PATH"] = _db_path
+os.environ["BRANDYBOX_JWT_SECRET"] = "test-jwt-secret-at-least-32-characters-long"
 # Bootstrap admin for API tests (login as test@example.com / testpass123)
-os.environ.setdefault("BRANDYBOX_ADMIN_EMAIL", "test@example.com")
-os.environ.setdefault("BRANDYBOX_ADMIN_INITIAL_PASSWORD", "testpass123")
+os.environ["BRANDYBOX_ADMIN_EMAIL"] = "test@example.com"
+os.environ["BRANDYBOX_ADMIN_INITIAL_PASSWORD"] = "testpass123"
+os.environ["BRANDYBOX_SMTP_HOST"] = ""
+os.environ["BRANDYBOX_GOOGLE_CLIENT_ID"] = ""
+os.environ["BRANDYBOX_GOOGLE_CLIENT_SECRET"] = ""
 
 
 @pytest.fixture(scope="session")
