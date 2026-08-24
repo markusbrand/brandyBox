@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import aiofiles
+import anyio
 import tempfile
 import uuid
 from typing import Annotated, List, Optional
@@ -106,7 +107,10 @@ async def list_files(
     """
     base = user_base_path(current_user.email)
     base.mkdir(parents=True, exist_ok=True)
-    result = list_files_recursive(base)
+
+    # ⚡ Bolt: Offload synchronous recursive directory listing to a thread pool
+    # to avoid blocking the asyncio event loop.
+    result = await anyio.to_thread.run_sync(list_files_recursive, base)
     paths = [r["path"] for r in result]
     hashes = await get_hashes_for_paths(session, current_user.email, paths)
     for r in result:
@@ -132,7 +136,10 @@ async def list_folders(
     """
     base = user_base_path(current_user.email)
     base.mkdir(parents=True, exist_ok=True)
-    result = list_directories_recursive(base)
+
+    # ⚡ Bolt: Offload synchronous recursive directory listing to a thread pool
+    # to avoid blocking the asyncio event loop.
+    result = await anyio.to_thread.run_sync(list_directories_recursive, base)
     log.info("list_folders user=%s count=%d", current_user.email, len(result))
     return result
 
@@ -197,8 +204,9 @@ async def upload_init(
         raise HTTPException(status_code=400, detail="path required")
 
     upload_id = str(uuid.uuid4())
+
     user_base = user_base_path(current_user.email)
-    upload_dir = user_base / ".uploads" / upload_id
+    upload_dir = user_base / ".uploads" / str(upload_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     # Store the intended path in a metadata file
@@ -213,17 +221,12 @@ async def upload_init(
 async def upload_chunk(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    upload_id: str,
+    upload_id: uuid.UUID,
     index: int,
 ) -> dict:
     """Upload a single chunk for a chunked upload."""
-    try:
-        uuid.UUID(upload_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Upload not found")
-
     user_base = user_base_path(current_user.email)
-    upload_dir = user_base / ".uploads" / upload_id
+    upload_dir = user_base / ".uploads" / str(upload_id)
     if not upload_dir.is_dir():
         log.warning("upload_chunk failed: upload_id %s not found", upload_id)
         raise HTTPException(status_code=404, detail="Upload not found")
@@ -245,16 +248,11 @@ async def upload_finalize(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
-    upload_id: str,
+    upload_id: uuid.UUID,
 ) -> dict:
     """Finalize a chunked upload by assembling all chunks."""
-    try:
-        uuid.UUID(upload_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Upload not found")
-
     user_base = user_base_path(current_user.email)
-    upload_dir = user_base / ".uploads" / upload_id
+    upload_dir = user_base / ".uploads" / str(upload_id)
     if not upload_dir.is_dir():
         log.warning("upload_finalize failed: upload_id %s not found", upload_id)
         raise HTTPException(status_code=404, detail="Upload not found")
