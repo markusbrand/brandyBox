@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
 
+
+    @field_validator("jwt_secret", mode="after")
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("BRANDYBOX_JWT_SECRET must be at least 32 characters long for security.")
+        return v
+
     @field_validator("static_dist_path", mode="before")
     @classmethod
     def parse_static_dist(cls, v: object) -> Optional[Path]:
