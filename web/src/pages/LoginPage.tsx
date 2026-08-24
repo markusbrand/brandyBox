@@ -126,15 +126,13 @@ export default function LoginPage() {
             autoComplete="current-password"
           />
           <Box sx={{ mt: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-            <Button type="submit" variant="contained" disabled={busy}>
-              {busy ? (
-                <>
-                  <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
-                  Signing in...
-                </>
-              ) : (
-                "Sign in"
-              )}
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={busy}
+              startIcon={busy ? <CircularProgress size={20} color="inherit" /> : null}
+            >
+              {busy ? "Signing in…" : "Sign in"}
             </Button>
             {googleAvailable ? (
               <Button
