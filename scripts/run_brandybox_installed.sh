@@ -7,6 +7,7 @@
 
 set -e
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/brandybox"
+export GDK_BACKEND=x11
 
 if [ -x "$INSTALL_DIR/usr/bin/brandybox" ]; then
   exec "$INSTALL_DIR/usr/bin/brandybox" "$@"

@@ -489,6 +489,12 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("GDK_BACKEND").is_err() && std::env::var("DISPLAY").is_ok() {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
+    }
     let is_autostart = std::env::args().any(|arg| arg == "--autostart" || arg == "-a");
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {

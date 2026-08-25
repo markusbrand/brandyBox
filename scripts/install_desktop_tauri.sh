@@ -146,7 +146,7 @@ cat > "$APPS/brandybox.desktop" << EOF
 Type=Application
 Name=Brandy Box
 Comment=Sync folder to Raspberry Pi
-Exec=$EXEC_ESC
+Exec=env GDK_BACKEND=x11 $EXEC_ESC
 Icon=brandybox
 Categories=Utility;Network;FileTransfer;
 StartupNotify=false
@@ -155,7 +155,7 @@ Actions=Settings;Quit;
 
 [Desktop Action Settings]
 Name=Open Settings
-Exec=$EXEC_ESC
+Exec=env GDK_BACKEND=x11 $EXEC_ESC
 
 [Desktop Action Quit]
 Name=Quit Brandy Box
