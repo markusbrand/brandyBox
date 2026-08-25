@@ -489,6 +489,7 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let is_autostart = std::env::args().any(|arg| arg == "--autostart" || arg == "-a");
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main_window(app.clone());
@@ -497,8 +498,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             spawn_background_sync_loop(app.handle().clone());
-            if let Some(win) = app.get_webview_window("main") {
-                restore_window_geometry(&win);
+            if is_autostart {
+                if let Some(win) = app.get_webview_window("main") {
+                    restore_window_geometry(&win);
+                }
+            } else {
+                show_main_window(app.handle().clone());
             }
             Ok(())
         })
@@ -555,4 +560,23 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_geometry_valid() {
+        assert_eq!(parse_geometry("100, 200, 800, 600"), Some((100, 200, 800, 600)));
+        assert_eq!(parse_geometry("-50,-100,600,720"), Some((-50, -100, 600, 720)));
+    }
+
+    #[test]
+    fn test_parse_geometry_invalid() {
+        assert_eq!(parse_geometry(""), None);
+        assert_eq!(parse_geometry("100,200,300"), None);
+        assert_eq!(parse_geometry("100,200,0,600"), None);
+        assert_eq!(parse_geometry("invalid"), None);
+    }
 }
