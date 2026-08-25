@@ -153,6 +153,15 @@ cd client-tauri && npm ci && npm run tauri:build
 python -m tests.e2e.run_autonomous_sync
 ```
 
+## Releases & Versioning
+
+Releases and changelogs are automated using [Release Please](https://github.com/googleapis/release-please) (`release-please-action`).
+
+- **Conventional Commits**: Commit messages on `master` should follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat: ...`, `fix: ...`, `perf: ...`, `refactor: ...`, `feat!: ...` for breaking changes).
+- **Automated Release PR**: Release Please automatically creates and maintains a Release PR when changes land on `master`.
+- **Publishing a Release**: Merging the Release PR automatically tags the repository (`vX.Y.Z`), creates the GitHub Release with compiled release notes, updates version manifests across the Tauri client and web app, and triggers artifact builds for Windows, Linux, and macOS.
+- **Manual Release Script**: Alternatively, `./scripts/release.sh <version>` can be run locally to bump versions and create release tags manually.
+
 ## Security
 
 - **No secrets in repo**: Passwords, JWT secret, and SMTP credentials are never committed. Backend reads from environment (use `backend/.env` from `backend/.env.example`; `.env` is gitignored).
@@ -165,3 +174,4 @@ python -m tests.e2e.run_autonomous_sync
 Copyright 2026 Markus Brand.
 
 This project is open source under the [Apache License 2.0](LICENSE). See [LICENSE](LICENSE) for the full text. You may use, modify, and distribute the software under the terms of that license, with attribution as described in [NOTICE](NOTICE).
+

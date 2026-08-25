@@ -100,11 +100,37 @@ fi
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 mkdir -p "$APPS"
 
-# Icon from Tauri bundle or repo
-ICON_LINE=""
-for p in "$REPO_ROOT/client-tauri/src-tauri/icons/128x128.png" "$REPO_ROOT/assets/logo/icon_synced.png"; do
-  [ -f "$p" ] && ICON_LINE="Icon=$p" && break
+# Remove old/separate clutter desktop entries
+rm -f "$APPS/brandybox-settings.desktop" "$APPS/brandybox-quit.desktop"
+
+# Install standard XDG hicolor icons across resolutions (SVG + PNG)
+ICONS_BASE="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
+ICON_SRC_DIR="$REPO_ROOT/client-tauri/src-tauri/icons"
+
+mkdir -p "$ICONS_BASE/scalable/apps" "$ICONS_BASE/512x512/apps" "$ICONS_BASE/256x256/apps" "$ICONS_BASE/128x128/apps" "$ICONS_BASE/64x64/apps" "$ICONS_BASE/48x48/apps" "$ICONS_BASE/32x32/apps" "$ICONS_BASE/16x16/apps" "${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps"
+
+# Scalable vector icon (critical for Garuda / BeautyLine / Sweet themes)
+[ -f "$ICON_SRC_DIR/brandybox.svg" ] && cp -f "$ICON_SRC_DIR/brandybox.svg" "$ICONS_BASE/scalable/apps/brandybox.svg"
+[ -f "$ICON_SRC_DIR/brandybox.svg" ] && cp -f "$ICON_SRC_DIR/brandybox.svg" "${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps/brandybox.svg"
+
+# Also install into user icon themes if present (e.g. BeautyLine, Sweet)
+for theme in BeautyLine Sweet Candy Papirus Tela; do
+  THEME_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/$theme/apps/scalable"
+  mkdir -p "$THEME_DIR"
+  [ -f "$ICON_SRC_DIR/brandybox.svg" ] && cp -f "$ICON_SRC_DIR/brandybox.svg" "$THEME_DIR/brandybox.svg"
 done
+
+# PNG fallbacks
+[ -f "$ICON_SRC_DIR/icon.png" ] && cp -f "$ICON_SRC_DIR/icon.png" "$ICONS_BASE/512x512/apps/brandybox.png"
+[ -f "$ICON_SRC_DIR/128x128@2x.png" ] && cp -f "$ICON_SRC_DIR/128x128@2x.png" "$ICONS_BASE/256x256/apps/brandybox.png"
+[ -f "$ICON_SRC_DIR/128x128.png" ] && cp -f "$ICON_SRC_DIR/128x128.png" "$ICONS_BASE/128x128/apps/brandybox.png"
+[ -f "$ICON_SRC_DIR/icon_synced.png" ] && cp -f "$ICON_SRC_DIR/icon_synced.png" "$ICONS_BASE/64x64/apps/brandybox.png"
+[ -f "$ICON_SRC_DIR/32x32.png" ] && cp -f "$ICON_SRC_DIR/32x32.png" "$ICONS_BASE/32x32/apps/brandybox.png"
+[ -f "$ICON_SRC_DIR/icon.png" ] && cp -f "$ICON_SRC_DIR/icon.png" "${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps/brandybox.png"
+
+# Also copy icons into INSTALL_DIR for bundle runtime
+mkdir -p "$INSTALL_DIR/icons"
+cp -rf "$ICON_SRC_DIR"/* "$INSTALL_DIR/icons/" 2>/dev/null || true
 
 # Escape for desktop Exec
 _exec_escape() { printf '%s' "$1" | sed "s/ /\\\\ /g"; }
@@ -114,48 +140,51 @@ EXEC_ESC="$(_exec_escape "$EXEC_PATH")"
 PKILL_PATTERN="brandybox.AppImage"
 [[ "$EXEC_PATH" == *"brandybox"* ]] && [[ "$EXEC_PATH" != *".AppImage"* ]] && PKILL_PATTERN="brandybox"
 
+# Create single Brandy Box desktop entry with right-click actions
 cat > "$APPS/brandybox.desktop" << EOF
 [Desktop Entry]
 Type=Application
 Name=Brandy Box
 Comment=Sync folder to Raspberry Pi
 Exec=$EXEC_ESC
-$ICON_LINE
-Categories=Utility;
+Icon=brandybox
+Categories=Utility;Network;FileTransfer;
 StartupNotify=false
-EOF
+StartupWMClass=brandybox
+Actions=Settings;Quit;
 
-cat > "$APPS/brandybox-settings.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=Brandy Box Settings
-Comment=Configure sync folder and options
+[Desktop Action Settings]
+Name=Open Settings
 Exec=$EXEC_ESC
-$ICON_LINE
-Categories=Utility;Settings;
-StartupNotify=false
-EOF
 
-cat > "$APPS/brandybox-quit.desktop" << EOF
-[Desktop Entry]
-Type=Application
+[Desktop Action Quit]
 Name=Quit Brandy Box
-Comment=Stop the Brandy Box tray app
 Exec=sh -c 'pkill -f "$PKILL_PATTERN" 2>/dev/null || true'
-$ICON_LINE
-Categories=Utility;
-StartupNotify=false
 EOF
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database -q "$APPS" 2>/dev/null || true
 fi
 
-echo "Desktop entries installed to $APPS"
-echo "  - Brandy Box        → $EXEC_PATH"
-echo "  - Brandy Box Settings (opens main window)"
-echo "  - Quit Brandy Box"
-echo ""
-echo "If the menu still shows an old version: kbuildsycoca5 --noincremental (KDE)"
+[ ! -f "$ICONS_BASE/index.theme" ] && [ -f /usr/share/icons/hicolor/index.theme ] && cp /usr/share/icons/hicolor/index.theme "$ICONS_BASE/index.theme" || true
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -f -t "$ICONS_BASE" 2>/dev/null || true
+fi
+
+# Clear KDE Plasma stale icon caches
+rm -f "$HOME/.cache/icon-cache.kcache" "$HOME/.cache"/plasma_theme_*.kcache "$HOME/.cache"/ksycoca* "$HOME/.cache"/plasma-svgelements* 2>/dev/null || true
+
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+  kbuildsycoca6 --noincremental 2>/dev/null || true
+elif command -v kbuildsycoca5 >/dev/null 2>&1; then
+  kbuildsycoca5 --noincremental 2>/dev/null || true
+fi
+
+echo "Desktop entry installed to $APPS/brandybox.desktop"
+echo "  - Application: Brandy Box"
+echo "  - Exec:        $EXEC_PATH"
+echo "  - Icon:        brandybox (SVG + PNG installed to $ICONS_BASE)"
 echo ""
 echo "To start at login: open Brandy Box, then Settings → enable 'Start when I log in'."
+

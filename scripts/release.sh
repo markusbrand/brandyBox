@@ -44,10 +44,17 @@ sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT/client-taur
 # client-tauri/src-tauri/Cargo.toml (Tauri app crate)
 sed -i "s/^version = \"[^\"]*\"$/version = \"$VERSION\"/" "$ROOT/client-tauri/src-tauri/Cargo.toml"
 
+# .release-please-manifest.json
+if [[ -f "$ROOT/.release-please-manifest.json" ]]; then
+  sed -i "s/\"\\.\": \"[^\"]*\"/\"\\.\": \"$VERSION\"/" "$ROOT/.release-please-manifest.json"
+  git -C "$ROOT" add .release-please-manifest.json
+fi
+
 git -C "$ROOT" add client-tauri/package.json client-tauri/package-lock.json client-tauri/src-tauri/tauri.conf.json client-tauri/src-tauri/Cargo.toml
 git -C "$ROOT" commit -m "Bump version to $VERSION"
 git -C "$ROOT" tag -a "$TAG" -m "Release $TAG"
 
 echo "Done. Version bumped and tag $TAG created."
+echo "Note: Release Please also automates this when using Conventional Commits."
 echo "Push with: git push origin master && git push origin $TAG"
 echo "Then create the release on GitHub: https://github.com/markusbrand/brandyBox/releases/new?tag=$TAG"

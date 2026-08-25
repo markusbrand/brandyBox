@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { defaultWindowIcon } from "@tauri-apps/api/app";
 import { resolveResource } from "@tauri-apps/api/path";
 import { listen } from "@tauri-apps/api/event";
@@ -43,34 +42,27 @@ export default function App() {
   const [tray, setTray] = useState<TrayIcon | null>(null);
   const trayRef = useRef<TrayIcon | null>(null);
 
-  const refreshAuth = useCallback(async () => {
+  const refreshAuth = useCallback(async (): Promise<boolean> => {
     const storedEmail = await invoke<string | null>("get_stored_email").catch(() => null);
     if (!storedEmail) {
       setView("login");
       setEmail(null);
-      return;
+      return false;
     }
     const token = await invoke<string | null>("get_valid_access_token").catch(() => null);
     if (!token) {
       setView("login");
       setEmail(null);
-      return;
+      return false;
     }
     setEmail(storedEmail);
     setView("settings");
+    return true;
   }, []);
 
   useEffect(() => {
     refreshAuth();
   }, [refreshAuth]);
-
-  // In dev mode: auto-show window (tray doesn't work on Wayland, so show window for development).
-  // In production: window only via tray "Settings" click.
-  useEffect(() => {
-    if (import.meta.env.DEV && view !== "loading") {
-      getCurrentWindow().show().catch(() => {});
-    }
-  }, [view]);
 
   /** Preloaded paths: blue = idle/synced, yellow = syncing, red = error. Set at tray init. */
   const stateIconsRef = useRef<{ blue: string; yellow: string; red: string } | null>(null);
@@ -256,8 +248,11 @@ export default function App() {
     };
   }, []);
 
-  const handleLoginSuccess = useCallback(() => {
-    refreshAuth();
+  const handleLoginSuccess = useCallback(async () => {
+    const ok = await refreshAuth();
+    if (!ok) {
+      throw new Error("Unable to establish authenticated session. Please check your connection and try again.");
+    }
   }, [refreshAuth]);
 
   const handleLogout = useCallback(async () => {

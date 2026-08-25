@@ -13,7 +13,7 @@ import {
 import { formatUserFacingError } from "./errors";
 
 interface LoginProps {
-  onSuccess: () => void;
+  onSuccess: () => Promise<void> | void;
   onCancel?: () => void;
 }
 
@@ -29,7 +29,7 @@ export default function Login({ onSuccess, onCancel }: LoginProps) {
     setLoading(true);
     try {
       await invoke("login", { email: email.trim(), password });
-      onSuccess();
+      await onSuccess();
     } catch (err) {
       setError(formatUserFacingError(err));
     } finally {

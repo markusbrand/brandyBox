@@ -95,6 +95,7 @@ pub fn get_config_path() -> PathBuf {
     config_dir().join(CONFIG_FILENAME)
 }
 
+#[allow(dead_code)]
 pub fn get_instance_lock_path() -> PathBuf {
     config_dir().join(INSTANCE_LOCK_FILENAME)
 }
