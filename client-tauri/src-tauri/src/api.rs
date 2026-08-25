@@ -9,6 +9,7 @@ use std::time::Duration;
 pub struct ApiClient {
     pub base_url: String,
     pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -81,11 +82,25 @@ struct UpdateUserBody {
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        ApiClient { base_url, access_token: None }
+        ApiClient { base_url, access_token: None, refresh_token: None }
     }
 
     pub fn set_access_token(&mut self, token: Option<String>) {
         self.access_token = token;
+    }
+
+    pub fn set_refresh_token(&mut self, token: Option<String>) {
+        self.refresh_token = token;
+    }
+
+    pub fn try_refresh(&mut self) -> Result<(), String> {
+        if let Some(ref rt) = self.refresh_token.clone() {
+            let res = self.refresh(rt)?;
+            self.access_token = Some(res.access_token);
+            self.refresh_token = Some(res.refresh_token);
+            return Ok(());
+        }
+        Err("No refresh token available".to_string())
     }
 
     fn client(&self) -> reqwest::blocking::Client {
@@ -110,6 +125,16 @@ impl ApiClient {
             .expect("http client")
     }
 
+    /// Client for chunked upload parts and assembly finalization.
+    fn chunk_client(&self) -> reqwest::blocking::Client {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(300))
+            .tcp_keepalive(Duration::from_secs(60))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .build()
+            .expect("http client")
+    }
+
     fn headers(&self) -> reqwest::header::HeaderMap {
         let mut h = reqwest::header::HeaderMap::new();
         h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
@@ -123,37 +148,59 @@ impl ApiClient {
     pub fn login(&self, email: &str, password: &str) -> Result<LoginResponse, String> {
         let url = format!("{}/api/auth/login", self.base_url.trim_end_matches('/'));
         let body = LoginBody { email: email.to_string(), password: password.to_string() };
-        let r = self
-            .client()
-            .post(&url)
-            .json(&body)
-            .header("Content-Type", "application/json")
-            .send()
-            .map_err(|e| e.to_string())?;
-        if !r.status().is_success() {
-            let status = r.status();
-            let text = r.text().unwrap_or_default();
-            return Err(format!("{} {}", status, text));
+        let mut last_err = String::new();
+        for attempt in 0..4 {
+            match self.client().post(&url).json(&body).header("Content-Type", "application/json").send() {
+                Ok(r) => {
+                    if !r.status().is_success() {
+                        let status = r.status();
+                        let text = r.text().unwrap_or_default();
+                        last_err = format!("{} {}", status, text);
+                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            return Err(last_err);
+                        }
+                    } else {
+                        return r.json().map_err(|e| e.to_string());
+                    }
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                }
+            }
+            if attempt < 3 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+            }
         }
-        r.json().map_err(|e| e.to_string())
+        Err(last_err)
     }
 
     pub fn refresh(&self, refresh_token: &str) -> Result<LoginResponse, String> {
         let url = format!("{}/api/auth/refresh", self.base_url.trim_end_matches('/'));
         let body = RefreshBody { refresh_token: refresh_token.to_string() };
-        let r = self
-            .client()
-            .post(&url)
-            .json(&body)
-            .header("Content-Type", "application/json")
-            .send()
-            .map_err(|e| e.to_string())?;
-        if !r.status().is_success() {
-            let status = r.status();
-            let text = r.text().unwrap_or_default();
-            return Err(format!("{} {}", status, text));
+        let mut last_err = String::new();
+        for attempt in 0..4 {
+            match self.client().post(&url).json(&body).header("Content-Type", "application/json").send() {
+                Ok(r) => {
+                    if !r.status().is_success() {
+                        let status = r.status();
+                        let text = r.text().unwrap_or_default();
+                        last_err = format!("{} {}", status, text);
+                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            return Err(last_err);
+                        }
+                    } else {
+                        return r.json().map_err(|e| e.to_string());
+                    }
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                }
+            }
+            if attempt < 3 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+            }
         }
-        r.json().map_err(|e| e.to_string())
+        Err(last_err)
     }
 
     pub fn me(&self) -> Result<User, String> {
@@ -197,11 +244,30 @@ impl ApiClient {
             .timeout(Duration::from_secs(60))
             .build()
             .expect("client");
-        let r = client.get(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
-        if !r.status().is_success() {
-            return Err(format!("{}", r.status()));
+        let mut last_err = String::new();
+        for attempt in 0..4 {
+            match client.get(&url).headers(self.headers()).send() {
+                Ok(r) => {
+                    if !r.status().is_success() {
+                        let status = r.status();
+                        let text = r.text().unwrap_or_default();
+                        last_err = format!("{} {}", status, text);
+                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                            return Err(last_err);
+                        }
+                    } else {
+                        return r.json().map_err(|e| e.to_string());
+                    }
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                }
+            }
+            if attempt < 3 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+            }
         }
-        r.json().map_err(|e| e.to_string())
+        Err(last_err)
     }
 
     /// Upload file from disk with retries. For files > 50MB, uses chunked upload to bypass
@@ -323,20 +389,42 @@ impl ApiClient {
 
     fn upload_file_chunked(&self, path: &str, local_path: &Path, file_size: u64) -> Result<(), String> {
         let base = self.base_url.trim_end_matches('/');
+
+        // 1. Initialize chunked upload with retries
         let init_url = format!("{}/api/files/upload/init?path={}", base, urlencoding::encode(path));
+        let mut upload_id = String::new();
+        let mut last_err = String::new();
 
-        let resp = self.client()
-            .post(&init_url)
-            .headers(self.headers())
-            .send()
-            .map_err(|e| format!("init failed: {}", e))?;
-
-        if !resp.status().is_success() {
-            return Err(format!("init failed: {}", resp.status()));
+        for attempt in 0..4 {
+            let client = self.chunk_client();
+            match client.post(&init_url).headers(self.headers()).send() {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        match resp.json::<serde_json::Value>() {
+                            Ok(data) => {
+                                if let Some(id) = data["upload_id"].as_str() {
+                                    upload_id = id.to_string();
+                                    break;
+                                } else {
+                                    last_err = "No upload_id in response".to_string();
+                                }
+                            }
+                            Err(e) => last_err = format!("Failed to parse init response: {}", e),
+                        }
+                    } else {
+                        last_err = format!("init failed: {}", resp.status());
+                    }
+                }
+                Err(e) => last_err = format!("init network error: {}", e),
+            }
+            if attempt < 3 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+            }
         }
 
-        let init_data: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
-        let upload_id = init_data["upload_id"].as_str().ok_or("no upload_id")?;
+        if upload_id.is_empty() {
+            return Err(last_err);
+        }
 
         let chunk_size = 20 * 1024 * 1024; // 20MB chunks
         let mut file = File::open(local_path).map_err(|e| e.to_string())?;
@@ -345,6 +433,7 @@ impl ApiClient {
         let mut index = 0;
         let mut offset = 0;
 
+        // 2. Upload chunks with retry
         while offset < file_size {
             let current_chunk_size = std::cmp::min(chunk_size, file_size - offset);
             let mut buffer = vec![0; current_chunk_size as usize];
@@ -353,42 +442,59 @@ impl ApiClient {
 
             let chunk_url = format!("{}/api/files/upload/chunk?upload_id={}&index={}", base, upload_id, index);
 
-            let mut last_err = String::new();
+            let mut chunk_err = String::new();
             let mut success = false;
-            for attempt in 0..3 {
+            for attempt in 0..5 {
                 let mut headers = self.headers();
                 headers.insert(reqwest::header::CONTENT_TYPE, "application/octet-stream".parse().unwrap());
+                let client = self.chunk_client();
 
-                match self.client().post(&chunk_url).headers(headers).body(buffer.clone()).send() {
+                match client.post(&chunk_url).headers(headers).body(buffer.clone()).send() {
                     Ok(r) if r.status().is_success() => {
                         success = true;
                         break;
                     }
-                    Ok(r) => last_err = format!("chunk {} failed: {}", index, r.status()),
-                    Err(e) => last_err = format!("chunk {} failed: {}", index, e),
+                    Ok(r) => chunk_err = format!("chunk {} failed: {}", index, r.status()),
+                    Err(e) => chunk_err = format!("chunk {} network error: {}", index, e),
                 }
-                if attempt < 2 {
-                    std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+                if attempt < 4 {
+                    std::thread::sleep(Duration::from_secs(3 * (attempt + 1) as u64));
                 }
             }
 
             if !success {
-                return Err(last_err);
+                return Err(chunk_err);
             }
 
             offset += current_chunk_size;
             index += 1;
         }
 
+        // 3. Finalize upload with retries
         let finalize_url = format!("{}/api/files/upload/finalize?upload_id={}", base, upload_id);
-        let resp = self.client()
-            .post(&finalize_url)
-            .headers(self.headers())
-            .send()
-            .map_err(|e| format!("finalize failed: {}", e))?;
+        let mut final_success = false;
+        let mut final_err = String::new();
 
-        if !resp.status().is_success() {
-            return Err(format!("finalize failed: {}", resp.status()));
+        for attempt in 0..4 {
+            let client = self.chunk_client();
+            match client.post(&finalize_url).headers(self.headers()).send() {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        final_success = true;
+                        break;
+                    } else {
+                        final_err = format!("finalize failed: {}", resp.status());
+                    }
+                }
+                Err(e) => final_err = format!("finalize network error: {}", e),
+            }
+            if attempt < 3 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+            }
+        }
+
+        if !final_success {
+            return Err(final_err);
         }
 
         Ok(())
@@ -431,14 +537,28 @@ impl ApiClient {
     pub fn delete_file(&self, path: &str) -> Result<(), String> {
         let base = self.base_url.trim_end_matches('/');
         let url = format!("{}/api/files/delete?path={}", base, urlencoding::encode(path));
-        let r = self.client().delete(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
-        if r.status().as_u16() == 404 {
-            return Ok(());
+        let mut last_err = String::new();
+        for attempt in 0..4 {
+            match self.client().delete(&url).headers(self.headers()).send() {
+                Ok(r) => {
+                    if r.status().as_u16() == 404 || r.status().is_success() {
+                        return Ok(());
+                    }
+                    let status = r.status();
+                    last_err = format!("{}", status);
+                    if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        return Err(last_err);
+                    }
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                }
+            }
+            if attempt < 3 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+            }
         }
-        if !r.status().is_success() {
-            return Err(format!("{}", r.status()));
-        }
-        Ok(())
+        Err(last_err)
     }
 
     pub fn list_users(&self) -> Result<Vec<User>, String> {
@@ -457,18 +577,31 @@ impl ApiClient {
             first_name: first_name.to_string(),
             last_name: last_name.to_string(),
         };
-        let r = self
-            .client()
-            .post(&url)
-            .headers(self.headers())
-            .json(&body)
-            .header("Content-Type", "application/json")
-            .send()
-            .map_err(|e| e.to_string())?;
-        if !r.status().is_success() {
-            return Err(format!("{}", r.status()));
+        let mut last_err = String::new();
+        for attempt in 0..4 {
+            let mut headers = self.headers();
+            headers.insert("X-E2E-Return-Temp-Password", "1".parse().unwrap());
+            match self.client().post(&url).headers(headers).json(&body).header("Content-Type", "application/json").send() {
+                Ok(r) => {
+                    if r.status().is_success() {
+                        return r.json().map_err(|e| e.to_string());
+                    }
+                    let status = r.status();
+                    let text = r.text().unwrap_or_default();
+                    last_err = format!("{} {}", status, text);
+                    if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        return Err(last_err);
+                    }
+                }
+                Err(e) => {
+                    last_err = e.to_string();
+                }
+            }
+            if attempt < 3 {
+                std::thread::sleep(Duration::from_secs(2 * (attempt + 1) as u64));
+            }
         }
-        r.json().map_err(|e| e.to_string())
+        Err(last_err)
     }
 
     pub fn update_user_storage_limit(&self, email: &str, limit_bytes: Option<i64>) -> Result<serde_json::Value, String> {

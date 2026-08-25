@@ -1,10 +1,10 @@
 //! Brandy Box Tauri app: config, auth, API, sync, tray.
 
-mod api;
-mod config;
-mod credentials;
-mod network;
-mod sync;
+pub mod api;
+pub mod config;
+pub mod credentials;
+pub mod network;
+pub mod sync;
 
 use api::ApiClient;
 use serde::Serialize;
@@ -235,6 +235,9 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     std::thread::spawn(move || {
         let mut client = ApiClient::new(base_url);
         client.set_access_token(Some(token));
+        if let Some((_, refresh_token)) = credentials::get_stored() {
+            client.set_refresh_token(Some(refresh_token));
+        }
         let result = sync::run_sync(&mut client, &root);
         let sync_ok = result.is_ok();
         let last_sync_at = chrono::Utc::now().to_rfc3339();
@@ -460,6 +463,9 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                         let _ = app.emit("sync-status", sync::get_sync_status_payload());
                         let mut client = ApiClient::new(base_url);
                         client.set_access_token(Some(token));
+                        if let Some((_, refresh_token)) = credentials::get_stored() {
+                            client.set_refresh_token(Some(refresh_token));
+                        }
                         let result = sync::run_sync(&mut client, &root);
                         match &result {
                             Ok((bytes_downloaded, bytes_uploaded, warning)) => {
