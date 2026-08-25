@@ -230,7 +230,15 @@ export default function SettingsPage() {
                   <TableCell>{u.is_admin ? "yes" : ""}</TableCell>
                   <TableCell align="right">
                     {u.email !== user.email ? (
-                      <Button color="error" size="small" onClick={() => void adminDeleteUser(u.email).then(loadUsers)}>
+                      <Button
+                        color="error"
+                        size="small"
+                        onClick={() => {
+                          if (window.confirm(`Delete user ${u.email}?`)) {
+                            void adminDeleteUser(u.email).then(loadUsers);
+                          }
+                        }}
+                      >
                         Delete
                       </Button>
                     ) : null}
