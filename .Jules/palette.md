@@ -14,3 +14,7 @@
 ## 2026-08-31 - Add confirmation dialog for destructive actions
 **Learning:** Destructive actions such as deleting a user account were missing a confirmation step in the `web/src/pages/SettingsPage.tsx`, unlike file deletions which correctly utilized `window.confirm`.
 **Action:** When creating or reviewing components with destructive actions (e.g., delete, remove), always verify that a confirmation dialog (like `window.confirm`) is implemented to prevent accidental data loss and improve safety.
+
+## 2026-09-02 - Form Wrapping in MUI Dialogs
+**Learning:** MUI Dialog components do not natively support standard form submission when inputs are placed directly inside `<DialogContent>`. By explicitly wrapping the inputs and action buttons in a `<form>` tag with `onSubmit`, and changing the primary button to `type="submit"`, we enable native Enter-key submission without needing custom `onKeyDown` handlers, significantly improving keyboard accessibility and developer ergonomics.
+**Action:** Always wrap inputs and action buttons in a `<form>` within MUI Dialogs to enable native Enter-key submission and avoid custom keydown handlers.
