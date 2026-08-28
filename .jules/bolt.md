@@ -7,3 +7,9 @@
 ## 2024-09-04 - Replacing os.path.relpath with stacked path tracking for file tree traversal
 **Learning:** `os.path.relpath` does extensive path normalization (calling `abspath`, splitting by separator, and computing common prefixes), which becomes extremely slow when executed inside a tight loop over millions of files during recursive directory traversal.
 **Action:** When tracking relative paths during an iterative `os.scandir` tree traversal, push a tuple `(absolute_path, relative_path)` to the traversal stack and simply concatenate the current entry's name instead of dynamically recomputing the relative path using `os.path.relpath`.
+## 2024-11-20 - Replacing localeCompare with Intl.Collator for array sorting
+**Learning:** Calling `String.prototype.localeCompare` inside `Array.prototype.sort` implicitly re-instantiates a new collator on every single comparison. This is a well-known V8 performance bottleneck that will severely block the main UI thread (taking seconds) when sorting thousands of strings like file/folder names.
+**Action:** When sorting arrays of strings by locale in frontend or Node.js code, instantiate a single `new Intl.Collator(...)` outside of the sort function and call its `.compare` method instead.
+## 2024-11-20 - Prefer Maps over nested array iteration for lookups
+**Learning:** Finding values using nested iterations over arrays (e.g. iterating over extension groupings to find the matching icon) takes O(N) time for every file. When rendering thousands of files, this O(N) logic causes high latency.
+**Action:** Always precompute a flat `Map` of values for O(1) lookups rather than iterating over configuration lists during render cycles.

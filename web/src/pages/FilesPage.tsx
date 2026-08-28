@@ -75,6 +75,8 @@ type Entry =
  * Files come from the file list. A "..\u00a0parent" entry is prepended when
  * the user is not at the root.
  */
+const _collator = new Intl.Collator(undefined, { sensitivity: "base" });
+
 function entriesForFolder(
   files: FileRow[],
   folders: FolderRow[],
@@ -137,11 +139,11 @@ function entriesForFolder(
       path: prefix + name,
       childCount: folderCounts.get(name) ?? 0,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    .sort((a, b) => _collator.compare(a.name, b.name));
 
   fileEntries.sort((a, b) =>
     a.kind === "file" && b.kind === "file"
-      ? a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      ? _collator.compare(a.name, b.name)
       : 0,
   );
 
@@ -200,16 +202,20 @@ const EXT_GROUPS: Array<{ exts: string[]; icon: ReactNode }> = [
   },
 ];
 
+const EXT_MAP = new Map<string, ReactNode>();
+for (const group of EXT_GROUPS) {
+  for (const ext of group.exts) {
+    EXT_MAP.set(ext, group.icon);
+  }
+}
+
 /** Pick a Material icon for a file based on its extension. */
 function fileIconFor(name: string): ReactNode {
   const dot = name.lastIndexOf(".");
   const ext = dot >= 0 && dot < name.length - 1 ? name.slice(dot + 1).toLowerCase() : "";
   if (ext) {
-    for (const group of EXT_GROUPS) {
-      if (group.exts.includes(ext)) {
-        return group.icon;
-      }
-    }
+    const icon = EXT_MAP.get(ext);
+    if (icon) return icon;
   }
   return <InsertDriveFileIcon sx={{ color: "text.secondary" }} />;
 }
