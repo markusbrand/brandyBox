@@ -7,3 +7,6 @@
 ## 2024-09-04 - Replacing os.path.relpath with stacked path tracking for file tree traversal
 **Learning:** `os.path.relpath` does extensive path normalization (calling `abspath`, splitting by separator, and computing common prefixes), which becomes extremely slow when executed inside a tight loop over millions of files during recursive directory traversal.
 **Action:** When tracking relative paths during an iterative `os.scandir` tree traversal, push a tuple `(absolute_path, relative_path)` to the traversal stack and simply concatenate the current entry's name instead of dynamically recomputing the relative path using `os.path.relpath`.
+## 2024-09-04 - Replacing String.prototype.localeCompare with Intl.Collator for array sorting
+**Learning:** Calling `String.prototype.localeCompare` inside a `.sort()` loop over an array forces V8 to repeatedly re-instantiate the locale comparer, creating a severe performance bottleneck for large datasets.
+**Action:** When sorting frontend arrays by locale, always instantiate a single `Intl.Collator` object outside the loop and use its `.compare` method within the sort function to optimize rendering and execution performance.
