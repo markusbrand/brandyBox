@@ -200,15 +200,24 @@ const EXT_GROUPS: Array<{ exts: string[]; icon: ReactNode }> = [
   },
 ];
 
+// ⚡ Bolt: Cache file extension icons in a Map for O(1) lookup performance
+const EXT_ICON_MAP = new Map<string, ReactNode>();
+EXT_GROUPS.forEach(group => {
+  group.exts.forEach(ext => {
+    EXT_ICON_MAP.set(ext, group.icon);
+  });
+});
+
+
 /** Pick a Material icon for a file based on its extension. */
 function fileIconFor(name: string): ReactNode {
   const dot = name.lastIndexOf(".");
   const ext = dot >= 0 && dot < name.length - 1 ? name.slice(dot + 1).toLowerCase() : "";
   if (ext) {
-    for (const group of EXT_GROUPS) {
-      if (group.exts.includes(ext)) {
-        return group.icon;
-      }
+    // ⚡ Bolt: Replace O(N*M) array iteration with O(1) Map lookup
+    const icon = EXT_ICON_MAP.get(ext);
+    if (icon) {
+      return icon;
     }
   }
   return <InsertDriveFileIcon sx={{ color: "text.secondary" }} />;
