@@ -75,7 +75,8 @@ app.add_middleware(
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allow_headers=["*"],
+    # 🛡️ Sentinel: Explicitly list allowed headers to prevent overly permissive cross-origin requests (avoiding wildcards).
+    allow_headers=["Accept", "Authorization", "Content-Type", "X-E2E-Return-Temp-Password"],
 )
 
 
