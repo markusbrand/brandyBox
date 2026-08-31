@@ -9,6 +9,10 @@
 **Learning:** `passlib.context.CryptContext.verify` takes significant time to execute. If it is only called when a user exists, an attacker can determine if a given email is registered based on response time.
 **Prevention:** Use `pwd_context.dummy_verify()` or ensure the verify function executes regardless of whether the user exists or not.
 
+## 2024-05-24 - [HIGH] Fix overly permissive CORS configuration
+**Vulnerability:** The CORS configuration in `backend/app/main.py` allowed any header (`allow_headers=["*"]`).
+**Learning:** Using `*` for CORS headers can expose the application to potential security risks, such as CSRF or cross-site information leakage, if a malicious site requests a specific sensitive header to be reflected or modified.
+**Prevention:** Explicitly define the list of allowed CORS headers instead of relying on wildcards.
 ## 2024-05-28 - Overly Permissive CORS Configuration
 **Vulnerability:** Overly permissive CORS configuration allowing all headers (`allow_headers=["*"]`).
 **Learning:** The backend allowed any HTTP headers in cross-origin requests, which can lead to unexpected behavior or security issues if sensitive headers are sent or exploited.
