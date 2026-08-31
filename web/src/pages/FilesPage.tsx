@@ -23,6 +23,7 @@ import {
   Box,
   Breadcrumbs,
   Button,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -698,45 +699,47 @@ export default function FilesPage() {
         maxWidth="xs"
       >
         <DialogTitle>New folder</DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Create an empty folder inside{" "}
-            <strong>{currentFolder ? currentFolder : "home"}</strong>.
-          </DialogContentText>
-          <TextField
-            autoFocus
-            fullWidth
-            label="Folder name"
-            value={newFolderName}
-            onChange={(e) => {
-              setNewFolderName(e.target.value);
-              if (newFolderError) {
-                setNewFolderError(null);
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void submitNewFolder();
-              }
-            }}
-            error={!!newFolderError}
-            helperText={newFolderError ?? "Letters, numbers, spaces, '.', '_', '-', '()', '+' are allowed."}
-            disabled={newFolderBusy}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setNewFolderOpen(false)} disabled={newFolderBusy}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={() => void submitNewFolder()}
-            disabled={newFolderBusy || !newFolderName.trim()}
-          >
-            Create
-          </Button>
-        </DialogActions>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitNewFolder();
+          }}
+        >
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Create an empty folder inside{" "}
+              <strong>{currentFolder ? currentFolder : "home"}</strong>.
+            </DialogContentText>
+            <TextField
+              autoFocus
+              fullWidth
+              label="Folder name"
+              value={newFolderName}
+              onChange={(e) => {
+                setNewFolderName(e.target.value);
+                if (newFolderError) {
+                  setNewFolderError(null);
+                }
+              }}
+              error={!!newFolderError}
+              helperText={newFolderError ?? "Letters, numbers, spaces, '.', '_', '-', '()', '+' are allowed."}
+              disabled={newFolderBusy}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setNewFolderOpen(false)} disabled={newFolderBusy}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={newFolderBusy || !newFolderName.trim()}
+              startIcon={newFolderBusy ? <CircularProgress size={20} color="inherit" /> : null}
+            >
+              {newFolderBusy ? "Creating..." : "Create"}
+            </Button>
+          </DialogActions>
+        </form>
       </Dialog>
 
       <Snackbar
