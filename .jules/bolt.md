@@ -10,3 +10,6 @@
 ## 2024-11-20 - O(N) Array iteration vs O(1) Map lookup in rendering
 **Learning:** For repetitive frontend lookups (e.g., mapping extensions to icons during rendering of large file lists), iterating through nested arrays (`O(N*M)`) creates significant CPU overhead compared to an `O(1)` Map lookup.
 **Action:** When rendering long lists that require constant property lookups, pre-compute a `Map` or dictionary object and replace array `.find()` or `.includes()` calls with `.get()` to optimize the render cycle.
+## 2024-11-20 - Replacing String.prototype.localeCompare with Intl.Collator for array sorting
+**Learning:** `String.prototype.localeCompare` is extremely slow when used inside an array `.sort()` callback for large lists. V8 re-creates the locale context for every single comparison, leading to severe performance bottlenecks on the main thread.
+**Action:** When sorting arrays of strings by locale, always instantiate a single `Intl.Collator` instance (e.g., `const collator = new Intl.Collator(...)`) before the sort loop and use its `.compare` method instead.

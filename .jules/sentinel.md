@@ -8,3 +8,8 @@
 **Vulnerability:** User enumeration via timing attack in the `/auth/login` endpoint.
 **Learning:** `passlib.context.CryptContext.verify` takes significant time to execute. If it is only called when a user exists, an attacker can determine if a given email is registered based on response time.
 **Prevention:** Use `pwd_context.dummy_verify()` or ensure the verify function executes regardless of whether the user exists or not.
+
+## 2024-05-28 - Overly Permissive CORS Configuration
+**Vulnerability:** Overly permissive CORS configuration allowing all headers (`allow_headers=["*"]`).
+**Learning:** The backend allowed any HTTP headers in cross-origin requests, which can lead to unexpected behavior or security issues if sensitive headers are sent or exploited.
+**Prevention:** Explicitly allow only necessary headers in CORS configuration (e.g., `["Accept", "Authorization", "Content-Type", "X-E2E-Return-Temp-Password"]`) instead of using wildcards.
