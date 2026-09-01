@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.2.0...brandybox-v1.2.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **client:** start app silently to tray without opening settings window ([bfa5c24](https://github.com/markusbrand/brandyBox/commit/bfa5c24f4e615d06f9d2763e05256305622a3a06))
+
 ## [1.2.0](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.1.0...brandybox-v1.2.0) (2026-08-25)
 
 
