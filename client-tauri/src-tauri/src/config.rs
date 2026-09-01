@@ -175,9 +175,15 @@ pub fn set_settings_window_geometry(geometry: String) {
 
 fn executable_command() -> Vec<String> {
     if cfg!(windows) {
-        vec![std::env::current_exe().unwrap_or_else(|_| PathBuf::from("BrandyBox.exe")).to_string_lossy().to_string()]
+        vec![
+            std::env::current_exe()
+                .unwrap_or_else(|_| PathBuf::from("BrandyBox.exe"))
+                .to_string_lossy()
+                .to_string(),
+            "--autostart".to_string(),
+        ]
     } else {
-        vec!["BrandyBox".to_string()]
+        vec!["BrandyBox".to_string(), "--autostart".to_string()]
     }
 }
 

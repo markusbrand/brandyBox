@@ -495,21 +495,16 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let is_autostart = std::env::args().any(|arg| arg == "--autostart" || arg == "-a");
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main_window(app.clone());
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .setup(move |app| {
+        .setup(|app| {
             spawn_background_sync_loop(app.handle().clone());
-            if is_autostart {
-                if let Some(win) = app.get_webview_window("main") {
-                    restore_window_geometry(&win);
-                }
-            } else {
-                show_main_window(app.handle().clone());
+            if let Some(win) = app.get_webview_window("main") {
+                restore_window_geometry(&win);
             }
             Ok(())
         })

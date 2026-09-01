@@ -26,7 +26,7 @@ npm install
 npm run tauri dev
 ```
 
-On first start a window appears (e.g. Login). The tray icon is created on start; left-click opens the menu, "Settings" shows the window.
+The app starts silently in the system tray. The tray icon is created on start; clicking opens the menu, and selecting "Settings" shows the settings/login window.
 
 ## Build (production)
 
