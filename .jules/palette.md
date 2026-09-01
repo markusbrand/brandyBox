@@ -1,7 +1,19 @@
-## 2024-03-22 - [Form submission keyboard a11y]
-**Learning:** Found that the "Create User" form in SettingsPage lacked keyboard accessibility (no `<form>` wrapper or `type="submit"` on the button) and a clear loading state for asynchronous calls.
-**Action:** Always wrap inputs in a `<form>` and use a submit button when a logical form is present, and show inline loading (e.g. `CircularProgress`) to ensure users can submit smoothly via keyboard and get clear feedback.
+## 2026-08-18 - Add aria-labels to TitleBar
+**Learning:** Icon-only buttons for window controls (minimize, maximize, close) in the TitleBar were missing aria-labels, which are critical for screen reader users to identify the purpose of these buttons.
+**Action:** Always verify that icon-only buttons have descriptive aria-labels when creating or reviewing components.
 
-## 2024-03-22 - [Dialog Form Keyboard Accessibility]
-**Learning:** Found that the "New Folder" dialog in `FilesPage` lacked native `<form>` handling and instead relied on a brittle `onKeyDown` listener on the input to capture the Enter key. It also missed explicit loading indicators on the submit button.
-**Action:** Replaced the custom keyboard listener by wrapping `DialogContent` and `DialogActions` in a `<form onSubmit={...}>` with a `type="submit"` button. Added `CircularProgress` on the submit button during async states. Always use native `<form>` elements inside MUI Dialogs for reliable keyboard accessibility and robust loading feedback.
+## 2026-08-25 - Add loading states for async operations
+**Learning:** Loading states for async form submissions (like login) give immediate feedback to users and prevent duplicate submissions. This is an important interaction improvement.
+**Action:** Always verify that form submission buttons show a loading indicator or state (e.g. CircularProgress) and descriptive text when an async action is active.
+
+## 2025-02-23 - Submit Button and Form Wrappers
+**Learning:** Wrapping login inputs in a `<form>` and setting the submit button `type="submit"` enables natural Enter-key submission for users, which is a highly expected behavior and a major accessibility win.
+**Action:** When creating forms with Material-UI, default to wrapping them in `<form>` and updating the button types to "submit", and additionally ensure loading states (like `CircularProgress`) are integrated with visual cues (like text changes).
+
+## 2026-08-31 - Add confirmation dialog for destructive actions
+**Learning:** Destructive actions such as deleting a user account were missing a confirmation step in the `web/src/pages/SettingsPage.tsx`, unlike file deletions which correctly utilized `window.confirm`.
+**Action:** When creating or reviewing components with destructive actions (e.g., delete, remove), always verify that a confirmation dialog (like `window.confirm`) is implemented to prevent accidental data loss and improve safety.
+
+## 2026-09-01 - Native Form Submission in Dialogs
+**Learning:** Dialogs with user inputs (such as Appearance, Change Password, Create User, New Folder) should be wrapped in native `<form onSubmit={...}>` with primary action buttons typed as `type="submit"`. This enables native Enter-key submission and accessible form semantics across browsers and operating systems.
+**Action:** Always wrap input containers within Dialogs inside `<form>` elements and provide `type="submit"` on confirmation buttons.

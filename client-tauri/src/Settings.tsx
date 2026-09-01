@@ -530,15 +530,17 @@ export default function Settings({ email, onLogout }: SettingsProps) {
 
       <Dialog open={changePwdOpen} onClose={() => setChangePwdOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Change password</DialogTitle>
-        <DialogContent>
-          {changePwdError && <Alert severity="error" sx={{ mb: 1 }}>{changePwdError}</Alert>}
-          <TextField fullWidth label="Current password" type="password" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} margin="dense" />
-          <TextField fullWidth label="New password" type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} margin="dense" />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setChangePwdOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleChangePassword}>Change</Button>
-        </DialogActions>
+        <form onSubmit={(e) => { e.preventDefault(); void handleChangePassword(); }}>
+          <DialogContent>
+            {changePwdError && <Alert severity="error" sx={{ mb: 1 }}>{changePwdError}</Alert>}
+            <TextField fullWidth label="Current password" type="password" value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)} margin="dense" />
+            <TextField fullWidth label="New password" type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} margin="dense" />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setChangePwdOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained">Change</Button>
+          </DialogActions>
+        </form>
       </Dialog>
 
       <Dialog
@@ -551,20 +553,22 @@ export default function Settings({ email, onLogout }: SettingsProps) {
         fullWidth
       >
         <DialogTitle>Create user</DialogTitle>
-        <DialogContent>
-          {createUserError && (
-            <Alert severity="error" sx={{ mb: 1 }}>
-              {createUserError}
-            </Alert>
-          )}
-          <TextField fullWidth label="Email" type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} margin="dense" />
-          <TextField fullWidth label="First name" value={newUserFirst} onChange={(e) => setNewUserFirst(e.target.value)} margin="dense" />
-          <TextField fullWidth label="Last name" value={newUserLast} onChange={(e) => setNewUserLast(e.target.value)} margin="dense" />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateUserOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreateUser}>Create</Button>
-        </DialogActions>
+        <form onSubmit={(e) => { e.preventDefault(); void handleCreateUser(); }}>
+          <DialogContent>
+            {createUserError && (
+              <Alert severity="error" sx={{ mb: 1 }}>
+                {createUserError}
+              </Alert>
+            )}
+            <TextField fullWidth label="Email" type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} margin="dense" />
+            <TextField fullWidth label="First name" value={newUserFirst} onChange={(e) => setNewUserFirst(e.target.value)} margin="dense" />
+            <TextField fullWidth label="Last name" value={newUserLast} onChange={(e) => setNewUserLast(e.target.value)} margin="dense" />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateUserOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained">Create</Button>
+          </DialogActions>
+        </form>
       </Dialog>
     </Box>
   );
