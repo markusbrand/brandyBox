@@ -236,6 +236,12 @@ async def upload_chunk(
     bytes_written = 0
     async with aiofiles.open(chunk_path, "wb") as f:
         async for chunk in request.stream():
+            # 🛡️ Sentinel: Enforce a hard limit on chunk size to prevent DoS via unbounded disk consumption
+            if bytes_written + len(chunk) > 104857600:  # 100 MB
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Chunk exceeds maximum allowed size (100MB)",
+                )
             await f.write(chunk)
             bytes_written += len(chunk)
 
