@@ -300,6 +300,7 @@ export default function FilesPage() {
   const [newFolderName, setNewFolderName] = useState("");
   const [newFolderError, setNewFolderError] = useState<string | null>(null);
   const [newFolderBusy, setNewFolderBusy] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -391,12 +392,15 @@ export default function FilesPage() {
       return;
     }
     const targetPath = currentFolder ? `${currentFolder}/${file.name}` : file.name;
+    setUploadBusy(true);
     try {
       await uploadFile(targetPath, file);
       setMsg(`Uploaded ${targetPath}`);
       await load();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Upload failed");
+    } finally {
+      setUploadBusy(false);
     }
   };
 
@@ -484,9 +488,14 @@ export default function FilesPage() {
       ) : null}
 
       <Stack direction="row" spacing={1} sx={{ mb: 2 }} alignItems="center" flexWrap="wrap">
-        <Button variant="contained" component="label" startIcon={<UploadIcon />}>
-          Upload here
-          <input type="file" hidden onChange={onUpload} />
+        <Button
+          variant="contained"
+          component="label"
+          disabled={uploadBusy}
+          startIcon={uploadBusy ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
+        >
+          {uploadBusy ? "Uploading..." : "Upload here"}
+          <input type="file" hidden onChange={onUpload} disabled={uploadBusy} />
         </Button>
         <Button
           variant="outlined"
