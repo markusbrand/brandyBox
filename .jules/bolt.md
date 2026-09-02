@@ -13,3 +13,7 @@
 ## 2024-11-20 - Replacing String.prototype.localeCompare with Intl.Collator for array sorting
 **Learning:** `String.prototype.localeCompare` is extremely slow when used inside an array `.sort()` callback for large lists. V8 re-creates the locale context for every single comparison, leading to severe performance bottlenecks on the main thread.
 **Action:** When sorting arrays of strings by locale, always instantiate a single `Intl.Collator` instance (e.g., `const collator = new Intl.Collator(...)`) before the sort loop and use its `.compare` method instead.
+
+## 2024-05-18 - Atomic Upsert for Concurrent Client Telemetry Pings
+**Learning:** The previous implementation of `upsert_client_ping` used a sequential `SELECT` + `INSERT`/`UPDATE` pattern. While functional, it forced 2 database roundtrips per ping and incurred N+1 performance penalties under high concurrency (e.g. many desktop clients pinging simultaneously). Using `sqlalchemy.dialects.sqlite.insert` with `on_conflict_do_update` safely handles this pattern in a single SQLite query, exactly halving query roundtrips in a hot path.
+**Action:** When inserting or updating records based on specific constraints (e.g., telemetry logs, file hashes), prefer dialect-specific UPSERTs (`ON CONFLICT DO UPDATE` in SQLite/Postgres) over `session.get()` or `select()` followed by an `update`/`insert` conditionally in application code.
