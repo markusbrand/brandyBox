@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -53,35 +54,35 @@ async def upsert_client_ping(
     backend_version: str,
 ) -> None:
     """Insert or update client_connections for (user_email, client_type)."""
+    # ⚡ Bolt: Use SQLite ON CONFLICT DO UPDATE to replace SELECT + INSERT/UPDATE with a single UPSERT query.
+    # Impact: Reduces database roundtrips from 2 to 1 per client ping, avoiding N+1 query overhead for concurrent clients.
     now = datetime.now(timezone.utc)
     ct = client_type[:32]
     cv = client_version[:64]
     bv = backend_version[:32]
-    result = await session.execute(
-        select(ClientConnection).where(
-            ClientConnection.user_email == user_email,
-            ClientConnection.client_type == ct,
+
+    stmt = insert(ClientConnection).values(
+        user_email=user_email,
+        client_type=ct,
+        client_version=cv,
+        last_seen_at=now,
+        last_sync_at=last_sync_at,
+        last_sync_ok=last_sync_ok,
+        backend_version_at_ping=bv,
+    )
+
+    stmt = stmt.on_conflict_do_update(
+        index_elements=['user_email', 'client_type'],
+        set_=dict(
+            client_version=stmt.excluded.client_version,
+            last_seen_at=stmt.excluded.last_seen_at,
+            last_sync_at=stmt.excluded.last_sync_at,
+            last_sync_ok=stmt.excluded.last_sync_ok,
+            backend_version_at_ping=stmt.excluded.backend_version_at_ping,
         )
     )
-    row = result.scalar_one_or_none()
-    if row:
-        row.client_version = cv
-        row.last_seen_at = now
-        row.last_sync_at = last_sync_at
-        row.last_sync_ok = last_sync_ok
-        row.backend_version_at_ping = bv
-    else:
-        session.add(
-            ClientConnection(
-                user_email=user_email,
-                client_type=ct,
-                client_version=cv,
-                last_seen_at=now,
-                last_sync_at=last_sync_at,
-                last_sync_ok=last_sync_ok,
-                backend_version_at_ping=bv,
-            )
-        )
+
+    await session.execute(stmt)
     await session.flush()
     log.debug(
         "Client ping user=%s type=%s version=%s sync_ok=%s",
