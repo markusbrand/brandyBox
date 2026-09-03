@@ -76,7 +76,7 @@ fn test_cloudflare_chunked_upload_and_download() {
     let test_email = format!("test_chunk_{}@example.com", uuid::Uuid::new_v4());
     admin.create_user(&test_email, "Test", "Chunk").expect("create user");
 
-    let client = get_user_client(cloudflare_url, &test_email);
+    let mut client = get_user_client(cloudflare_url, &test_email);
 
     // 2. Create a temporary 120MB file
     let temp_dir = std::env::temp_dir().join(format!("bb_cf_test_{}", uuid::Uuid::new_v4()));

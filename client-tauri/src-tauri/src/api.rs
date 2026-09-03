@@ -10,6 +10,7 @@ pub struct ApiClient {
     pub base_url: String,
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
+    pub email: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -82,7 +83,11 @@ struct UpdateUserBody {
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        ApiClient { base_url, access_token: None, refresh_token: None }
+        ApiClient { base_url, access_token: None, refresh_token: None, email: None }
+    }
+
+    pub fn set_email(&mut self, email: Option<String>) {
+        self.email = email;
     }
 
     pub fn set_access_token(&mut self, token: Option<String>) {
@@ -97,10 +102,17 @@ impl ApiClient {
         if let Some(ref rt) = self.refresh_token.clone() {
             let res = self.refresh(rt)?;
             self.access_token = Some(res.access_token);
-            self.refresh_token = Some(res.refresh_token);
+            self.refresh_token = Some(res.refresh_token.clone());
+            if let Some(ref em) = self.email {
+                crate::credentials::set_stored(em, &res.refresh_token);
+            }
             return Ok(());
         }
         Err("No refresh token available".to_string())
+    }
+
+    fn user_agent() -> &'static str {
+        concat!("BrandyBox/", env!("CARGO_PKG_VERSION"))
     }
 
     fn client(&self) -> reqwest::blocking::Client {
@@ -108,6 +120,7 @@ impl ApiClient {
             .timeout(Duration::from_secs(30))
             .tcp_keepalive(Duration::from_secs(60))
             .pool_idle_timeout(Duration::from_secs(90))
+            .user_agent(Self::user_agent())
             .build()
             .expect("http client")
     }
@@ -119,6 +132,7 @@ impl ApiClient {
             .timeout(Duration::from_secs(600))
             .tcp_keepalive(Duration::from_secs(60))
             .pool_idle_timeout(Duration::from_secs(90))
+            .user_agent(Self::user_agent())
             .no_gzip()
             .no_deflate()
             .build()
@@ -131,6 +145,7 @@ impl ApiClient {
             .timeout(Duration::from_secs(300))
             .tcp_keepalive(Duration::from_secs(60))
             .pool_idle_timeout(Duration::from_secs(90))
+            .user_agent(Self::user_agent())
             .build()
             .expect("http client")
     }
@@ -138,6 +153,7 @@ impl ApiClient {
     fn headers(&self) -> reqwest::header::HeaderMap {
         let mut h = reqwest::header::HeaderMap::new();
         h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
+        h.insert(reqwest::header::USER_AGENT, Self::user_agent().parse().unwrap());
         if let Some(t) = &self.access_token {
             let v = format!("Bearer {}", t);
             h.insert(reqwest::header::AUTHORIZATION, v.parse().unwrap());
@@ -238,16 +254,24 @@ impl ApiClient {
         r.json().map_err(|e| e.to_string())
     }
 
-    pub fn list_files(&self) -> Result<Vec<FileItem>, String> {
+    pub fn list_files(&mut self) -> Result<Vec<FileItem>, String> {
         let url = format!("{}/api/files/list", self.base_url.trim_end_matches('/'));
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(60))
+            .user_agent(Self::user_agent())
             .build()
             .expect("client");
         let mut last_err = String::new();
+        let mut refreshed = false;
         for attempt in 0..4 {
             match client.get(&url).headers(self.headers()).send() {
                 Ok(r) => {
+                    if r.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                        if self.try_refresh().is_ok() {
+                            refreshed = true;
+                            continue;
+                        }
+                    }
                     if !r.status().is_success() {
                         let status = r.status();
                         let text = r.text().unwrap_or_default();
@@ -272,7 +296,7 @@ impl ApiClient {
 
     /// Upload file from disk with retries. For files > 50MB, uses chunked upload to bypass
     /// proxy body limits (e.g. Cloudflare 100MB).
-    pub fn upload_file_from_path(&self, path: &str, local_path: &Path) -> Result<(), String> {
+    pub fn upload_file_from_path(&mut self, path: &str, local_path: &Path) -> Result<(), String> {
         let file_size = std::fs::metadata(local_path).map_err(|e| e.to_string())?.len();
 
         if file_size > 50 * 1024 * 1024 {
@@ -285,10 +309,12 @@ impl ApiClient {
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
             .tcp_keepalive(Duration::from_secs(60))
+            .user_agent(Self::user_agent())
             .build()
             .expect("http client");
 
         let mut last_err = String::new();
+        let mut refreshed = false;
         for attempt in 0..4 {
             let file = File::open(local_path).map_err(|e| e.to_string())?;
             let body = reqwest::blocking::Body::sized(file, file_size);
@@ -299,6 +325,12 @@ impl ApiClient {
             );
             match client.post(&url).headers(headers).body(body).send() {
                 Ok(r) => {
+                    if r.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                        if self.try_refresh().is_ok() {
+                            refreshed = true;
+                            continue;
+                        }
+                    }
                     if !r.status().is_success() {
                         let status = r.status();
                         let body_text = r.text().unwrap_or_default();
@@ -329,14 +361,21 @@ impl ApiClient {
     }
 
     /// Download file with retries, streaming directly to the specified destination path.
-    pub fn download_file_to_path(&self, path: &str, dest_path: &Path) -> Result<u64, String> {
+    pub fn download_file_to_path(&mut self, path: &str, dest_path: &Path) -> Result<u64, String> {
         let base = self.base_url.trim_end_matches('/');
         let url = format!("{}/api/files/download?path={}", base, urlencoding::encode(path));
         let mut last_err = String::new();
+        let mut refreshed = false;
 
         for attempt in 0..4 {
             match self.download_client().get(&url).headers(self.headers()).send() {
                 Ok(mut r) => {
+                    if r.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                        if self.try_refresh().is_ok() {
+                            refreshed = true;
+                            continue;
+                        }
+                    }
                     if !r.status().is_success() {
                         let status = r.status();
                         let resp_body = r.text().unwrap_or_default();
@@ -387,18 +426,25 @@ impl ApiClient {
         Err(last_err)
     }
 
-    fn upload_file_chunked(&self, path: &str, local_path: &Path, file_size: u64) -> Result<(), String> {
-        let base = self.base_url.trim_end_matches('/');
+    fn upload_file_chunked(&mut self, path: &str, local_path: &Path, file_size: u64) -> Result<(), String> {
+        let base = self.base_url.trim_end_matches('/').to_string();
 
         // 1. Initialize chunked upload with retries
         let init_url = format!("{}/api/files/upload/init?path={}", base, urlencoding::encode(path));
         let mut upload_id = String::new();
         let mut last_err = String::new();
+        let mut refreshed = false;
 
         for attempt in 0..4 {
             let client = self.chunk_client();
             match client.post(&init_url).headers(self.headers()).send() {
                 Ok(resp) => {
+                    if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                        if self.try_refresh().is_ok() {
+                            refreshed = true;
+                            continue;
+                        }
+                    }
                     if resp.status().is_success() {
                         match resp.json::<serde_json::Value>() {
                             Ok(data) => {
@@ -534,13 +580,20 @@ impl ApiClient {
     }
 
 
-    pub fn delete_file(&self, path: &str) -> Result<(), String> {
+    pub fn delete_file(&mut self, path: &str) -> Result<(), String> {
         let base = self.base_url.trim_end_matches('/');
         let url = format!("{}/api/files/delete?path={}", base, urlencoding::encode(path));
         let mut last_err = String::new();
+        let mut refreshed = false;
         for attempt in 0..4 {
             match self.client().delete(&url).headers(self.headers()).send() {
                 Ok(r) => {
+                    if r.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                        if self.try_refresh().is_ok() {
+                            refreshed = true;
+                            continue;
+                        }
+                    }
                     if r.status().as_u16() == 404 || r.status().is_success() {
                         return Ok(());
                     }

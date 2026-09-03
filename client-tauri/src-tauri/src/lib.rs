@@ -8,9 +8,59 @@ pub mod sync;
 
 use api::ApiClient;
 use serde::Serialize;
-use tauri::{Emitter, Manager};
 use std::path::PathBuf;
 use std::sync::Mutex;
+use tauri::image::Image;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager};
+
+const ICON_SYNCED_BYTES: &[u8] = include_bytes!("../icons/tray_synced_22.png");
+const ICON_SYNCING_BYTES: &[u8] = include_bytes!("../icons/tray_syncing_22.png");
+const ICON_ERROR_BYTES: &[u8] = include_bytes!("../icons/tray_error_22.png");
+
+fn get_icon_image(status: &str) -> Option<Image<'static>> {
+    let bytes = match status {
+        "syncing" | "warning" => ICON_SYNCING_BYTES,
+        "error" => ICON_ERROR_BYTES,
+        _ => ICON_SYNCED_BYTES,
+    };
+    Image::from_bytes(bytes).ok()
+}
+
+fn sync_status_to_tooltip(status: &str, message: Option<&str>) -> String {
+    match status {
+        "error" => {
+            if let Some(msg) = message {
+                let s = if msg.len() > 80 { &msg[..80] } else { msg };
+                format!("Brandy Box – Error: {}", s)
+            } else {
+                "Brandy Box – Error".to_string()
+            }
+        }
+        "warning" => {
+            if let Some(msg) = message {
+                let s = if msg.len() > 80 { &msg[..80] } else { msg };
+                format!("Brandy Box – {}", s)
+            } else {
+                "Brandy Box – Warning".to_string()
+            }
+        }
+        "syncing" => "Brandy Box – Syncing…".to_string(),
+        _ => "Brandy Box".to_string(),
+    }
+}
+
+pub fn update_tray_status(app: &tauri::AppHandle, status: &str, message: Option<&str>) {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        if let Some(img) = get_icon_image(status) {
+            let _ = tray.set_icon(Some(img));
+            let _ = tray.set_icon_as_template(true);
+        }
+        let tooltip = sync_status_to_tooltip(status, message);
+        let _ = tray.set_tooltip(Some(tooltip));
+    }
+}
 
 #[derive(Default)]
 #[allow(dead_code)]
@@ -231,9 +281,12 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
         let _ = std::fs::create_dir_all(&root);
     }
     sync::set_sync_status(sync::SyncStatus::Syncing);
+    update_tray_status(&app, "syncing", None);
     let _ = app.emit("sync-status", sync::get_sync_status_payload());
+    let app_handle = app.clone();
     std::thread::spawn(move || {
         let mut client = ApiClient::new(base_url);
+        client.set_email(get_stored_email());
         client.set_access_token(Some(token));
         if let Some((_, refresh_token)) = credentials::get_stored() {
             client.set_refresh_token(Some(refresh_token));
@@ -245,10 +298,12 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
             Ok((bytes_downloaded, bytes_uploaded, warning)) => {
                 if let Some(msg) = warning {
                     sync::set_sync_status(sync::SyncStatus::Warning(msg.clone()));
+                    update_tray_status(&app_handle, "warning", Some(msg));
                 } else {
                     sync::set_sync_status(sync::SyncStatus::Synced);
+                    update_tray_status(&app_handle, "synced", None);
                 }
-                let _ = app.emit(
+                let _ = app_handle.emit(
                     "sync-completed",
                     serde_json::json!({ "bytesDownloaded": bytes_downloaded, "bytesUploaded": bytes_uploaded }),
                 );
@@ -256,12 +311,13 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
             Err(e) => {
                 eprintln!("Brandy Box sync error: {}", e);
                 sync::set_sync_status(sync::SyncStatus::Error(e.clone()));
+                update_tray_status(&app_handle, "error", Some(e));
             }
         }
         if let Err(e) = client.client_ping(Some(sync_ok), Some(last_sync_at)) {
             log::warn!("client_ping failed: {}", e);
         }
-        let _ = app.emit("sync-status", sync::get_sync_status_payload());
+        let _ = app_handle.emit("sync-status", sync::get_sync_status_payload());
     });
     Ok(serde_json::json!({ "started": true }))
 }
@@ -447,6 +503,7 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
     } else {
         (BACKGROUND_SYNC_INITIAL_DELAY_SECS, BACKGROUND_SYNC_INTERVAL_SECS)
     };
+    let app_handle = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(initial_delay));
         loop {
@@ -460,8 +517,10 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                     if let Some(token) = get_valid_access_token() {
                         let base_url = network::get_base_url();
                         sync::set_sync_status(sync::SyncStatus::Syncing);
-                        let _ = app.emit("sync-status", sync::get_sync_status_payload());
+                        update_tray_status(&app_handle, "syncing", None);
+                        let _ = app_handle.emit("sync-status", sync::get_sync_status_payload());
                         let mut client = ApiClient::new(base_url);
+                        client.set_email(get_stored_email());
                         client.set_access_token(Some(token));
                         if let Some((_, refresh_token)) = credentials::get_stored() {
                             client.set_refresh_token(Some(refresh_token));
@@ -471,10 +530,12 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                             Ok((bytes_downloaded, bytes_uploaded, warning)) => {
                                 if let Some(msg) = warning {
                                     sync::set_sync_status(sync::SyncStatus::Warning(msg.clone()));
+                                    update_tray_status(&app_handle, "warning", Some(msg));
                                 } else {
                                     sync::set_sync_status(sync::SyncStatus::Synced);
+                                    update_tray_status(&app_handle, "synced", None);
                                 }
-                                let _ = app.emit(
+                                let _ = app_handle.emit(
                                     "sync-completed",
                                     serde_json::json!({ "bytesDownloaded": bytes_downloaded, "bytesUploaded": bytes_uploaded }),
                                 );
@@ -482,9 +543,10 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                             Err(e) => {
                                 eprintln!("Brandy Box sync error: {}", e);
                                 sync::set_sync_status(sync::SyncStatus::Error(e.clone()));
+                                update_tray_status(&app_handle, "error", Some(e));
                             }
                         }
-                        let _ = app.emit("sync-status", sync::get_sync_status_payload());
+                        let _ = app_handle.emit("sync-status", sync::get_sync_status_payload());
                     }
                 }
             }
@@ -502,9 +564,107 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            let show_settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let open_folder = MenuItem::with_id(app, "open_folder", "Open sync folder", true, None::<&str>)?;
+            let sync_now = MenuItem::with_id(app, "sync_now", "Sync now", true, None::<&str>)?;
+            let separator = PredefinedMenuItem::separator(app)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &show_settings,
+                    &open_folder,
+                    &sync_now,
+                    &separator,
+                    &quit,
+                ],
+            )?;
+
+            let initial_icon = Image::from_bytes(ICON_SYNCED_BYTES).expect("valid embedded icon");
+
+            let _tray = TrayIconBuilder::with_id("main-tray")
+                .icon(initial_icon)
+                .tooltip("Brandy Box")
+                .menu(&menu)
+                .show_menu_on_left_click(true)
+                .icon_as_template(true)
+                .on_menu_event(|app, event| {
+                    match event.id().as_ref() {
+                        "settings" => {
+                            show_main_window(app.clone());
+                        }
+                        "open_folder" => {
+                            let _ = open_sync_folder();
+                        }
+                        "sync_now" => {
+                            let _ = run_sync(app.clone());
+                        }
+                        "quit" => {
+                            quit_app();
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|_tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            let app = _tray.app_handle();
+                            show_main_window(app.clone());
+                        }
+                    }
+                })
+                .build(app)?;
+
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::Submenu;
+                let app_menu = Submenu::with_items(
+                    app,
+                    "Brandy Box",
+                    true,
+                    &[
+                        &MenuItem::with_id(app, "menu_settings", "Settings…", true, Some("CmdOrCtrl+,"))?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::hide(app, Some("Hide Brandy Box"))?,
+                        &PredefinedMenuItem::hide_others(app, Some("Hide Others"))?,
+                        &PredefinedMenuItem::show_all(app, Some("Show All"))?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::quit(app, Some("Quit Brandy Box"))?,
+                    ],
+                )?;
+
+                let edit_menu = Submenu::with_items(
+                    app,
+                    "Edit",
+                    true,
+                    &[
+                        &PredefinedMenuItem::undo(app, None)?,
+                        &PredefinedMenuItem::redo(app, None)?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::cut(app, None)?,
+                        &PredefinedMenuItem::copy(app, None)?,
+                        &PredefinedMenuItem::paste(app, None)?,
+                        &PredefinedMenuItem::select_all(app, None)?,
+                    ],
+                )?;
+
+                let menu_bar = Menu::with_items(app, &[&app_menu, &edit_menu])?;
+                let _ = app.set_menu(menu_bar);
+                app.on_menu_event(|app, event| {
+                    if event.id().as_ref() == "menu_settings" {
+                        show_main_window(app.clone());
+                    }
+                });
+            }
+
             spawn_background_sync_loop(app.handle().clone());
             if let Some(win) = app.get_webview_window("main") {
                 restore_window_geometry(&win);
+            }
+            if get_stored_email().is_none() || !config::user_has_set_sync_folder() {
+                show_main_window(app.handle().clone());
             }
             Ok(())
         })
@@ -559,8 +719,13 @@ pub fn run() {
             hide_main_window,
             fit_window_to_content,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Reopen { .. } = event {
+                show_main_window(app_handle.clone());
+            }
+        });
 }
 
 #[cfg(test)]

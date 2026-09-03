@@ -256,6 +256,9 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             match remote {
                 None => true,
                 Some(r) => {
+                    if *local_mtime <= r.mtime {
+                        return false;
+                    }
                     if let Some(server_hash) = &r.hash {
                         let local_path = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
                         if local_path.exists() && local_path.is_file() {
@@ -266,7 +269,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                             }
                         }
                     }
-                    *local_mtime > r.mtime
+                    true
                 }
             }
         })
@@ -285,6 +288,23 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     let mut completed_downloads: HashSet<String> = HashSet::new();
     let mut skipped_downloads: HashSet<String> = HashSet::new();
 
+    let mut bytes_uploaded = 0u64;
+    let mut completed_uploads: HashSet<String> = HashSet::new();
+    let mut skipped_uploads: HashSet<String> = HashSet::new();
+
+    let persist_current_state = |state: &mut SyncStateFile, base_synced: &HashSet<String>, completed_downloads: &HashSet<String>, completed_uploads: &HashSet<String>| {
+        let new_synced: HashSet<String> = base_synced
+            .union(completed_downloads)
+            .cloned()
+            .chain(completed_uploads.iter().cloned())
+            .collect();
+        let mut new_synced: Vec<String> = new_synced.into_iter().collect();
+        new_synced.sort();
+        state.paths = new_synced;
+        save_sync_state(state);
+    };
+
+    let mut download_counter = 0usize;
     for path in &to_download {
         set_progress("download", done, total_work);
         let skip = prev_downloaded.contains(path);
@@ -306,6 +326,10 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                 if let Some(h) = remote_hashes.get(path) {
                     state.file_hashes.insert(path.clone(), h.clone());
                 }
+                download_counter += 1;
+                if download_counter % 50 == 0 {
+                    persist_current_state(&mut state, &base_synced, &completed_downloads, &completed_uploads);
+                }
             }
             Err(e) => {
                 if e.contains("404") {
@@ -313,10 +337,10 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                     if local_path.exists() && local_path.is_file() {
                         let _ = std::fs::remove_file(&local_path);
                     }
-                    skipped_downloads.insert(path.clone());
                 } else {
-                    return Err(format!("Download {}: {}", path, e));
+                    log::warn!("Download {}: {}, skipping file for this cycle", path, e);
                 }
+                skipped_downloads.insert(path.clone());
             }
         }
         done += 1;
@@ -329,27 +353,32 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             v.into_iter().take(5).collect()
         };
         log::warn!(
-            "Skipped {} downloads (permission denied or file gone): sample={:?}",
+            "Skipped {} downloads (error, permission denied or file gone): sample={:?}",
             skipped_downloads.len(),
             sample
         );
     }
 
-    let mut bytes_uploaded = 0u64;
-    let mut completed_uploads: HashSet<String> = HashSet::new();
-    let mut skipped_uploads: HashSet<String> = HashSet::new();
-
+    let mut upload_counter = 0usize;
     for path in &to_upload {
         set_progress("upload", done, total_work);
         let full = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
         if full.exists() && full.is_file() {
-            if let Ok(meta) = std::fs::metadata(&full) {
-                bytes_uploaded += meta.len();
+            let file_len = std::fs::metadata(&full).map(|m| m.len()).unwrap_or(0);
+            match client.upload_file_from_path(path, &full) {
+                Ok(()) => {
+                    bytes_uploaded += file_len;
+                    completed_uploads.insert(path.clone());
+                    upload_counter += 1;
+                    if upload_counter % 25 == 0 {
+                        persist_current_state(&mut state, &base_synced, &completed_downloads, &completed_uploads);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Upload {}: {}, skipping file for this cycle", path, e);
+                    skipped_uploads.insert(path.clone());
+                }
             }
-            if let Err(e) = client.upload_file_from_path(path, &full) {
-                return Err(format!("Upload {}: {}", path, e));
-            }
-            completed_uploads.insert(path.clone());
         } else {
             log::debug!("Upload {}: file no longer present, skipping", path);
             skipped_uploads.insert(path.clone());
@@ -361,7 +390,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     let mut warnings: Vec<String> = Vec::new();
     if !skipped_downloads.is_empty() {
         warnings.push(format!(
-            "{} download(s) skipped (permission denied or file gone on server)",
+            "{} download(s) skipped (errors, permission denied or file gone on server)",
             skipped_downloads.len()
         ));
     }
@@ -372,12 +401,12 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             v.into_iter().take(5).collect()
         };
         log::warn!(
-            "Skipped {} uploads (file no longer present during sync): sample={:?}",
+            "Skipped {} uploads (file no longer present or error during sync): sample={:?}",
             skipped_uploads.len(),
             sample
         );
         warnings.push(format!(
-            "{} upload(s) skipped (files removed during sync)",
+            "{} upload(s) skipped (files removed or upload error during sync)",
             skipped_uploads.len()
         ));
     }
@@ -385,15 +414,8 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         warning_msg = Some(warnings.join("; "));
     }
 
-    // Persist ONLY verified paths: base_synced | completed_downloads | completed_uploads
-    let new_synced: HashSet<String> = base_synced
-        .union(&completed_downloads)
-        .cloned()
-        .chain(completed_uploads.iter().cloned())
-        .collect();
-    let mut new_synced: Vec<String> = new_synced.into_iter().collect();
-    new_synced.sort();
-    state.paths = new_synced;
+    // Final state persist
+    persist_current_state(&mut state, &base_synced, &completed_downloads, &completed_uploads);
     state.downloaded_paths.clear();
     save_sync_state(&state);
 
