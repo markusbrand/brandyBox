@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.2.1...brandybox-v1.2.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* **client-tauri:** add native macOS menu bar tray, app menu, token refresh & sync resilience ([fda6539](https://github.com/markusbrand/brandyBox/commit/fda6539ae28cb197ae7ef12e5bb200760cb01903))
+
 ## [1.2.1](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.2.0...brandybox-v1.2.1) (2026-09-01)
 
 
