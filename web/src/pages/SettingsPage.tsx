@@ -41,6 +41,17 @@ import {
 } from "../api/http";
 import { useAuth } from "../context/AuthContext";
 
+// ⚡ Bolt: Cache Intl.DateTimeFormat instance to avoid V8 context recreation overhead during date formatting.
+// Impact: Significantly faster than calling Date.prototype.toLocaleString() in a loop.
+const defaultDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
+});
+
 export default function SettingsPage() {
   const { user, prefs, setPrefsLocal } = useAuth();
   const [openAppear, setOpenAppear] = useState(false);
@@ -363,7 +374,7 @@ export default function SettingsPage() {
                 <TableBody>
                   {events.map((ev) => (
                     <TableRow key={ev.id}>
-                      <TableCell>{new Date(ev.created_at).toLocaleString()}</TableCell>
+                      <TableCell>{defaultDateFormatter.format(new Date(ev.created_at))}</TableCell>
                       <TableCell>{ev.level}</TableCell>
                       <TableCell>{ev.message}</TableCell>
                     </TableRow>
