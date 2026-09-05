@@ -722,9 +722,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             if let tauri::RunEvent::Reopen { .. } = event {
                 show_main_window(app_handle.clone());
             }
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+            let _ = (app_handle, event);
         });
 }
 
