@@ -6,6 +6,7 @@ from typing import Dict, List
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.sqlite import insert
 
 from app.files.hash_model import FileHash
 
@@ -35,11 +36,13 @@ async def get_hashes_for_paths(session: AsyncSession, user_email: str, paths: Li
 
 async def set_hash(session: AsyncSession, user_email: str, path: str, content_hash: str) -> None:
     """Store or update content hash for a file. Caller must commit."""
-    row = await session.get(FileHash, (user_email, path))
-    if row:
-        row.content_hash = content_hash
-    else:
-        session.add(FileHash(user_email=user_email, path=path, content_hash=content_hash))
+    # ⚡ Bolt Optimization: Use an atomic upsert to avoid a 2-query SELECT + INSERT/UPDATE penalty.
+    stmt = insert(FileHash).values(user_email=user_email, path=path, content_hash=content_hash)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["user_email", "path"],
+        set_={"content_hash": stmt.excluded.content_hash}
+    )
+    await session.execute(stmt)
 
 
 async def delete_hash(session: AsyncSession, user_email: str, path: str) -> None:
