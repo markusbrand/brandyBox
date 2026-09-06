@@ -36,7 +36,9 @@ pub fn get_base_url() -> String {
     }
     let mode = crate::config::get_base_url_mode();
     if mode == "manual" {
-        return crate::config::get_manual_base_url().trim_end_matches('/').to_string();
+        return crate::config::get_manual_base_url()
+            .trim_end_matches('/')
+            .to_string();
     }
     if is_local_network() {
         format!("http://{}:{}", LAN_HOST, BACKEND_PORT)

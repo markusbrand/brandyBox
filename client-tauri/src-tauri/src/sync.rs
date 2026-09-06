@@ -6,8 +6,8 @@
 
 use crate::api::ApiClient;
 use crate::config;
-use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -25,13 +25,19 @@ fn is_ignored(path_str: &str) -> bool {
     if normalized.contains("/.git/") || normalized.starts_with(".git/") {
         return true;
     }
-    let name = Path::new(&normalized).file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let name = Path::new(&normalized)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
     SYNC_IGNORE.contains(&name)
 }
 
 fn list_local(root: &Path) -> Vec<(String, f64)> {
     let mut out = Vec::new();
-    for e in walkdir::WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+    for e in walkdir::WalkDir::new(root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if !e.file_type().is_file() {
             continue;
         }
@@ -45,7 +51,10 @@ fn list_local(root: &Path) -> Vec<(String, f64)> {
         }
         if let Ok(meta) = e.metadata() {
             if let Ok(mtime) = meta.modified() {
-                let t = mtime.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64();
+                let t = mtime
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs_f64();
                 out.push((path_str, t));
             }
         }
@@ -84,7 +93,10 @@ fn load_sync_state() -> SyncStateFile {
 fn save_sync_state(state: &SyncStateFile) {
     let path = config::get_sync_state_path();
     let _ = std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
-    let _ = std::fs::write(path, serde_json::to_string_pretty(state).unwrap_or_default());
+    let _ = std::fs::write(
+        path,
+        serde_json::to_string_pretty(state).unwrap_or_default(),
+    );
 }
 
 #[derive(Clone)]
@@ -136,10 +148,19 @@ pub fn get_sync_progress() -> Option<SyncProgress> {
 }
 
 fn set_progress(phase: &str, current: u64, total: u64) {
-    let _ = SYNC_PROGRESS.lock().map(|mut g| *g = Some(SyncProgress { phase: phase.to_string(), current, total }));
+    let _ = SYNC_PROGRESS.lock().map(|mut g| {
+        *g = Some(SyncProgress {
+            phase: phase.to_string(),
+            current,
+            total,
+        })
+    });
 }
 
-pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, Option<String>), String> {
+pub fn run_sync(
+    client: &mut ApiClient,
+    local_root: &Path,
+) -> Result<(u64, u64, Option<String>), String> {
     let mut state = load_sync_state();
     let last_synced: HashSet<String> = state.paths.iter().cloned().collect();
     let prev_downloaded: HashSet<String> = state.downloaded_paths.iter().cloned().collect();
@@ -156,14 +177,25 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     );
 
     let local_by_path: HashMap<String, f64> = local_list.iter().cloned().collect();
-    let remote_by_path: HashMap<String, f64> = remote_list.iter().map(|i| (i.path.clone(), i.mtime)).collect();
-    let remote_hashes: HashMap<String, String> = remote_list.iter().filter_map(|i| i.hash.clone().map(|h| (i.path.clone(), h))).collect();
-    let remote_by_item: HashMap<String, &crate::api::FileItem> = remote_list.iter().map(|i| (i.path.clone(), i)).collect();
+    let remote_by_path: HashMap<String, f64> = remote_list
+        .iter()
+        .map(|i| (i.path.clone(), i.mtime))
+        .collect();
+    let remote_hashes: HashMap<String, String> = remote_list
+        .iter()
+        .filter_map(|i| i.hash.clone().map(|h| (i.path.clone(), h)))
+        .collect();
+    let remote_by_item: HashMap<String, &crate::api::FileItem> =
+        remote_list.iter().map(|i| (i.path.clone(), i)).collect();
 
     let current_local: HashSet<String> = local_by_path.keys().cloned().collect();
     let current_remote: HashSet<String> = remote_by_path.keys().cloned().collect();
 
-    let mut to_delete_remote: HashSet<String> = last_synced.difference(&current_local).filter(|p| !is_ignored(p)).cloned().collect();
+    let mut to_delete_remote: HashSet<String> = last_synced
+        .difference(&current_local)
+        .filter(|p| !is_ignored(p))
+        .cloned()
+        .collect();
 
     // Safety: never delete more files on server than we have locally when the number is large
     if to_delete_remote.len() > 50 && to_delete_remote.len() > current_local.len() {
@@ -175,7 +207,8 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         to_delete_remote.clear();
     }
 
-    let to_delete_local: HashSet<String> = last_synced.difference(&current_remote).cloned().collect();
+    let to_delete_local: HashSet<String> =
+        last_synced.difference(&current_remote).cloned().collect();
 
     let mut to_del_remote: Vec<String> = to_delete_remote.into_iter().collect();
     to_del_remote.sort_by(|a, b| b.matches('/').count().cmp(&a.matches('/').count()));
@@ -186,15 +219,24 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     let to_del_local_set: HashSet<String> = to_del_local.iter().cloned().collect();
     let to_del_remote_set: HashSet<String> = to_del_remote.iter().cloned().collect();
 
-    let total_work = to_del_remote.len() + to_del_local.len()
-        + current_remote.difference(&current_local).filter(|p| !is_ignored(p)).count()
-        + current_local.difference(&current_remote).filter(|p| !is_ignored(p)).count();
+    let total_work = to_del_remote.len()
+        + to_del_local.len()
+        + current_remote
+            .difference(&current_local)
+            .filter(|p| !is_ignored(p))
+            .count()
+        + current_local
+            .difference(&current_remote)
+            .filter(|p| !is_ignored(p))
+            .count();
     let total_work = total_work as u64;
     let mut done = 0u64;
 
     for path in &to_del_remote {
         set_progress("delete_server", done, total_work);
-        client.delete_file(path).map_err(|e| format!("Delete server {}: {}", path, e))?;
+        client
+            .delete_file(path)
+            .map_err(|e| format!("Delete server {}: {}", path, e))?;
         done += 1;
     }
     for path in &to_del_local {
@@ -204,7 +246,11 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             let _ = std::fs::remove_file(&full);
             let mut parent = full.parent();
             while let Some(p) = parent {
-                if p != local_root && p.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false) {
+                if p != local_root
+                    && p.read_dir()
+                        .map(|mut d| d.next().is_none())
+                        .unwrap_or(false)
+                {
                     let _ = std::fs::remove_dir(p);
                     parent = p.parent();
                 } else {
@@ -215,9 +261,19 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         done += 1;
     }
 
-    let remaining_local: HashSet<String> = current_local.difference(&to_del_local_set).cloned().collect();
-    let remaining_remote: HashSet<String> = current_remote.difference(&to_del_remote_set).cloned().collect();
-    let base_synced: HashSet<String> = remaining_local.intersection(&remaining_remote).filter(|p| !is_ignored(p)).cloned().collect();
+    let remaining_local: HashSet<String> = current_local
+        .difference(&to_del_local_set)
+        .cloned()
+        .collect();
+    let remaining_remote: HashSet<String> = current_remote
+        .difference(&to_del_remote_set)
+        .cloned()
+        .collect();
+    let base_synced: HashSet<String> = remaining_local
+        .intersection(&remaining_remote)
+        .filter(|p| !is_ignored(p))
+        .cloned()
+        .collect();
 
     let mut to_download: Vec<String> = current_remote
         .difference(&current_local)
@@ -230,7 +286,8 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             let remote_mtime = remote_by_path.get(path).copied().unwrap_or(0.0);
             if remote_mtime > *local_mtime {
                 if let Some(server_hash) = remote_hashes.get(path) {
-                    let local_path = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
+                    let local_path =
+                        local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
                     if local_path.exists() && local_path.is_file() {
                         if let Some(local_hash) = compute_file_hash(&local_path) {
                             if local_hash == *server_hash {
@@ -260,7 +317,8 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                         return false;
                     }
                     if let Some(server_hash) = &r.hash {
-                        let local_path = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
+                        let local_path =
+                            local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
                         if local_path.exists() && local_path.is_file() {
                             if let Some(local_hash) = compute_file_hash(&local_path) {
                                 if local_hash == *server_hash {
@@ -292,17 +350,21 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     let mut completed_uploads: HashSet<String> = HashSet::new();
     let mut skipped_uploads: HashSet<String> = HashSet::new();
 
-    let persist_current_state = |state: &mut SyncStateFile, base_synced: &HashSet<String>, completed_downloads: &HashSet<String>, completed_uploads: &HashSet<String>| {
-        let new_synced: HashSet<String> = base_synced
-            .union(completed_downloads)
-            .cloned()
-            .chain(completed_uploads.iter().cloned())
-            .collect();
-        let mut new_synced: Vec<String> = new_synced.into_iter().collect();
-        new_synced.sort();
-        state.paths = new_synced;
-        save_sync_state(state);
-    };
+    let persist_current_state =
+        |state: &mut SyncStateFile,
+         base_synced: &HashSet<String>,
+         completed_downloads: &HashSet<String>,
+         completed_uploads: &HashSet<String>| {
+            let new_synced: HashSet<String> = base_synced
+                .union(completed_downloads)
+                .cloned()
+                .chain(completed_uploads.iter().cloned())
+                .collect();
+            let mut new_synced: Vec<String> = new_synced.into_iter().collect();
+            new_synced.sort();
+            state.paths = new_synced;
+            save_sync_state(state);
+        };
 
     let mut download_counter = 0usize;
     for path in &to_download {
@@ -314,7 +376,10 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             continue;
         }
         if let Some(ref hash) = remote_hashes.get(path) {
-            if state.file_hashes.get(path.as_str()) == Some(hash) && local_path.exists() && local_path.is_file() {
+            if state.file_hashes.get(path.as_str()) == Some(hash)
+                && local_path.exists()
+                && local_path.is_file()
+            {
                 done += 1;
                 continue;
             }
@@ -328,7 +393,12 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                 }
                 download_counter += 1;
                 if download_counter % 50 == 0 {
-                    persist_current_state(&mut state, &base_synced, &completed_downloads, &completed_uploads);
+                    persist_current_state(
+                        &mut state,
+                        &base_synced,
+                        &completed_downloads,
+                        &completed_uploads,
+                    );
                 }
             }
             Err(e) => {
@@ -371,7 +441,12 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                     completed_uploads.insert(path.clone());
                     upload_counter += 1;
                     if upload_counter % 25 == 0 {
-                        persist_current_state(&mut state, &base_synced, &completed_downloads, &completed_uploads);
+                        persist_current_state(
+                            &mut state,
+                            &base_synced,
+                            &completed_downloads,
+                            &completed_uploads,
+                        );
                     }
                 }
                 Err(e) => {
@@ -415,7 +490,12 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     }
 
     // Final state persist
-    persist_current_state(&mut state, &base_synced, &completed_downloads, &completed_uploads);
+    persist_current_state(
+        &mut state,
+        &base_synced,
+        &completed_downloads,
+        &completed_uploads,
+    );
     state.downloaded_paths.clear();
     save_sync_state(&state);
 
@@ -434,7 +514,6 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
 
     Ok((bytes_downloaded, bytes_uploaded, warning_msg))
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -32,7 +32,8 @@ fn config_dir() -> PathBuf {
     }
     #[cfg(windows)]
     {
-        let appdata = std::env::var("APPDATA").unwrap_or_else(|_| std::env::var("USERPROFILE").unwrap_or_default());
+        let appdata = std::env::var("APPDATA")
+            .unwrap_or_else(|_| std::env::var("USERPROFILE").unwrap_or_default());
         PathBuf::from(appdata).join("BrandyBox")
     }
     #[cfg(not(windows))]
@@ -106,11 +107,16 @@ pub fn get_sync_state_path() -> PathBuf {
 }
 
 pub fn get_default_sync_folder() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join("brandyBox")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("brandyBox")
 }
 
 pub fn user_has_set_sync_folder() -> bool {
-    read_config().sync_folder.map(|s| !s.is_empty()).unwrap_or(false)
+    read_config()
+        .sync_folder
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
 }
 
 pub fn get_sync_folder_path() -> PathBuf {
@@ -199,7 +205,9 @@ fn apply_autostart_platform(enabled: bool) {
 
 #[cfg(windows)]
 fn apply_autostart_windows(enabled: bool, cmd: &[String]) {
-    let startup = std::env::var("APPDATA").map(|a| PathBuf::from(a).join("Microsoft/Windows/Start Menu/Programs/Startup")).unwrap_or_default();
+    let startup = std::env::var("APPDATA")
+        .map(|a| PathBuf::from(a).join("Microsoft/Windows/Start Menu/Programs/Startup"))
+        .unwrap_or_default();
     if !startup.exists() {
         return;
     }
@@ -225,11 +233,17 @@ fn apply_autostart_windows(enabled: bool, cmd: &[String]) {
 
 #[cfg(target_os = "macos")]
 fn apply_autostart_macos(enabled: bool, cmd: &[String]) {
-    let launch_agents = dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join("Library/LaunchAgents");
+    let launch_agents = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("Library/LaunchAgents");
     let _ = std::fs::create_dir_all(&launch_agents);
     let plist = launch_agents.join("rocks.brandstaetter.brandybox.plist");
     if enabled {
-        let args_xml: String = cmd.iter().map(|a| format!("    <string>{}</string>", a)).collect::<Vec<_>>().join("\n");
+        let args_xml: String = cmd
+            .iter()
+            .map(|a| format!("    <string>{}</string>", a))
+            .collect::<Vec<_>>()
+            .join("\n");
         let content = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

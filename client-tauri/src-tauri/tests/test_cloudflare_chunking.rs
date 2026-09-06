@@ -32,7 +32,10 @@ fn get_admin_client(cloudflare_url: &str) -> ApiClient {
         .expect("failed to execute docker command");
 
     assert!(output.status.success(), "Failed to generate admin tokens");
-    let tokens = String::from_utf8(output.stdout).expect("utf8").trim().to_string();
+    let tokens = String::from_utf8(output.stdout)
+        .expect("utf8")
+        .trim()
+        .to_string();
     let parts: Vec<&str> = tokens.split('|').collect();
     let access_token = parts[0].to_string();
     let refresh_token = parts[1].to_string();
@@ -56,7 +59,10 @@ fn get_user_client(cloudflare_url: &str, email: &str) -> ApiClient {
         .expect("failed to execute docker command");
 
     assert!(output.status.success(), "Failed to generate user tokens");
-    let tokens = String::from_utf8(output.stdout).expect("utf8").trim().to_string();
+    let tokens = String::from_utf8(output.stdout)
+        .expect("utf8")
+        .trim()
+        .to_string();
     let parts: Vec<&str> = tokens.split('|').collect();
     let access_token = parts[0].to_string();
     let refresh_token = parts[1].to_string();
@@ -74,7 +80,9 @@ fn test_cloudflare_chunked_upload_and_download() {
     let admin = get_admin_client(cloudflare_url);
 
     let test_email = format!("test_chunk_{}@example.com", uuid::Uuid::new_v4());
-    admin.create_user(&test_email, "Test", "Chunk").expect("create user");
+    admin
+        .create_user(&test_email, "Test", "Chunk")
+        .expect("create user");
 
     let mut client = get_user_client(cloudflare_url, &test_email);
 
@@ -112,7 +120,10 @@ fn test_cloudflare_chunked_upload_and_download() {
 
     let dl_hash = compute_sha256(&downloaded_path);
     println!("Downloaded file SHA256: {}", dl_hash);
-    assert_eq!(orig_hash, dl_hash, "SHA256 checksum mismatch after download");
+    assert_eq!(
+        orig_hash, dl_hash,
+        "SHA256 checksum mismatch after download"
+    );
     println!("Checksum verified: exact bit-for-bit match!");
 
     // 5. Cleanup
@@ -128,7 +139,9 @@ fn test_cloudflare_sync_engine_with_chunked_files() {
     let admin = get_admin_client(cloudflare_url);
 
     let test_email = format!("test_sync_{}@example.com", uuid::Uuid::new_v4());
-    admin.create_user(&test_email, "Test", "Sync").expect("create user");
+    admin
+        .create_user(&test_email, "Test", "Sync")
+        .expect("create user");
 
     let mut client = get_user_client(cloudflare_url, &test_email);
 
@@ -158,7 +171,10 @@ fn test_cloudflare_sync_engine_with_chunked_files() {
     let sync_result = sync::run_sync(&mut client, &test_root);
     assert!(sync_result.is_ok(), "Sync failed: {:?}", sync_result);
     let (dl, up, warn) = sync_result.unwrap();
-    println!("Sync completed: uploaded={} bytes, downloaded={} bytes, warning={:?}", up, dl, warn);
+    println!(
+        "Sync completed: uploaded={} bytes, downloaded={} bytes, warning={:?}",
+        up, dl, warn
+    );
     assert_eq!(up, 75 * 1024 * 1024, "Expected exactly 75MB uploaded");
     assert_eq!(dl, 0, "Expected 0 downloaded on new clean user root");
     assert!(warn.is_none(), "Sync had warnings: {:?}", warn);
@@ -177,7 +193,9 @@ fn test_cloudflare_mixed_multi_file_two_way_sync() {
     let admin = get_admin_client(cloudflare_url);
 
     let test_email = format!("test_mixed_{}@example.com", uuid::Uuid::new_v4());
-    admin.create_user(&test_email, "Test", "Mixed").expect("create user");
+    admin
+        .create_user(&test_email, "Test", "Mixed")
+        .expect("create user");
 
     let mut client_a = get_user_client(cloudflare_url, &test_email);
     let mut client_b = get_user_client(cloudflare_url, &test_email);
@@ -204,7 +222,8 @@ fn test_cloudflare_mixed_multi_file_two_way_sync() {
     // Write 2MB small file
     {
         let mut f = File::create(root_a.join(file_small)).expect("create small");
-        f.write_all(&vec![0x11u8; 2 * 1024 * 1024]).expect("write small");
+        f.write_all(&vec![0x11u8; 2 * 1024 * 1024])
+            .expect("write small");
     }
     // Write 55MB medium file (triggers 3 chunks: 20MB + 20MB + 15MB)
     {
@@ -231,7 +250,10 @@ fn test_cloudflare_mixed_multi_file_two_way_sync() {
     std::env::set_var("BRANDYBOX_CONFIG_DIR", &config_a);
     println!("Syncing Client A (uploads) to Cloudflare...");
     let res_a = sync::run_sync(&mut client_a, &root_a).expect("Sync A failed");
-    println!("Sync A finished: uploaded {} bytes, downloaded {} bytes, warnings: {:?}", res_a.1, res_a.0, res_a.2);
+    println!(
+        "Sync A finished: uploaded {} bytes, downloaded {} bytes, warnings: {:?}",
+        res_a.1, res_a.0, res_a.2
+    );
     assert_eq!(res_a.1, (2 + 55 + 105) * 1024 * 1024);
     assert!(res_a.2.is_none());
 
@@ -239,7 +261,10 @@ fn test_cloudflare_mixed_multi_file_two_way_sync() {
     std::env::set_var("BRANDYBOX_CONFIG_DIR", &config_b);
     println!("Syncing Client B (downloads) from Cloudflare...");
     let res_b = sync::run_sync(&mut client_b, &root_b).expect("Sync B failed");
-    println!("Sync B finished: uploaded {} bytes, downloaded {} bytes, warnings: {:?}", res_b.1, res_b.0, res_b.2);
+    println!(
+        "Sync B finished: uploaded {} bytes, downloaded {} bytes, warnings: {:?}",
+        res_b.1, res_b.0, res_b.2
+    );
     assert_eq!(res_b.0, (2 + 55 + 105) * 1024 * 1024);
     assert!(res_b.2.is_none());
 
@@ -248,9 +273,18 @@ fn test_cloudflare_mixed_multi_file_two_way_sync() {
     let hash_medium_b = compute_sha256(&root_b.join(file_medium));
     let hash_large_b = compute_sha256(&root_b.join(file_large));
 
-    assert_eq!(hash_small_orig, hash_small_b, "Small file hash mismatch on Client B");
-    assert_eq!(hash_medium_orig, hash_medium_b, "Medium file hash mismatch on Client B");
-    assert_eq!(hash_large_orig, hash_large_b, "Large file hash mismatch on Client B");
+    assert_eq!(
+        hash_small_orig, hash_small_b,
+        "Small file hash mismatch on Client B"
+    );
+    assert_eq!(
+        hash_medium_orig, hash_medium_b,
+        "Medium file hash mismatch on Client B"
+    );
+    assert_eq!(
+        hash_large_orig, hash_large_b,
+        "Large file hash mismatch on Client B"
+    );
     println!("All downloaded files verified bit-for-bit on Client B!");
 
     // Delete locally on Client A and sync to verify remote deletion

@@ -46,7 +46,10 @@ fn read_file_credentials() -> Option<(String, String)> {
         if let Ok(s) = std::fs::read_to_string(&path) {
             if let Ok(f) = serde_json::from_str::<CredentialsFile>(&s) {
                 if !f.email.trim().is_empty() && !f.refresh_token.trim().is_empty() {
-                    return Some((f.email.trim().to_string(), f.refresh_token.trim().to_string()));
+                    return Some((
+                        f.email.trim().to_string(),
+                        f.refresh_token.trim().to_string(),
+                    ));
                 }
             }
         }
@@ -83,8 +86,12 @@ pub fn get_stored() -> Option<(String, String)> {
         return read_file_credentials();
     }
     let service = service_name();
-    let keyring_email = keyring::Entry::new(service, KEY_EMAIL).ok().and_then(|e| e.get_password().ok());
-    let keyring_token = keyring::Entry::new(service, KEY_REFRESH_TOKEN).ok().and_then(|e| e.get_password().ok());
+    let keyring_email = keyring::Entry::new(service, KEY_EMAIL)
+        .ok()
+        .and_then(|e| e.get_password().ok());
+    let keyring_token = keyring::Entry::new(service, KEY_REFRESH_TOKEN)
+        .ok()
+        .and_then(|e| e.get_password().ok());
     if let (Some(email), Some(token)) = (keyring_email, keyring_token) {
         if !email.trim().is_empty() && !token.trim().is_empty() {
             return Some((email.trim().to_string(), token.trim().to_string()));
@@ -100,7 +107,8 @@ pub fn set_stored(email: &str, refresh_token: &str) {
     }
     let service = service_name();
     let _ = keyring::Entry::new(service, KEY_EMAIL).and_then(|e| e.set_password(email));
-    let _ = keyring::Entry::new(service, KEY_REFRESH_TOKEN).and_then(|e| e.set_password(refresh_token));
+    let _ =
+        keyring::Entry::new(service, KEY_REFRESH_TOKEN).and_then(|e| e.set_password(refresh_token));
     // Also save to credentials.json as a fallback if keyring fails or is unavailable
     write_file_credentials(email, refresh_token);
 }
@@ -121,9 +129,14 @@ mod tests {
         clear_stored();
         set_stored("mbrandstaetter48@gmail.com", "dummy_token_123");
         let res = get_stored();
-        assert_eq!(res, Some(("mbrandstaetter48@gmail.com".to_string(), "dummy_token_123".to_string())));
+        assert_eq!(
+            res,
+            Some((
+                "mbrandstaetter48@gmail.com".to_string(),
+                "dummy_token_123".to_string()
+            ))
+        );
         clear_stored();
         assert_eq!(get_stored(), None);
     }
 }
-

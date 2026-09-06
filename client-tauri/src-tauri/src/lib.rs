@@ -98,7 +98,9 @@ fn user_has_set_sync_folder() -> bool {
 
 #[tauri::command]
 fn get_default_sync_folder() -> String {
-    config::get_default_sync_folder().to_string_lossy().to_string()
+    config::get_default_sync_folder()
+        .to_string_lossy()
+        .to_string()
 }
 
 #[tauri::command]
@@ -234,7 +236,11 @@ fn api_list_users() -> Result<Vec<serde_json::Value>, String> {
 }
 
 #[tauri::command]
-fn api_create_user(email: String, first_name: String, last_name: String) -> Result<serde_json::Value, String> {
+fn api_create_user(
+    email: String,
+    first_name: String,
+    last_name: String,
+) -> Result<serde_json::Value, String> {
     let token = get_valid_access_token().ok_or("Not logged in")?;
     let base_url = network::get_base_url();
     let mut client = ApiClient::new(base_url);
@@ -243,7 +249,10 @@ fn api_create_user(email: String, first_name: String, last_name: String) -> Resu
 }
 
 #[tauri::command]
-fn api_update_user_storage_limit(email: String, limit_bytes: Option<i64>) -> Result<serde_json::Value, String> {
+fn api_update_user_storage_limit(
+    email: String,
+    limit_bytes: Option<i64>,
+) -> Result<serde_json::Value, String> {
     let token = get_valid_access_token().ok_or("Not logged in")?;
     let base_url = network::get_base_url();
     let mut client = ApiClient::new(base_url);
@@ -364,14 +373,28 @@ fn restore_window_geometry(win: &tauri::WebviewWindow) {
                 if let Ok(Some(primary)) = win.primary_monitor() {
                     let work = primary.work_area();
                     x = (work.position.x + work.size.width as i32 - w as i32 - TRAY_SIDE_MARGIN)
-                        .clamp(work.position.x, (work.position.x + work.size.width as i32 - w as i32).max(work.position.x));
+                        .clamp(
+                            work.position.x,
+                            (work.position.x + work.size.width as i32 - w as i32)
+                                .max(work.position.x),
+                        );
                     y = (work.position.y + work.size.height as i32 - h as i32 - TRAY_SIDE_MARGIN)
-                        .clamp(work.position.y, (work.position.y + work.size.height as i32 - h as i32).max(work.position.y));
+                        .clamp(
+                            work.position.y,
+                            (work.position.y + work.size.height as i32 - h as i32)
+                                .max(work.position.y),
+                        );
                 }
             }
             let _ = win.set_size(tauri::PhysicalSize::new(w, h));
             let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-            log::debug!("Restored settings window geometry: ({}, {}, {}, {})", x, y, w, h);
+            log::debug!(
+                "Restored settings window geometry: ({}, {}, {}, {})",
+                x,
+                y,
+                w,
+                h
+            );
             return;
         }
     }
@@ -384,8 +407,10 @@ fn restore_window_geometry(win: &tauri::WebviewWindow) {
         let wa_h = work.size.height as i32;
         let win_w = DEFAULT_SETTINGS_WIDTH as i32;
         let win_h = DEFAULT_SETTINGS_HEIGHT as i32;
-        let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).clamp(wa_x, (wa_x + wa_w - win_w).max(wa_x));
-        let y = (wa_y + wa_h - win_h - TRAY_SIDE_MARGIN).clamp(wa_y, (wa_y + wa_h - win_h).max(wa_y));
+        let x =
+            (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).clamp(wa_x, (wa_x + wa_w - win_w).max(wa_x));
+        let y =
+            (wa_y + wa_h - win_h - TRAY_SIDE_MARGIN).clamp(wa_y, (wa_y + wa_h - win_h).max(wa_y));
         let _ = win.set_size(tauri::PhysicalSize::new(
             DEFAULT_SETTINGS_WIDTH,
             DEFAULT_SETTINGS_HEIGHT,
@@ -420,7 +445,10 @@ fn show_main_window(app: tauri::AppHandle) {
 #[tauri::command]
 fn hide_main_window(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
-        if let (Ok(pos), Ok(sz)) = (win.outer_position(), win.outer_size().or_else(|_| win.inner_size())) {
+        if let (Ok(pos), Ok(sz)) = (
+            win.outer_position(),
+            win.outer_size().or_else(|_| win.inner_size()),
+        ) {
             save_window_geometry(pos, sz);
         }
         let _ = win.hide();
@@ -455,7 +483,10 @@ fn fit_window_to_content(app: tauri::AppHandle, width: Option<u32>, height: Opti
                     }
                 }
             }
-            if let (Ok(pos), Ok(sz)) = (win.outer_position(), win.outer_size().or_else(|_| win.inner_size())) {
+            if let (Ok(pos), Ok(sz)) = (
+                win.outer_position(),
+                win.outer_size().or_else(|_| win.inner_size()),
+            ) {
                 save_window_geometry(pos, sz);
             }
         }
@@ -498,10 +529,16 @@ const E2E_SYNC_INITIAL_DELAY_SECS: u64 = 5;
 const E2E_SYNC_INTERVAL_SECS: u64 = 30;
 
 fn spawn_background_sync_loop(app: tauri::AppHandle) {
-    let (initial_delay, interval) = if std::env::var("BRANDYBOX_CONFIG_DIR").map(|s| !s.trim().is_empty()).unwrap_or(false) {
+    let (initial_delay, interval) = if std::env::var("BRANDYBOX_CONFIG_DIR")
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
         (E2E_SYNC_INITIAL_DELAY_SECS, E2E_SYNC_INTERVAL_SECS)
     } else {
-        (BACKGROUND_SYNC_INITIAL_DELAY_SECS, BACKGROUND_SYNC_INTERVAL_SECS)
+        (
+            BACKGROUND_SYNC_INITIAL_DELAY_SECS,
+            BACKGROUND_SYNC_INTERVAL_SECS,
+        )
     };
     let app_handle = app.clone();
     std::thread::spawn(move || {
@@ -565,20 +602,15 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let show_settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-            let open_folder = MenuItem::with_id(app, "open_folder", "Open sync folder", true, None::<&str>)?;
+            let open_folder =
+                MenuItem::with_id(app, "open_folder", "Open sync folder", true, None::<&str>)?;
             let sync_now = MenuItem::with_id(app, "sync_now", "Sync now", true, None::<&str>)?;
             let separator = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
             let menu = Menu::with_items(
                 app,
-                &[
-                    &show_settings,
-                    &open_folder,
-                    &sync_now,
-                    &separator,
-                    &quit,
-                ],
+                &[&show_settings, &open_folder, &sync_now, &separator, &quit],
             )?;
 
             let initial_icon = Image::from_bytes(ICON_SYNCED_BYTES).expect("valid embedded icon");
@@ -589,25 +621,28 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .icon_as_template(true)
-                .on_menu_event(|app, event| {
-                    match event.id().as_ref() {
-                        "settings" => {
-                            show_main_window(app.clone());
-                        }
-                        "open_folder" => {
-                            let _ = open_sync_folder();
-                        }
-                        "sync_now" => {
-                            let _ = run_sync(app.clone());
-                        }
-                        "quit" => {
-                            quit_app();
-                        }
-                        _ => {}
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "settings" => {
+                        show_main_window(app.clone());
                     }
+                    "open_folder" => {
+                        let _ = open_sync_folder();
+                    }
+                    "sync_now" => {
+                        let _ = run_sync(app.clone());
+                    }
+                    "quit" => {
+                        quit_app();
+                    }
+                    _ => {}
                 })
                 .on_tray_icon_event(|_tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
                         #[cfg(not(target_os = "macos"))]
                         {
                             let app = _tray.app_handle();
@@ -625,7 +660,13 @@ pub fn run() {
                     "Brandy Box",
                     true,
                     &[
-                        &MenuItem::with_id(app, "menu_settings", "Settings…", true, Some("CmdOrCtrl+,"))?,
+                        &MenuItem::with_id(
+                            app,
+                            "menu_settings",
+                            "Settings…",
+                            true,
+                            Some("CmdOrCtrl+,"),
+                        )?,
                         &PredefinedMenuItem::separator(app)?,
                         &PredefinedMenuItem::hide(app, Some("Hide Brandy Box"))?,
                         &PredefinedMenuItem::hide_others(app, Some("Hide Others"))?,
@@ -671,14 +712,20 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
                 if window.label() == "main" && window.is_visible().unwrap_or(false) {
-                    if let (Ok(pos), Ok(sz)) = (window.outer_position(), window.outer_size().or_else(|_| window.inner_size())) {
+                    if let (Ok(pos), Ok(sz)) = (
+                        window.outer_position(),
+                        window.outer_size().or_else(|_| window.inner_size()),
+                    ) {
                         save_window_geometry(pos, sz);
                     }
                 }
             }
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 if window.label() == "main" {
-                    if let (Ok(pos), Ok(sz)) = (window.outer_position(), window.outer_size().or_else(|_| window.inner_size())) {
+                    if let (Ok(pos), Ok(sz)) = (
+                        window.outer_position(),
+                        window.outer_size().or_else(|_| window.inner_size()),
+                    ) {
                         save_window_geometry(pos, sz);
                     }
                     let _ = window.hide();
@@ -721,9 +768,10 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::Reopen { .. } = event {
-                show_main_window(app_handle.clone());
+        .run(|_app_handle, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                show_main_window(_app_handle.clone());
             }
         });
 }
@@ -734,8 +782,14 @@ mod tests {
 
     #[test]
     fn test_parse_geometry_valid() {
-        assert_eq!(parse_geometry("100, 200, 800, 600"), Some((100, 200, 800, 600)));
-        assert_eq!(parse_geometry("-50,-100,600,720"), Some((-50, -100, 600, 720)));
+        assert_eq!(
+            parse_geometry("100, 200, 800, 600"),
+            Some((100, 200, 800, 600))
+        );
+        assert_eq!(
+            parse_geometry("-50,-100,600,720"),
+            Some((-50, -100, 600, 720))
+        );
     }
 
     #[test]

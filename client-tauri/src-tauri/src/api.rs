@@ -83,7 +83,12 @@ struct UpdateUserBody {
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        ApiClient { base_url, access_token: None, refresh_token: None, email: None }
+        ApiClient {
+            base_url,
+            access_token: None,
+            refresh_token: None,
+            email: None,
+        }
     }
 
     pub fn set_email(&mut self, email: Option<String>) {
@@ -153,7 +158,10 @@ impl ApiClient {
     fn headers(&self) -> reqwest::header::HeaderMap {
         let mut h = reqwest::header::HeaderMap::new();
         h.insert(reqwest::header::ACCEPT, "application/json".parse().unwrap());
-        h.insert(reqwest::header::USER_AGENT, Self::user_agent().parse().unwrap());
+        h.insert(
+            reqwest::header::USER_AGENT,
+            Self::user_agent().parse().unwrap(),
+        );
         if let Some(t) = &self.access_token {
             let v = format!("Bearer {}", t);
             h.insert(reqwest::header::AUTHORIZATION, v.parse().unwrap());
@@ -163,16 +171,27 @@ impl ApiClient {
 
     pub fn login(&self, email: &str, password: &str) -> Result<LoginResponse, String> {
         let url = format!("{}/api/auth/login", self.base_url.trim_end_matches('/'));
-        let body = LoginBody { email: email.to_string(), password: password.to_string() };
+        let body = LoginBody {
+            email: email.to_string(),
+            password: password.to_string(),
+        };
         let mut last_err = String::new();
         for attempt in 0..4 {
-            match self.client().post(&url).json(&body).header("Content-Type", "application/json").send() {
+            match self
+                .client()
+                .post(&url)
+                .json(&body)
+                .header("Content-Type", "application/json")
+                .send()
+            {
                 Ok(r) => {
                     if !r.status().is_success() {
                         let status = r.status();
                         let text = r.text().unwrap_or_default();
                         last_err = format!("{} {}", status, text);
-                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        if status.is_client_error()
+                            && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+                        {
                             return Err(last_err);
                         }
                     } else {
@@ -192,16 +211,26 @@ impl ApiClient {
 
     pub fn refresh(&self, refresh_token: &str) -> Result<LoginResponse, String> {
         let url = format!("{}/api/auth/refresh", self.base_url.trim_end_matches('/'));
-        let body = RefreshBody { refresh_token: refresh_token.to_string() };
+        let body = RefreshBody {
+            refresh_token: refresh_token.to_string(),
+        };
         let mut last_err = String::new();
         for attempt in 0..4 {
-            match self.client().post(&url).json(&body).header("Content-Type", "application/json").send() {
+            match self
+                .client()
+                .post(&url)
+                .json(&body)
+                .header("Content-Type", "application/json")
+                .send()
+            {
                 Ok(r) => {
                     if !r.status().is_success() {
                         let status = r.status();
                         let text = r.text().unwrap_or_default();
                         last_err = format!("{} {}", status, text);
-                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        if status.is_client_error()
+                            && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+                        {
                             return Err(last_err);
                         }
                     } else {
@@ -221,7 +250,12 @@ impl ApiClient {
 
     pub fn me(&self) -> Result<User, String> {
         let url = format!("{}/api/users/me", self.base_url.trim_end_matches('/'));
-        let r = self.client().get(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
+        let r = self
+            .client()
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .map_err(|e| e.to_string())?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
@@ -229,8 +263,14 @@ impl ApiClient {
     }
 
     pub fn change_password(&self, current: &str, new_pass: &str) -> Result<(), String> {
-        let url = format!("{}/api/auth/change-password", self.base_url.trim_end_matches('/'));
-        let body = ChangePasswordBody { current_password: current.to_string(), new_password: new_pass.to_string() };
+        let url = format!(
+            "{}/api/auth/change-password",
+            self.base_url.trim_end_matches('/')
+        );
+        let body = ChangePasswordBody {
+            current_password: current.to_string(),
+            new_password: new_pass.to_string(),
+        };
         let r = self
             .client()
             .post(&url)
@@ -247,7 +287,12 @@ impl ApiClient {
 
     pub fn get_storage(&self) -> Result<StorageInfo, String> {
         let url = format!("{}/api/files/storage", self.base_url.trim_end_matches('/'));
-        let r = self.client().get(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
+        let r = self
+            .client()
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .map_err(|e| e.to_string())?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
@@ -266,7 +311,10 @@ impl ApiClient {
         for attempt in 0..4 {
             match client.get(&url).headers(self.headers()).send() {
                 Ok(r) => {
-                    if r.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                    if r.status() == reqwest::StatusCode::UNAUTHORIZED
+                        && !refreshed
+                        && self.refresh_token.is_some()
+                    {
                         if self.try_refresh().is_ok() {
                             refreshed = true;
                             continue;
@@ -276,7 +324,9 @@ impl ApiClient {
                         let status = r.status();
                         let text = r.text().unwrap_or_default();
                         last_err = format!("{} {}", status, text);
-                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        if status.is_client_error()
+                            && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+                        {
                             return Err(last_err);
                         }
                     } else {
@@ -297,7 +347,9 @@ impl ApiClient {
     /// Upload file from disk with retries. For files > 50MB, uses chunked upload to bypass
     /// proxy body limits (e.g. Cloudflare 100MB).
     pub fn upload_file_from_path(&mut self, path: &str, local_path: &Path) -> Result<(), String> {
-        let file_size = std::fs::metadata(local_path).map_err(|e| e.to_string())?.len();
+        let file_size = std::fs::metadata(local_path)
+            .map_err(|e| e.to_string())?
+            .len();
 
         if file_size > 50 * 1024 * 1024 {
             return self.upload_file_chunked(path, local_path, file_size);
@@ -325,7 +377,10 @@ impl ApiClient {
             );
             match client.post(&url).headers(headers).body(body).send() {
                 Ok(r) => {
-                    if r.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                    if r.status() == reqwest::StatusCode::UNAUTHORIZED
+                        && !refreshed
+                        && self.refresh_token.is_some()
+                    {
                         if self.try_refresh().is_ok() {
                             refreshed = true;
                             continue;
@@ -340,7 +395,9 @@ impl ApiClient {
                             format!("{}: {}", status, body_text.trim())
                         };
                         // Don't retry on client errors (4xx) except 429
-                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        if status.is_client_error()
+                            && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+                        {
                             return Err(last_err);
                         }
                     } else {
@@ -353,7 +410,12 @@ impl ApiClient {
             }
             if attempt < 3 {
                 let backoff = Duration::from_secs(2u64.pow(attempt as u32 + 1) + 2);
-                log::warn!("Upload attempt {} failed, retrying in {:?}: {}", attempt + 1, backoff, last_err);
+                log::warn!(
+                    "Upload attempt {} failed, retrying in {:?}: {}",
+                    attempt + 1,
+                    backoff,
+                    last_err
+                );
                 std::thread::sleep(backoff);
             }
         }
@@ -363,14 +425,26 @@ impl ApiClient {
     /// Download file with retries, streaming directly to the specified destination path.
     pub fn download_file_to_path(&mut self, path: &str, dest_path: &Path) -> Result<u64, String> {
         let base = self.base_url.trim_end_matches('/');
-        let url = format!("{}/api/files/download?path={}", base, urlencoding::encode(path));
+        let url = format!(
+            "{}/api/files/download?path={}",
+            base,
+            urlencoding::encode(path)
+        );
         let mut last_err = String::new();
         let mut refreshed = false;
 
         for attempt in 0..4 {
-            match self.download_client().get(&url).headers(self.headers()).send() {
+            match self
+                .download_client()
+                .get(&url)
+                .headers(self.headers())
+                .send()
+            {
                 Ok(mut r) => {
-                    if r.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                    if r.status() == reqwest::StatusCode::UNAUTHORIZED
+                        && !refreshed
+                        && self.refresh_token.is_some()
+                    {
                         if self.try_refresh().is_ok() {
                             refreshed = true;
                             continue;
@@ -385,7 +459,9 @@ impl ApiClient {
                             format!("{}: {}", status, resp_body.trim())
                         };
                         // Don't retry on 404 or other client errors except 429
-                        if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        if status.is_client_error()
+                            && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+                        {
                             return Err(last_err);
                         }
                     } else {
@@ -419,18 +495,32 @@ impl ApiClient {
             }
             if attempt < 3 {
                 let backoff = Duration::from_secs(2u64.pow(attempt as u32 + 1) + 2);
-                log::warn!("Download attempt {} failed, retrying in {:?}: {}", attempt + 1, backoff, last_err);
+                log::warn!(
+                    "Download attempt {} failed, retrying in {:?}: {}",
+                    attempt + 1,
+                    backoff,
+                    last_err
+                );
                 std::thread::sleep(backoff);
             }
         }
         Err(last_err)
     }
 
-    fn upload_file_chunked(&mut self, path: &str, local_path: &Path, file_size: u64) -> Result<(), String> {
+    fn upload_file_chunked(
+        &mut self,
+        path: &str,
+        local_path: &Path,
+        file_size: u64,
+    ) -> Result<(), String> {
         let base = self.base_url.trim_end_matches('/').to_string();
 
         // 1. Initialize chunked upload with retries
-        let init_url = format!("{}/api/files/upload/init?path={}", base, urlencoding::encode(path));
+        let init_url = format!(
+            "{}/api/files/upload/init?path={}",
+            base,
+            urlencoding::encode(path)
+        );
         let mut upload_id = String::new();
         let mut last_err = String::new();
         let mut refreshed = false;
@@ -439,7 +529,10 @@ impl ApiClient {
             let client = self.chunk_client();
             match client.post(&init_url).headers(self.headers()).send() {
                 Ok(resp) => {
-                    if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                    if resp.status() == reqwest::StatusCode::UNAUTHORIZED
+                        && !refreshed
+                        && self.refresh_token.is_some()
+                    {
                         if self.try_refresh().is_ok() {
                             refreshed = true;
                             continue;
@@ -483,19 +576,31 @@ impl ApiClient {
         while offset < file_size {
             let current_chunk_size = std::cmp::min(chunk_size, file_size - offset);
             let mut buffer = vec![0; current_chunk_size as usize];
-            file.seek(SeekFrom::Start(offset)).map_err(|e| e.to_string())?;
+            file.seek(SeekFrom::Start(offset))
+                .map_err(|e| e.to_string())?;
             file.read_exact(&mut buffer).map_err(|e| e.to_string())?;
 
-            let chunk_url = format!("{}/api/files/upload/chunk?upload_id={}&index={}", base, upload_id, index);
+            let chunk_url = format!(
+                "{}/api/files/upload/chunk?upload_id={}&index={}",
+                base, upload_id, index
+            );
 
             let mut chunk_err = String::new();
             let mut success = false;
             for attempt in 0..5 {
                 let mut headers = self.headers();
-                headers.insert(reqwest::header::CONTENT_TYPE, "application/octet-stream".parse().unwrap());
+                headers.insert(
+                    reqwest::header::CONTENT_TYPE,
+                    "application/octet-stream".parse().unwrap(),
+                );
                 let client = self.chunk_client();
 
-                match client.post(&chunk_url).headers(headers).body(buffer.clone()).send() {
+                match client
+                    .post(&chunk_url)
+                    .headers(headers)
+                    .body(buffer.clone())
+                    .send()
+                {
                     Ok(r) if r.status().is_success() => {
                         success = true;
                         break;
@@ -579,16 +684,22 @@ impl ApiClient {
         Ok(())
     }
 
-
     pub fn delete_file(&mut self, path: &str) -> Result<(), String> {
         let base = self.base_url.trim_end_matches('/');
-        let url = format!("{}/api/files/delete?path={}", base, urlencoding::encode(path));
+        let url = format!(
+            "{}/api/files/delete?path={}",
+            base,
+            urlencoding::encode(path)
+        );
         let mut last_err = String::new();
         let mut refreshed = false;
         for attempt in 0..4 {
             match self.client().delete(&url).headers(self.headers()).send() {
                 Ok(r) => {
-                    if r.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed && self.refresh_token.is_some() {
+                    if r.status() == reqwest::StatusCode::UNAUTHORIZED
+                        && !refreshed
+                        && self.refresh_token.is_some()
+                    {
                         if self.try_refresh().is_ok() {
                             refreshed = true;
                             continue;
@@ -599,7 +710,8 @@ impl ApiClient {
                     }
                     let status = r.status();
                     last_err = format!("{}", status);
-                    if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+                    {
                         return Err(last_err);
                     }
                 }
@@ -616,14 +728,24 @@ impl ApiClient {
 
     pub fn list_users(&self) -> Result<Vec<User>, String> {
         let url = format!("{}/api/users", self.base_url.trim_end_matches('/'));
-        let r = self.client().get(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
+        let r = self
+            .client()
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .map_err(|e| e.to_string())?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
         r.json().map_err(|e| e.to_string())
     }
 
-    pub fn create_user(&self, email: &str, first_name: &str, last_name: &str) -> Result<serde_json::Value, String> {
+    pub fn create_user(
+        &self,
+        email: &str,
+        first_name: &str,
+        last_name: &str,
+    ) -> Result<serde_json::Value, String> {
         let url = format!("{}/api/users", self.base_url.trim_end_matches('/'));
         let body = CreateUserBody {
             email: email.to_string(),
@@ -634,7 +756,14 @@ impl ApiClient {
         for attempt in 0..4 {
             let mut headers = self.headers();
             headers.insert("X-E2E-Return-Temp-Password", "1".parse().unwrap());
-            match self.client().post(&url).headers(headers).json(&body).header("Content-Type", "application/json").send() {
+            match self
+                .client()
+                .post(&url)
+                .headers(headers)
+                .json(&body)
+                .header("Content-Type", "application/json")
+                .send()
+            {
                 Ok(r) => {
                     if r.status().is_success() {
                         return r.json().map_err(|e| e.to_string());
@@ -642,7 +771,8 @@ impl ApiClient {
                     let status = r.status();
                     let text = r.text().unwrap_or_default();
                     last_err = format!("{} {}", status, text);
-                    if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS {
+                    if status.is_client_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+                    {
                         return Err(last_err);
                     }
                 }
@@ -657,10 +787,20 @@ impl ApiClient {
         Err(last_err)
     }
 
-    pub fn update_user_storage_limit(&self, email: &str, limit_bytes: Option<i64>) -> Result<serde_json::Value, String> {
+    pub fn update_user_storage_limit(
+        &self,
+        email: &str,
+        limit_bytes: Option<i64>,
+    ) -> Result<serde_json::Value, String> {
         let encoded = urlencoding::encode(email);
-        let url = format!("{}/api/users/{}", self.base_url.trim_end_matches('/'), encoded);
-        let body = UpdateUserBody { storage_limit_bytes: limit_bytes };
+        let url = format!(
+            "{}/api/users/{}",
+            self.base_url.trim_end_matches('/'),
+            encoded
+        );
+        let body = UpdateUserBody {
+            storage_limit_bytes: limit_bytes,
+        };
         let r = self
             .client()
             .patch(&url)
@@ -676,7 +816,11 @@ impl ApiClient {
     }
 
     /// Report client version and last sync outcome to the server (best-effort).
-    pub fn client_ping(&self, last_sync_ok: Option<bool>, last_sync_at_rfc3339: Option<String>) -> Result<(), String> {
+    pub fn client_ping(
+        &self,
+        last_sync_ok: Option<bool>,
+        last_sync_at_rfc3339: Option<String>,
+    ) -> Result<(), String> {
         let url = format!("{}/api/clients/ping", self.base_url.trim_end_matches('/'));
         let body = serde_json::json!({
             "client_type": "tauri",
@@ -700,8 +844,17 @@ impl ApiClient {
 
     pub fn delete_user(&self, email: &str) -> Result<(), String> {
         let encoded = urlencoding::encode(email);
-        let url = format!("{}/api/users/{}", self.base_url.trim_end_matches('/'), encoded);
-        let r = self.client().delete(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
+        let url = format!(
+            "{}/api/users/{}",
+            self.base_url.trim_end_matches('/'),
+            encoded
+        );
+        let r = self
+            .client()
+            .delete(&url)
+            .headers(self.headers())
+            .send()
+            .map_err(|e| e.to_string())?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
