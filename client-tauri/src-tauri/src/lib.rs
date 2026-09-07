@@ -722,7 +722,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::Reopen { .. } = event {
+            if let tauri::RunEvent::Ready { .. } = event {
                 show_main_window(app_handle.clone());
             }
         });
