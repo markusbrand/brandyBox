@@ -5,6 +5,7 @@ import logging
 from typing import Dict, List
 
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.files.hash_model import FileHash
@@ -35,11 +36,18 @@ async def get_hashes_for_paths(session: AsyncSession, user_email: str, paths: Li
 
 async def set_hash(session: AsyncSession, user_email: str, path: str, content_hash: str) -> None:
     """Store or update content hash for a file. Caller must commit."""
-    row = await session.get(FileHash, (user_email, path))
-    if row:
-        row.content_hash = content_hash
-    else:
-        session.add(FileHash(user_email=user_email, path=path, content_hash=content_hash))
+    # ⚡ Bolt: Replace 2-step SELECT + INSERT/UPDATE with a single atomic UPSERT query.
+    # Impact: Halves database roundtrips for file synchronization workloads.
+    stmt = insert(FileHash).values(
+        user_email=user_email,
+        path=path,
+        content_hash=content_hash,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["user_email", "path"],
+        set_=dict(content_hash=stmt.excluded.content_hash)
+    )
+    await session.execute(stmt)
 
 
 async def delete_hash(session: AsyncSession, user_email: str, path: str) -> None:

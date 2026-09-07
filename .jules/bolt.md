@@ -20,3 +20,7 @@
 ## 2024-12-07 - Caching Intl.DateTimeFormat vs Date.prototype.toLocaleString() for performance
 **Learning:** `Date.prototype.toLocaleString()` is extremely slow when called repeatedly during list rendering (e.g. file timestamps). V8 re-creates the formatting context on every call, taking ~3.8 seconds for 10k dates vs ~30ms when using a cached `Intl.DateTimeFormat`.
 **Action:** When formatting dates repeatedly on the frontend, instantiate a single `Intl.DateTimeFormat` instance globally or in a top-level scope (e.g., `const mtimeFormatter = new Intl.DateTimeFormat(...)`) and use its `.format()` method to dramatically reduce main thread blocking.
+
+## 2024-05-18 - [SQLite Upsert instead of SELECT + UPDATE]
+**Learning:** For performance optimization in SQLite database operations (via SQLAlchemy), a single atomic UPSERT query using `sqlalchemy.dialects.sqlite.insert` with `on_conflict_do_update` is faster than a two-step `SELECT` followed by `INSERT`/`UPDATE` since it halves database roundtrips.
+**Action:** Always prefer UPSERT over SELECT + UPDATE/INSERT when working with SQLite via SQLAlchemy in this codebase to reduce I/O latency.
