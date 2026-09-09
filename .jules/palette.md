@@ -17,3 +17,6 @@
 ## 2026-09-01 - Native Form Submission in Dialogs
 **Learning:** Dialogs with user inputs (such as Appearance, Change Password, Create User, New Folder) should be wrapped in native `<form onSubmit={...}>` with primary action buttons typed as `type="submit"`. This enables native Enter-key submission and accessible form semantics across browsers and operating systems.
 **Action:** Always wrap input containers within Dialogs inside `<form>` elements and provide `type="submit"` on confirmation buttons.
+## 2026-09-02 - Add loading states for background image upload
+**Learning:** Loading states for async operations like uploading images provide critical feedback. Missing loading states on file inputs can lead to confusion if the upload is slow, as the user has no visual cue that processing is occurring.
+**Action:** When adding or reviewing file upload forms, always verify that the submit/upload button transitions to a disabled, loading state with clear text (e.g., "Uploading...") and an indicator (e.g., CircularProgress) while the upload is in progress. Also disable the hidden `<input type="file">` to prevent concurrent selections.

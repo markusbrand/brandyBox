@@ -66,6 +66,7 @@ export default function SettingsPage() {
   const [newFirst, setNewFirst] = useState("");
   const [newLast, setNewLast] = useState("");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [isUploadingBackground, setIsUploadingBackground] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -141,6 +142,7 @@ export default function SettingsPage() {
     if (!file) {
       return;
     }
+    setIsUploadingBackground(true);
     try {
       const p = await uploadBackgroundImage(file);
       setPrefsLocal(p);
@@ -148,6 +150,8 @@ export default function SettingsPage() {
       setErr(null);
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : "Upload failed");
+    } finally {
+      setIsUploadingBackground(false);
     }
   };
 
@@ -272,13 +276,19 @@ export default function SettingsPage() {
         <form onSubmit={(e) => { e.preventDefault(); void saveAppearance(); }}>
           <DialogContent dividers sx={{ overflowY: "auto", maxHeight: "70vh" }}>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
-              <Button variant="outlined" component="label" startIcon={<ImageIcon />}>
-                Upload from computer
+              <Button
+                variant="outlined"
+                component="label"
+                disabled={isUploadingBackground}
+                startIcon={isUploadingBackground ? <CircularProgress size={20} color="inherit" /> : <ImageIcon />}
+              >
+                {isUploadingBackground ? "Uploading..." : "Upload from computer"}
                 <input
                   type="file"
                   hidden
                   accept="image/jpeg,image/png,image/gif,image/webp"
                   onChange={onUploadBackground}
+                  disabled={isUploadingBackground}
                 />
               </Button>
               {prefs.content_background_image === USER_BACKGROUND_IMAGE_SENTINEL ? (
