@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.2.2...brandybox-v1.3.0) (2026-09-09)
+
+
+### Features
+
+* add loading state for background image upload in settings ([3c3e1b3](https://github.com/markusbrand/brandyBox/commit/3c3e1b35654d1a2ff5c9bd0e683497fd3e42632a))
+
+
+### Performance Improvements
+
+* **backend:** use atomic UPSERT for file hash sync ([43236e6](https://github.com/markusbrand/brandyBox/commit/43236e6c11d48688e8db08e2022c35a209aa9b93))
+* **backend:** use atomic UPSERT for file hash sync ([e42524f](https://github.com/markusbrand/brandyBox/commit/e42524f256760cc2c3a003e6b10064612975f547))
+
 ## [1.2.2](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.2.1...brandybox-v1.2.2) (2026-09-03)
 
 
