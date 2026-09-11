@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.0...brandybox-v1.3.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **client-tauri:** improve large directory sync resilience and restore linux tray icons ([a700e75](https://github.com/markusbrand/brandyBox/commit/a700e758756fb2a1c4440d337a73ad722e6be228))
+
 ## [1.3.0](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.2.2...brandybox-v1.3.0) (2026-09-09)
 
 
