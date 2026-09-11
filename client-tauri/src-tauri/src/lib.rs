@@ -15,9 +15,20 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
 
+#[cfg(target_os = "macos")]
 const ICON_SYNCED_BYTES: &[u8] = include_bytes!("../icons/tray_synced_22.png");
+#[cfg(target_os = "macos")]
 const ICON_SYNCING_BYTES: &[u8] = include_bytes!("../icons/tray_syncing_22.png");
+#[cfg(target_os = "macos")]
 const ICON_ERROR_BYTES: &[u8] = include_bytes!("../icons/tray_error_22.png");
+
+#[cfg(not(target_os = "macos"))]
+const ICON_SYNCED_BYTES: &[u8] = include_bytes!("../icons/icon_synced.png");
+#[cfg(not(target_os = "macos"))]
+const ICON_SYNCING_BYTES: &[u8] = include_bytes!("../icons/icon_syncing.png");
+#[cfg(not(target_os = "macos"))]
+const ICON_ERROR_BYTES: &[u8] = include_bytes!("../icons/icon_error.png");
+
 
 fn get_icon_image(status: &str) -> Option<Image<'static>> {
     let bytes = match status {
@@ -55,7 +66,7 @@ pub fn update_tray_status(app: &tauri::AppHandle, status: &str, message: Option<
     if let Some(tray) = app.tray_by_id("main-tray") {
         if let Some(img) = get_icon_image(status) {
             let _ = tray.set_icon(Some(img));
-            let _ = tray.set_icon_as_template(true);
+            let _ = tray.set_icon_as_template(cfg!(target_os = "macos"));
         }
         let tooltip = sync_status_to_tooltip(status, message);
         let _ = tray.set_tooltip(Some(tooltip));
@@ -588,7 +599,7 @@ pub fn run() {
                 .tooltip("Brandy Box")
                 .menu(&menu)
                 .show_menu_on_left_click(true)
-                .icon_as_template(true)
+                .icon_as_template(cfg!(target_os = "macos"))
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
                         "settings" => {

@@ -81,6 +81,18 @@ struct UpdateUserBody {
     storage_limit_bytes: Option<i64>,
 }
 
+fn format_reqwest_error(e: reqwest::Error) -> String {
+    use std::error::Error;
+    let mut msg = e.to_string();
+    let mut source = e.source();
+    while let Some(s) = source {
+        msg.push_str(": ");
+        msg.push_str(&s.to_string());
+        source = s.source();
+    }
+    msg
+}
+
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
         ApiClient { base_url, access_token: None, refresh_token: None, email: None }
@@ -176,11 +188,11 @@ impl ApiClient {
                             return Err(last_err);
                         }
                     } else {
-                        return r.json().map_err(|e| e.to_string());
+                        return r.json().map_err(format_reqwest_error);
                     }
                 }
                 Err(e) => {
-                    last_err = e.to_string();
+                    last_err = format_reqwest_error(e);
                 }
             }
             if attempt < 3 {
@@ -205,11 +217,11 @@ impl ApiClient {
                             return Err(last_err);
                         }
                     } else {
-                        return r.json().map_err(|e| e.to_string());
+                        return r.json().map_err(format_reqwest_error);
                     }
                 }
                 Err(e) => {
-                    last_err = e.to_string();
+                    last_err = format_reqwest_error(e);
                 }
             }
             if attempt < 3 {
@@ -221,11 +233,11 @@ impl ApiClient {
 
     pub fn me(&self) -> Result<User, String> {
         let url = format!("{}/api/users/me", self.base_url.trim_end_matches('/'));
-        let r = self.client().get(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
+        let r = self.client().get(&url).headers(self.headers()).send().map_err(format_reqwest_error)?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
-        r.json().map_err(|e| e.to_string())
+        r.json().map_err(format_reqwest_error)
     }
 
     pub fn change_password(&self, current: &str, new_pass: &str) -> Result<(), String> {
@@ -238,7 +250,7 @@ impl ApiClient {
             .json(&body)
             .header("Content-Type", "application/json")
             .send()
-            .map_err(|e| e.to_string())?;
+            .map_err(format_reqwest_error)?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
@@ -247,17 +259,19 @@ impl ApiClient {
 
     pub fn get_storage(&self) -> Result<StorageInfo, String> {
         let url = format!("{}/api/files/storage", self.base_url.trim_end_matches('/'));
-        let r = self.client().get(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
+        let r = self.client().get(&url).headers(self.headers()).send().map_err(format_reqwest_error)?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
-        r.json().map_err(|e| e.to_string())
+        r.json().map_err(format_reqwest_error)
     }
 
     pub fn list_files(&mut self) -> Result<Vec<FileItem>, String> {
         let url = format!("{}/api/files/list", self.base_url.trim_end_matches('/'));
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(300))
+            .tcp_keepalive(Duration::from_secs(60))
+            .pool_idle_timeout(Duration::from_secs(90))
             .user_agent(Self::user_agent())
             .build()
             .expect("client");
@@ -280,11 +294,17 @@ impl ApiClient {
                             return Err(last_err);
                         }
                     } else {
-                        return r.json().map_err(|e| e.to_string());
+                        match r.json::<Vec<FileItem>>() {
+                            Ok(items) => return Ok(items),
+                            Err(e) => {
+                                last_err = format_reqwest_error(e);
+                                log::warn!("list_files decode error on attempt {}: {}", attempt + 1, last_err);
+                            }
+                        }
                     }
                 }
                 Err(e) => {
-                    last_err = e.to_string();
+                    last_err = format_reqwest_error(e);
                 }
             }
             if attempt < 3 {
@@ -616,11 +636,11 @@ impl ApiClient {
 
     pub fn list_users(&self) -> Result<Vec<User>, String> {
         let url = format!("{}/api/users", self.base_url.trim_end_matches('/'));
-        let r = self.client().get(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
+        let r = self.client().get(&url).headers(self.headers()).send().map_err(format_reqwest_error)?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
-        r.json().map_err(|e| e.to_string())
+        r.json().map_err(format_reqwest_error)
     }
 
     pub fn create_user(&self, email: &str, first_name: &str, last_name: &str) -> Result<serde_json::Value, String> {
@@ -637,7 +657,7 @@ impl ApiClient {
             match self.client().post(&url).headers(headers).json(&body).header("Content-Type", "application/json").send() {
                 Ok(r) => {
                     if r.status().is_success() {
-                        return r.json().map_err(|e| e.to_string());
+                        return r.json().map_err(format_reqwest_error);
                     }
                     let status = r.status();
                     let text = r.text().unwrap_or_default();
@@ -647,7 +667,7 @@ impl ApiClient {
                     }
                 }
                 Err(e) => {
-                    last_err = e.to_string();
+                    last_err = format_reqwest_error(e);
                 }
             }
             if attempt < 3 {
@@ -668,11 +688,11 @@ impl ApiClient {
             .json(&body)
             .header("Content-Type", "application/json")
             .send()
-            .map_err(|e| e.to_string())?;
+            .map_err(format_reqwest_error)?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }
-        r.json().map_err(|e| e.to_string())
+        r.json().map_err(format_reqwest_error)
     }
 
     /// Report client version and last sync outcome to the server (best-effort).
@@ -691,7 +711,7 @@ impl ApiClient {
             .json(&body)
             .header("Content-Type", "application/json")
             .send()
-            .map_err(|e| e.to_string())?;
+            .map_err(format_reqwest_error)?;
         if r.status() == reqwest::StatusCode::NO_CONTENT || r.status().is_success() {
             return Ok(());
         }
@@ -701,7 +721,7 @@ impl ApiClient {
     pub fn delete_user(&self, email: &str) -> Result<(), String> {
         let encoded = urlencoding::encode(email);
         let url = format!("{}/api/users/{}", self.base_url.trim_end_matches('/'), encoded);
-        let r = self.client().delete(&url).headers(self.headers()).send().map_err(|e| e.to_string())?;
+        let r = self.client().delete(&url).headers(self.headers()).send().map_err(format_reqwest_error)?;
         if !r.status().is_success() {
             return Err(format!("{}", r.status()));
         }

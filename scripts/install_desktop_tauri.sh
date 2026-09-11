@@ -2,7 +2,7 @@
 # Install Brandy Box (Tauri client) desktop entries for current user.
 # Requires a built Tauri app: AppImage or .deb in client-tauri/src-tauri/target/release/bundle/,
 # or a release binary at target/release/brandybox.
-# Usage: ./scripts/install_desktop_tauri.sh
+# Usage: ./scripts/install_desktop_tauri.sh [--build]
 #    or: REPO_ROOT=/path/to/brandyBox ./scripts/install_desktop_tauri.sh
 
 set -e
@@ -11,6 +11,11 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 BUNDLE_DIR="$REPO_ROOT/client-tauri/src-tauri/target/release/bundle"
 INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/brandybox"
 EXEC_PATH=""
+
+if [[ "${1:-}" == "--build" || "${1:-}" == "-b" ]]; then
+  echo "Building Brandy Box production release (embedded frontend)..."
+  (cd "$REPO_ROOT/client-tauri" && npx tauri build --no-bundle)
+fi
 
 # 1. Try AppImage first
 APPIMAGE=""
@@ -77,6 +82,10 @@ if [ -z "$EXEC_PATH" ]; then
     cp -f "$RELEASE_BIN" "$INSTALL_DIR/brandybox"
     chmod +x "$INSTALL_DIR/brandybox"
     EXEC_PATH="$INSTALL_DIR/brandybox"
+    if [ -d "$INSTALL_DIR/usr/bin" ]; then
+      cp -f "$RELEASE_BIN" "$INSTALL_DIR/usr/bin/brandybox"
+      chmod +x "$INSTALL_DIR/usr/bin/brandybox"
+    fi
   fi
 fi
 
@@ -92,9 +101,15 @@ fi
 
 # Always prefer the latest release binary if it is newer (avoids stale client after code changes)
 RELEASE_BIN="$REPO_ROOT/client-tauri/src-tauri/target/release/brandybox"
-if [ -x "$RELEASE_BIN" ] && [ -f "$EXEC_PATH" ] && [ "$RELEASE_BIN" -nt "$EXEC_PATH" ]; then
-  cp -f "$RELEASE_BIN" "$EXEC_PATH"
-  chmod +x "$EXEC_PATH"
+if [ -x "$RELEASE_BIN" ]; then
+  if [ -f "$EXEC_PATH" ] && [ "$RELEASE_BIN" -nt "$EXEC_PATH" ]; then
+    cp -f "$RELEASE_BIN" "$EXEC_PATH"
+    chmod +x "$EXEC_PATH"
+  fi
+  if [ -f "$INSTALL_DIR/usr/bin/brandybox" ]; then
+    cp -f "$RELEASE_BIN" "$INSTALL_DIR/usr/bin/brandybox"
+    chmod +x "$INSTALL_DIR/usr/bin/brandybox"
+  fi
 fi
 
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"

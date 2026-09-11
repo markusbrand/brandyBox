@@ -118,12 +118,16 @@ mod tests {
 
     #[test]
     fn test_store_and_get() {
+        let temp_dir = std::env::temp_dir().join(format!("brandybox_test_{}", uuid::Uuid::new_v4()));
+        std::env::set_var("BRANDYBOX_CONFIG_DIR", &temp_dir);
         clear_stored();
-        set_stored("mbrandstaetter48@gmail.com", "dummy_token_123");
+        set_stored("test@example.com", "dummy_token_123");
         let res = get_stored();
-        assert_eq!(res, Some(("mbrandstaetter48@gmail.com".to_string(), "dummy_token_123".to_string())));
+        assert_eq!(res, Some(("test@example.com".to_string(), "dummy_token_123".to_string())));
         clear_stored();
         assert_eq!(get_stored(), None);
+        std::env::remove_var("BRANDYBOX_CONFIG_DIR");
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
 

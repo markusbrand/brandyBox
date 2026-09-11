@@ -15,7 +15,7 @@ fn is_local_network() -> bool {
     // Try LAN reachability (short timeout)
     let url = format!("http://{}:{}/api/users/me", LAN_HOST, BACKEND_PORT);
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(4))
         .build();
     if let Ok(c) = client {
         if let Ok(r) = c.get(&url).send() {
