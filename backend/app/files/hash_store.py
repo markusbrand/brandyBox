@@ -3,7 +3,7 @@
 import hashlib
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,9 +51,13 @@ async def set_hash(session: AsyncSession, user_email: str, path: str, content_ha
 
 async def delete_hash(session: AsyncSession, user_email: str, path: str) -> None:
     """Remove stored hash when file is deleted. Caller must commit."""
-    row = await session.get(FileHash, (user_email, path))
-    if row:
-        await session.delete(row)
+    # ⚡ Bolt: Use a direct DELETE query instead of SELECT + DELETE.
+    # Impact: Reduces database roundtrips from 2 to 1 per file deletion.
+    stmt = delete(FileHash).where(
+        FileHash.user_email == user_email,
+        FileHash.path == path,
+    )
+    await session.execute(stmt)
 
 
 def compute_hash(body: bytes) -> str:
