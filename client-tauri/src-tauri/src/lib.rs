@@ -414,18 +414,17 @@ fn restore_window_geometry(win: &tauri::WebviewWindow) {
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
-        // Reset to default size before showing; the frontend will resize
-        // to actual content via fit_window_to_content after measuring.
-        let _ = win.set_size(tauri::PhysicalSize::new(
-            DEFAULT_SETTINGS_WIDTH,
-            DEFAULT_SETTINGS_HEIGHT,
-        ));
         if let Some(geom) = config::get_settings_window_geometry() {
-            if let Some((x, y, _, _)) = parse_geometry(&geom) {
+            if let Some((x, y, w, h)) = parse_geometry(&geom) {
+                let _ = win.set_size(tauri::PhysicalSize::new(w, h));
                 let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
             }
         } else {
-            // fallback to default position near tray
+            // fallback to default size and position near tray
+            let _ = win.set_size(tauri::PhysicalSize::new(
+                DEFAULT_SETTINGS_WIDTH,
+                DEFAULT_SETTINGS_HEIGHT,
+            ));
             if let Ok(Some(monitor)) = win.primary_monitor() {
                 let work = monitor.work_area();
                 let wa_x = work.position.x;
