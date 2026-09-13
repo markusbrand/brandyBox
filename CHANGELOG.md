@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.1...brandybox-v1.3.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **settings:** restore saved window position and size instead of resetting to defaults ([0267a9f](https://github.com/markusbrand/brandyBox/commit/0267a9f29863a46d1da50de0a03f304a32e87185))
+
 ## [1.3.1](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.0...brandybox-v1.3.1) (2026-09-13)
 
 
