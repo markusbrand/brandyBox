@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.1](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.0...brandybox-v1.3.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **client-tauri:** improve large directory sync resilience and restore linux tray icons ([a700e75](https://github.com/markusbrand/brandyBox/commit/a700e758756fb2a1c4440d337a73ad722e6be228))
+* **settings:** cap window to screen height, add admin list scroll, faster initial fit ([d222d9d](https://github.com/markusbrand/brandyBox/commit/d222d9dc11c4985985575f96ba762852a28667a5))
+
+
+### Performance Improvements
+
+* **backend:** use direct DELETE query for file hash deletion ([04d2897](https://github.com/markusbrand/brandyBox/commit/04d2897b2fff3499093a49cab7df8ead74d3ac73))
+
 ## [1.3.0](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.2.2...brandybox-v1.3.0) (2026-09-09)
 
 
