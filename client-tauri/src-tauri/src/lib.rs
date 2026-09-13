@@ -414,17 +414,34 @@ fn restore_window_geometry(win: &tauri::WebviewWindow) {
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
-        restore_window_geometry(&win);
-        let _ = win.show();
-        let _ = win.unminimize();
-        let _ = win.set_focus();
-        // Reapply position after show() because on Linux GTK / X11 / Wayland,
-        // showing an unmapped window can cause the window manager to place it at default center position.
+        // Reset to default size before showing; the frontend will resize
+        // to actual content via fit_window_to_content after measuring.
+        let _ = win.set_size(tauri::PhysicalSize::new(
+            DEFAULT_SETTINGS_WIDTH,
+            DEFAULT_SETTINGS_HEIGHT,
+        ));
         if let Some(geom) = config::get_settings_window_geometry() {
             if let Some((x, y, _, _)) = parse_geometry(&geom) {
                 let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
             }
+        } else {
+            // fallback to default position near tray
+            if let Ok(Some(monitor)) = win.primary_monitor() {
+                let work = monitor.work_area();
+                let wa_x = work.position.x;
+                let wa_y = work.position.y;
+                let wa_w = work.size.width as i32;
+                let wa_h = work.size.height as i32;
+                let win_w = DEFAULT_SETTINGS_WIDTH as i32;
+                let win_h = DEFAULT_SETTINGS_HEIGHT as i32;
+                let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).clamp(wa_x, (wa_x + wa_w - win_w).max(wa_x));
+                let y = (wa_y + wa_h - win_h - TRAY_SIDE_MARGIN).clamp(wa_y, (wa_y + wa_h - win_h).max(wa_y));
+                let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+            }
         }
+        let _ = win.show();
+        let _ = win.unminimize();
+        let _ = win.set_focus();
     }
 }
 
@@ -445,9 +462,19 @@ fn fit_window_to_content(app: tauri::AppHandle, width: Option<u32>, height: Opti
         let w = width
             .map(|v| v.max(MIN_SETTINGS_WIDTH))
             .unwrap_or(DEFAULT_SETTINGS_WIDTH);
-        let h = height
+        let mut h = height
             .map(|v| v.max(MIN_SETTINGS_HEIGHT))
             .unwrap_or(DEFAULT_SETTINGS_HEIGHT);
+
+        // Cap height to monitor work area so window doesn't overflow the screen
+        if let Ok(Some(monitor)) = win.current_monitor() {
+            let work = monitor.work_area();
+            let max_h = work.size.height as u32;
+            if h > max_h {
+                h = max_h;
+            }
+        }
+
         if win.set_size(tauri::PhysicalSize::new(w, h)).is_ok() {
             // Ensure window stays fully visible (clamp to monitor work area)
             if let Ok(Some(monitor)) = win.current_monitor() {

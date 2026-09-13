@@ -79,16 +79,16 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  const fitWindowToContent = useCallback(() => {
+const fitWindowToContent = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
     const timer = setTimeout(() => {
       const contentHeight = el.scrollHeight || el.getBoundingClientRect().height;
       const contentWidth = el.scrollWidth || el.getBoundingClientRect().width;
-      const height = Math.ceil(contentHeight + 64); // + title bar 32 + padding
+      const height = Math.ceil(contentHeight + 64);
       const width = Math.max(560, Math.ceil(contentWidth) + 48);
       invoke("fit_window_to_content", { width, height }).catch(() => {});
-    }, 350);
+    }, 80);
     return () => clearTimeout(timer);
   }, []);
 
@@ -97,7 +97,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
     return () => {
       if (cleanup) cleanup();
     };
-  }, [adminOpen, storage, fitWindowToContent]);
+  }, [storage, fitWindowToContent]);
 
   const loadSettings = async () => {
     try {
@@ -495,8 +495,8 @@ export default function Settings({ email, onLogout }: SettingsProps) {
           >
             Admin – User management
           </Button>
-          <Collapse in={adminOpen}>
-            <Box sx={{ mt: 1 }}>
+          <Collapse in={adminOpen} onEntered={fitWindowToContent} onExited={fitWindowToContent}>
+            <Box sx={{ mt: 1, maxHeight: 360, overflow: "auto" }}>
               {adminActionError && (
                 <Alert severity="error" sx={{ mb: 1 }} onClose={() => setAdminActionError(null)}>
                   {adminActionError}
