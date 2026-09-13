@@ -20,3 +20,6 @@
 ## 2024-12-07 - Caching Intl.DateTimeFormat vs Date.prototype.toLocaleString() for performance
 **Learning:** `Date.prototype.toLocaleString()` is extremely slow when called repeatedly during list rendering (e.g. file timestamps). V8 re-creates the formatting context on every call, taking ~3.8 seconds for 10k dates vs ~30ms when using a cached `Intl.DateTimeFormat`.
 **Action:** When formatting dates repeatedly on the frontend, instantiate a single `Intl.DateTimeFormat` instance globally or in a top-level scope (e.g., `const mtimeFormatter = new Intl.DateTimeFormat(...)`) and use its `.format()` method to dramatically reduce main thread blocking.
+## 2024-05-18 - Atomic Deletion for File Hashes
+**Learning:** The previous implementation of `delete_hash` used a sequential `SELECT` via `session.get()` followed by `session.delete()`. While functional, it forced 2 database roundtrips per deletion. For simple database deletions where the object data is not needed prior to deletion, using a direct `sqlalchemy.delete` query (e.g. `session.execute(delete(...))`) safely handles this pattern in a single query, cutting database roundtrips in half.
+**Action:** When deleting records based on specific constraints and the object's data is not needed for application logic, prefer direct `DELETE` queries over `session.get()` followed by `session.delete()`.
