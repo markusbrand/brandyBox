@@ -20,3 +20,6 @@
 ## 2026-09-02 - Add loading states for background image upload
 **Learning:** Loading states for async operations like uploading images provide critical feedback. Missing loading states on file inputs can lead to confusion if the upload is slow, as the user has no visual cue that processing is occurring.
 **Action:** When adding or reviewing file upload forms, always verify that the submit/upload button transitions to a disabled, loading state with clear text (e.g., "Uploading...") and an indicator (e.g., CircularProgress) while the upload is in progress. Also disable the hidden `<input type="file">` to prevent concurrent selections.
+## 2026-09-14 - Semantic interactive elements in AppLayout
+**Learning:** Using a `<Typography>` text element with an `onClick` handler as a pseudo-button is a severe accessibility anti-pattern. It lacks keyboard focusability, screen-reader role recognition (as a button), and standard interaction states (hover/focus rings). Replacing it with a semantic MUI `<Button>` inherently resolves these issues.
+**Action:** Always use semantic elements (like `<Button>`) for interactive actions, avoiding attaching `onClick` handlers to non-interactive elements like text or containers.
