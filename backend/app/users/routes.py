@@ -182,9 +182,18 @@ async def upload_my_background_image(
     ``content_background_image`` to ``bb:server-background`` so the web client
     can load it with Bearer auth via this route and use a blob URL in CSS.
     """
-    body = await request.body()
+    # 🛡️ Sentinel: Stream the body to prevent memory exhaustion DoS from massive payloads
+    body_bytes = bytearray()
+    async for chunk in request.stream():
+        if len(body_bytes) + len(chunk) > 5 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Image too large (max 5 MB)",
+            )
+        body_bytes.extend(chunk)
+
     try:
-        save_user_background_image_bytes(current_user.email, body)
+        save_user_background_image_bytes(current_user.email, bytes(body_bytes))
     except ValueError as e:
         log.warning("upload_my_background_image rejected user=%s: %s", current_user.email, e)
         msg = str(e)
