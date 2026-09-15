@@ -20,3 +20,6 @@
 ## 2026-09-02 - Add loading states for background image upload
 **Learning:** Loading states for async operations like uploading images provide critical feedback. Missing loading states on file inputs can lead to confusion if the upload is slow, as the user has no visual cue that processing is occurring.
 **Action:** When adding or reviewing file upload forms, always verify that the submit/upload button transitions to a disabled, loading state with clear text (e.g., "Uploading...") and an indicator (e.g., CircularProgress) while the upload is in progress. Also disable the hidden `<input type="file">` to prevent concurrent selections.
+## 2026-09-15 - Semantic Buttons over Styled Text
+**Learning:** Using styled text elements (like `<Typography sx={{ cursor: "pointer" }}>`) for interactive actions such as "Sign Out" prevents keyboard navigation (tabbing) and lacks appropriate semantic roles for screen readers, breaking accessibility.
+**Action:** Always use semantic interactive elements (like `<Button>` or `<IconButton>`) for actionable UI elements instead of styling text or generic boxes, ensuring they are inherently focusable and accessible to assistive technologies.
