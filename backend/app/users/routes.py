@@ -55,7 +55,9 @@ log = logging.getLogger(__name__)
 
 
 @router.post("/auth/login", response_model=TokenPair)
-@limiter.limit("60/minute")  # E2E polls login frequently; 60/min avoids 429 on sync scenarios
+@limiter.limit(
+    "60/minute"
+)  # E2E polls login frequently; 60/min avoids 429 on sync scenarios
 async def login(
     request: Request,
     body: UserLogin,
@@ -182,11 +184,31 @@ async def upload_my_background_image(
     ``content_background_image`` to ``bb:server-background`` so the web client
     can load it with Bearer auth via this route and use a blob URL in CSS.
     """
-    body = await request.body()
+    body_chunks = []
+    body_size = 0
+    max_size = 5 * 1024 * 1024  # 5 MB
+
+    async for chunk in request.stream():
+        body_size += len(chunk)
+        if body_size > max_size:
+            log.warning(
+                "upload_my_background_image rejected user=%s: Image too large",
+                current_user.email,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Image too large (max {max_size // (1024 * 1024)} MB)",
+            )
+        body_chunks.append(chunk)
+
+    body = b"".join(body_chunks)
+
     try:
         save_user_background_image_bytes(current_user.email, body)
     except ValueError as e:
-        log.warning("upload_my_background_image rejected user=%s: %s", current_user.email, e)
+        log.warning(
+            "upload_my_background_image rejected user=%s: %s", current_user.email, e
+        )
         msg = str(e)
         if "too large" in msg.lower():
             raise HTTPException(
@@ -234,7 +256,10 @@ async def change_password(
 ) -> dict:
     """Change the current user's password. Requires current password."""
     if not verify_password(body.current_password, current_user.password_hash):
-        log.warning("Change password failed for email=%s: wrong current password", current_user.email)
+        log.warning(
+            "Change password failed for email=%s: wrong current password",
+            current_user.email,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect",
@@ -262,7 +287,9 @@ async def admin_create_user(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserCreateResponse:
     """Create a new user (admin only). Password is sent by email, or returned when E2E header is set or SMTP not configured."""
-    e2e_return_password = (request.headers.get(E2E_RETURN_TEMP_PASSWORD_HEADER) or "").strip().lower() in ("true", "1")
+    e2e_return_password = (
+        request.headers.get(E2E_RETURN_TEMP_PASSWORD_HEADER) or ""
+    ).strip().lower() in ("true", "1")
     try:
         user, temp_password = await do_create_user(
             session, payload, is_admin=False, skip_email=e2e_return_password
@@ -271,7 +298,11 @@ async def admin_create_user(
         log.info("Admin %s created user email=%s", current_user.email, user.email)
         data = UserResponse.model_validate(user).model_dump()
         # Return temp_password when E2E requested it, or when SMTP is not configured
-        if e2e_return_password or not get_settings().smtp_host or not get_settings().smtp_from:
+        if (
+            e2e_return_password
+            or not get_settings().smtp_host
+            or not get_settings().smtp_from
+        ):
             data["temp_password"] = temp_password
         return UserCreateResponse(**data)
     except ValueError as e:
@@ -314,7 +345,9 @@ async def admin_update_user_storage_limit(
     """Update a user's storage limit (admin only). storage_limit_bytes: max bytes or null for server default."""
     user = await get_user_by_email(session, email)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
     if payload.storage_limit_bytes is not None and payload.storage_limit_bytes < 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -323,7 +356,12 @@ async def admin_update_user_storage_limit(
     user.storage_limit_bytes = payload.storage_limit_bytes
     await session.commit()
     await session.refresh(user)
-    log.info("Admin %s set storage_limit for %s to %s", current_user.email, email, payload.storage_limit_bytes)
+    log.info(
+        "Admin %s set storage_limit for %s to %s",
+        current_user.email,
+        email,
+        payload.storage_limit_bytes,
+    )
     data = UserResponse.model_validate(user).model_dump()
     data["storage_used_bytes"] = await get_user_used_bytes(session, user.email)
     data["storage_limit_bytes"] = get_user_storage_limit_bytes(
@@ -346,7 +384,9 @@ async def admin_delete_user(
         )
     user = await get_user_by_email(session, email)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
     log.info("Admin %s deleted user email=%s", current_user.email, email)
     await session.delete(user)
     return None
