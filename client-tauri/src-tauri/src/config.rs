@@ -170,7 +170,11 @@ pub fn get_settings_window_geometry() -> Option<String> {
 #[allow(dead_code)]
 pub fn set_settings_window_geometry(geometry: String) {
     let s = geometry.trim().to_string();
-    write_config(|c| c.settings_window_geometry = if s.is_empty() { None } else { Some(s) });
+    let new_val = if s.is_empty() { None } else { Some(s) };
+    let current = read_config().settings_window_geometry;
+    if current != new_val {
+        write_config(|c| c.settings_window_geometry = new_val);
+    }
 }
 
 fn executable_command() -> Vec<String> {
