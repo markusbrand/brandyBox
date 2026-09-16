@@ -17,3 +17,8 @@
 **Vulnerability:** Overly permissive CORS configuration allowing all headers (`allow_headers=["*"]`).
 **Learning:** The backend allowed any HTTP headers in cross-origin requests, which can lead to unexpected behavior or security issues if sensitive headers are sent or exploited.
 **Prevention:** Explicitly allow only necessary headers in CORS configuration (e.g., `["Accept", "Authorization", "Content-Type", "X-E2E-Return-Temp-Password"]`) instead of using wildcards.
+
+## 2024-05-24 - Fix Memory Exhaustion DoS in background upload
+**Vulnerability:** FastAPIs `await request.body()` loads the entire request payload into memory before further processing, creating a memory exhaustion DoS vulnerability when uploading large backgrounds.
+**Learning:** Even though limits are checked later in logic, calling `await request.body()` on large unverified payloads is dangerous in ASGI endpoints.
+**Prevention:** Instead of using `await request.body()`, stream the request incrementally using `async for chunk in request.stream():` and enforce a hard byte limit during accumulation before handing it to the processing logic.
