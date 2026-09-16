@@ -312,6 +312,7 @@ dependencies = [
  "fs2",
  "keyring",
  "log",
+ "objc2",
  "open",
  "reqwest 0.12.28",
  "serde",
