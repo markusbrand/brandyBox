@@ -23,3 +23,6 @@
 ## 2024-05-18 - Atomic Deletion for File Hashes
 **Learning:** The previous implementation of `delete_hash` used a sequential `SELECT` via `session.get()` followed by `session.delete()`. While functional, it forced 2 database roundtrips per deletion. For simple database deletions where the object data is not needed prior to deletion, using a direct `sqlalchemy.delete` query (e.g. `session.execute(delete(...))`) safely handles this pattern in a single query, cutting database roundtrips in half.
 **Action:** When deleting records based on specific constraints and the object's data is not needed for application logic, prefer direct `DELETE` queries over `session.get()` followed by `session.delete()`.
+## 2025-01-20 - Using session.get() for primary key lookups instead of select().where()
+**Learning:** In SQLAlchemy, `session.execute(select(Model).where(Model.id == id))` forces a query to the database in all circumstances and bypasses the session's identity map. `session.get(Model, id)` looks up the object in the identity map first, and will not issue a DB query if the object is already loaded, offering drastic speedups in hot paths.
+**Action:** When looking up a single entity by its primary key, use `session.get()` instead of building a `select()` query with a `where()` clause.

@@ -6,7 +6,6 @@ from email.message import EmailMessage
 from typing import Optional
 
 import aiosmtplib
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import hash_password
@@ -63,8 +62,9 @@ Brandy Box
 
 async def get_user_by_email(session: AsyncSession, email: str) -> Optional[User]:
     """Return user by email or None."""
-    result = await session.execute(select(User).where(User.email == email))
-    return result.scalar_one_or_none()
+    # ⚡ Bolt: Use session.get() instead of select().where() for primary key lookups
+    # Impact: Utilizes the identity map cache, completely avoiding a DB query if the entity is already loaded.
+    return await session.get(User, email)
 
 
 async def create_user(
