@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_admin, get_current_user
@@ -357,9 +357,12 @@ async def admin_delete_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account",
         )
-    user = await get_user_by_email(session, email)
-    if not user:
+
+    # ⚡ Bolt: Use direct atomic DELETE query instead of SELECT then DELETE.
+    # Impact: Halves the database roundtrips required for deletion.
+    result = await session.execute(delete(User).where(User.email == email))
+    if result.rowcount == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
     log.info("Admin %s deleted user email=%s", current_user.email, email)
-    await session.delete(user)
     return None
