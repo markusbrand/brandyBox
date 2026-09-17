@@ -39,6 +39,7 @@ from app.users.models import (
 from app.limiter import limiter
 from app.users.background_image import (
     USER_BACKGROUND_SENTINEL,
+    _MAX_BYTES,
     clear_user_background_image_files,
     find_stored_background_path,
     save_user_background_image_bytes,
@@ -182,7 +183,19 @@ async def upload_my_background_image(
     ``content_background_image`` to ``bb:server-background`` so the web client
     can load it with Bearer auth via this route and use a blob URL in CSS.
     """
-    body = await request.body()
+    # 🛡️ Sentinel: Enforce a hard limit on request body size to prevent DoS via unbounded memory consumption
+    chunks = []
+    bytes_read = 0
+    async for chunk in request.stream():
+        bytes_read += len(chunk)
+        if bytes_read > _MAX_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Image too large (max {_MAX_BYTES // (1024 * 1024)} MB)",
+            )
+        chunks.append(chunk)
+    body = b"".join(chunks)
+
     try:
         save_user_background_image_bytes(current_user.email, body)
     except ValueError as e:
