@@ -5,7 +5,6 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import get_subject_from_access
@@ -36,8 +35,9 @@ async def get_current_user(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    result = await session.execute(select(User).where(User.email == email))
-    user = result.scalar_one_or_none()
+    # ⚡ Bolt: Use session.get() instead of select().where() for primary key lookups
+    # Impact: Utilizes the identity map cache, completely avoiding a DB query if the entity is already loaded.
+    user = await session.get(User, email)
     if not user:
         log.warning("Token valid but user not found: email=%s", email)
         raise HTTPException(
