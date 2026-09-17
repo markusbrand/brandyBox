@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -e
+
+# Wrapper script to execute brandybox-doctor either inside running Docker container or locally.
+# Allows direct invocation on the Raspberry Pi host via `ssh pi brandybox-doctor --summary`
+
+if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^brandybox-backend$"; then
+    exec docker exec -i brandybox-backend python -m app.cli.doctor "$@"
+fi
+
+# If running inside the container
+if [ -f "/app/app/cli/doctor.py" ]; then
+    exec python -m app.cli.doctor "$@"
+fi
+
+# Fallback: check repository relative path
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ -f "$REPO_ROOT/backend/app/cli/doctor.py" ]; then
+    if [ -f "$REPO_ROOT/backend/.venv/bin/python" ]; then
+        cd "$REPO_ROOT/backend" && exec "$REPO_ROOT/backend/.venv/bin/python" -m app.cli.doctor "$@"
+    else
+        cd "$REPO_ROOT/backend" && PYTHONPATH="$REPO_ROOT/backend:$PYTHONPATH" exec python3 -m app.cli.doctor "$@"
+    fi
+fi
+
+echo "Error: Unable to find brandybox-backend container or local doctor.py" >&2
+exit 1

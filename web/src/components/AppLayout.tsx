@@ -4,6 +4,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import {
   AppBar,
   Box,
+  Button,
   Drawer,
   IconButton,
   List,
@@ -127,16 +128,16 @@ export default function AppLayout() {
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Brandy Box
           </Typography>
-          <Typography
-            variant="body2"
-            sx={{ cursor: "pointer", mr: 1 }}
+          <Button
+            color="inherit"
+            sx={{ mr: 1 }}
             onClick={() => {
               logout();
               navigate("/login");
             }}
           >
             Sign out
-          </Typography>
+          </Button>
         </Toolbar>
       </AppBar>
       {mobile ? (

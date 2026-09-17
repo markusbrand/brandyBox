@@ -15,19 +15,10 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
 
-#[cfg(target_os = "macos")]
-const ICON_SYNCED_BYTES: &[u8] = include_bytes!("../icons/tray_synced_22.png");
-#[cfg(target_os = "macos")]
-const ICON_SYNCING_BYTES: &[u8] = include_bytes!("../icons/tray_syncing_22.png");
-#[cfg(target_os = "macos")]
-const ICON_ERROR_BYTES: &[u8] = include_bytes!("../icons/tray_error_22.png");
-
-#[cfg(not(target_os = "macos"))]
 const ICON_SYNCED_BYTES: &[u8] = include_bytes!("../icons/icon_synced.png");
-#[cfg(not(target_os = "macos"))]
 const ICON_SYNCING_BYTES: &[u8] = include_bytes!("../icons/icon_syncing.png");
-#[cfg(not(target_os = "macos"))]
 const ICON_ERROR_BYTES: &[u8] = include_bytes!("../icons/icon_error.png");
+
 
 
 fn get_icon_image(status: &str) -> Option<Image<'static>> {
@@ -66,7 +57,7 @@ pub fn update_tray_status(app: &tauri::AppHandle, status: &str, message: Option<
     if let Some(tray) = app.tray_by_id("main-tray") {
         if let Some(img) = get_icon_image(status) {
             let _ = tray.set_icon(Some(img));
-            let _ = tray.set_icon_as_template(cfg!(target_os = "macos"));
+            let _ = tray.set_icon_as_template(false);
         }
         let tooltip = sync_status_to_tooltip(status, message);
         let _ = tray.set_tooltip(Some(tooltip));
@@ -281,6 +272,16 @@ fn open_sync_folder() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
+    let path = app.path().app_log_dir().map_err(|e| e.to_string())?;
+    if !path.exists() {
+        let _ = std::fs::create_dir_all(&path);
+    }
+    log::info!("Opening log directory: {}", path.display());
+    open::that(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     if !config::user_has_set_sync_folder() {
         return Err("Sync folder not set".to_string());
@@ -320,6 +321,7 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
                 );
             }
             Err(e) => {
+                log::error!("Brandy Box sync error: {}", e);
                 eprintln!("Brandy Box sync error: {}", e);
                 sync::set_sync_status(sync::SyncStatus::Error(e.clone()));
                 update_tray_status(&app_handle, "error", Some(e));
@@ -338,21 +340,35 @@ fn quit_app() {
     std::process::exit(0);
 }
 
-const DEFAULT_SETTINGS_WIDTH: u32 = 600;
-const DEFAULT_SETTINGS_HEIGHT: u32 = 720;
-const MIN_SETTINGS_WIDTH: u32 = 400;
-const MIN_SETTINGS_HEIGHT: u32 = 400;
+const DEFAULT_SETTINGS_WIDTH: f64 = 600.0;
+const DEFAULT_SETTINGS_HEIGHT: f64 = 720.0;
+const MIN_SETTINGS_WIDTH: f64 = 480.0;
+const MIN_SETTINGS_HEIGHT: f64 = 400.0;
 const TRAY_SIDE_MARGIN: i32 = 16;
 
 fn save_window_geometry(pos: tauri::PhysicalPosition<i32>, sz: tauri::PhysicalSize<u32>) {
     let geom = format!("{},{},{},{}", pos.x, pos.y, sz.width, sz.height);
-    log::debug!("Saved settings window geometry: {}", geom);
+    log::info!("Saved settings window geometry: {}", geom);
     config::set_settings_window_geometry(geom);
 }
 
 fn restore_window_geometry(win: &tauri::WebviewWindow) {
+    let scale = win.scale_factor().unwrap_or(1.0);
+    let min_w = (MIN_SETTINGS_WIDTH * scale).round() as u32;
+    let min_h = (MIN_SETTINGS_HEIGHT * scale).round() as u32;
+    let default_w = (DEFAULT_SETTINGS_WIDTH * scale).round() as u32;
+    let default_h = (DEFAULT_SETTINGS_HEIGHT * scale).round() as u32;
+
     if let Some(geom) = config::get_settings_window_geometry() {
-        if let Some((mut x, mut y, w, h)) = parse_geometry(&geom) {
+        if let Some((mut x, mut y, mut w, mut h)) = parse_geometry(&geom) {
+            // Guard against legacy squished values (e.g. from Retina 2x scale mismatch)
+            if w < min_w {
+                w = default_w;
+            }
+            if h < min_h {
+                h = default_h;
+            }
+
             let mut is_visible = false;
             if let Ok(monitors) = win.available_monitors() {
                 for m in &monitors {
@@ -366,6 +382,10 @@ fn restore_window_geometry(win: &tauri::WebviewWindow) {
                         && (y + h as i32 > wa_y + 30)
                         && (y < wa_y + wa_h - 30);
                     if intersects {
+                        w = w.min(wa_w as u32);
+                        h = h.min(wa_h as u32);
+                        x = x.clamp(wa_x, (wa_x + wa_w - w as i32).max(wa_x));
+                        y = y.clamp(wa_y, (wa_y + wa_h - h as i32).max(wa_y));
                         is_visible = true;
                         break;
                     }
@@ -374,15 +394,30 @@ fn restore_window_geometry(win: &tauri::WebviewWindow) {
             if !is_visible {
                 if let Ok(Some(primary)) = win.primary_monitor() {
                     let work = primary.work_area();
-                    x = (work.position.x + work.size.width as i32 - w as i32 - TRAY_SIDE_MARGIN)
-                        .clamp(work.position.x, (work.position.x + work.size.width as i32 - w as i32).max(work.position.x));
-                    y = (work.position.y + work.size.height as i32 - h as i32 - TRAY_SIDE_MARGIN)
-                        .clamp(work.position.y, (work.position.y + work.size.height as i32 - h as i32).max(work.position.y));
+                    let wa_x = work.position.x;
+                    let wa_y = work.position.y;
+                    let wa_w = work.size.width as i32;
+                    let wa_h = work.size.height as i32;
+                    w = w.min(wa_w as u32);
+                    h = h.min(wa_h as u32);
+                    x = (wa_x + wa_w - w as i32 - TRAY_SIDE_MARGIN)
+                        .clamp(wa_x, (wa_x + wa_w - w as i32).max(wa_x));
+                    #[cfg(target_os = "macos")]
+                    {
+                        y = (wa_y + TRAY_SIDE_MARGIN)
+                            .clamp(wa_y, (wa_y + wa_h - h as i32).max(wa_y));
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        y = (wa_y + wa_h - h as i32 - TRAY_SIDE_MARGIN)
+                            .clamp(wa_y, (wa_y + wa_h - h as i32).max(wa_y));
+                    }
                 }
             }
             let _ = win.set_size(tauri::PhysicalSize::new(w, h));
             let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-            log::debug!("Restored settings window geometry: ({}, {}, {}, {})", x, y, w, h);
+            save_window_geometry(tauri::PhysicalPosition::new(x, y), tauri::PhysicalSize::new(w, h));
+            log::info!("Restored settings window geometry: ({}, {}, {}, {})", x, y, w, h);
             return;
         }
     }
@@ -393,20 +428,104 @@ fn restore_window_geometry(win: &tauri::WebviewWindow) {
         let wa_y = work.position.y;
         let wa_w = work.size.width as i32;
         let wa_h = work.size.height as i32;
-        let win_w = DEFAULT_SETTINGS_WIDTH as i32;
-        let win_h = DEFAULT_SETTINGS_HEIGHT as i32;
-        let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).clamp(wa_x, (wa_x + wa_w - win_w).max(wa_x));
-        let y = (wa_y + wa_h - win_h - TRAY_SIDE_MARGIN).clamp(wa_y, (wa_y + wa_h - win_h).max(wa_y));
-        let _ = win.set_size(tauri::PhysicalSize::new(
-            DEFAULT_SETTINGS_WIDTH,
-            DEFAULT_SETTINGS_HEIGHT,
-        ));
+        let def_w = (default_w as i32).min(wa_w);
+        let def_h = (default_h as i32).min(wa_h);
+        let x = (wa_x + wa_w - def_w - TRAY_SIDE_MARGIN).clamp(wa_x, (wa_x + wa_w - def_w).max(wa_x));
+        #[cfg(target_os = "macos")]
+        let y = (wa_y + TRAY_SIDE_MARGIN).clamp(wa_y, (wa_y + wa_h - def_h).max(wa_y));
+        #[cfg(not(target_os = "macos"))]
+        let y = (wa_y + wa_h - def_h - TRAY_SIDE_MARGIN).clamp(wa_y, (wa_y + wa_h - def_h).max(wa_y));
+
+        let _ = win.set_size(tauri::PhysicalSize::new(def_w as u32, def_h as u32));
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-        log::debug!(
-            "Positioned settings window near tray: ({}, {}), fully visible",
+        save_window_geometry(tauri::PhysicalPosition::new(x, y), tauri::PhysicalSize::new(def_w as u32, def_h as u32));
+        log::info!(
+            "Positioned settings window near tray: ({}, {}, {}, {})",
             x,
-            y
+            y,
+            def_w,
+            def_h
         );
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn activate_macos_app() {
+    use objc2::{class, msg_send};
+    use objc2::runtime::AnyObject;
+    unsafe {
+        let cls_app = class!(NSApplication);
+        let ns_app: *mut AnyObject = msg_send![cls_app, sharedApplication];
+        if !ns_app.is_null() {
+            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn setup_macos_status_item() {
+    use objc2::{class, msg_send};
+    use objc2::runtime::AnyObject;
+    use std::ffi::CString;
+    unsafe {
+        // Seed preferred position in NSUserDefaults if not already set by the user,
+        // so that the icon is placed in the visible menu bar area rather than overflowing into the camera notch.
+        let cls_defaults = class!(NSUserDefaults);
+        let defaults: *mut AnyObject = msg_send![cls_defaults, standardUserDefaults];
+
+        let cls_str = class!(NSString);
+        let pref_key_c = CString::new("NSStatusItem Preferred Position brandybox").unwrap();
+        let pref_key: *mut AnyObject = msg_send![cls_str, stringWithUTF8String: pref_key_c.as_ptr()];
+
+        let existing_pref: *mut AnyObject = msg_send![defaults, objectForKey: pref_key];
+        if existing_pref.is_null() {
+            let _: () = msg_send![defaults, setDouble: 320.0f64, forKey: pref_key];
+            log::info!("Seeded NSStatusItem Preferred Position brandybox to 320.0");
+        }
+
+        // Find the NSStatusBarWindow created by Tauri and set autosaveName = "brandybox"
+        // This enables persistent user ⌘-drag repositioning and honors the preferred position.
+        let cls_app = class!(NSApplication);
+        let ns_app: *mut AnyObject = msg_send![cls_app, sharedApplication];
+        if ns_app.is_null() {
+            return;
+        }
+
+        let windows: *mut AnyObject = msg_send![ns_app, windows];
+        if windows.is_null() {
+            return;
+        }
+
+        let count: usize = msg_send![windows, count];
+
+        let key_status_item_c = CString::new("statusItem").unwrap();
+        let key_status_item: *mut AnyObject = msg_send![cls_str, stringWithUTF8String: key_status_item_c.as_ptr()];
+        let key_autosave_c = CString::new("autosaveName").unwrap();
+        let key_autosave_name: *mut AnyObject = msg_send![cls_str, stringWithUTF8String: key_autosave_c.as_ptr()];
+        let val_brandybox_c = CString::new("brandybox").unwrap();
+        let val_brandybox: *mut AnyObject = msg_send![cls_str, stringWithUTF8String: val_brandybox_c.as_ptr()];
+
+        for i in 0..count {
+            let win: *mut AnyObject = msg_send![windows, objectAtIndex: i];
+            if win.is_null() {
+                continue;
+            }
+            let class_name_ns: *mut AnyObject = msg_send![win, className];
+            if class_name_ns.is_null() {
+                continue;
+            }
+            let c_str: *const std::os::raw::c_char = msg_send![class_name_ns, UTF8String];
+            if !c_str.is_null() {
+                let rust_str = std::ffi::CStr::from_ptr(c_str).to_string_lossy();
+                if rust_str == "NSStatusBarWindow" {
+                    let status_item: *mut AnyObject = msg_send![win, valueForKey: key_status_item];
+                    if !status_item.is_null() {
+                        let _: () = msg_send![status_item, setValue: val_brandybox, forKey: key_autosave_name];
+                        log::info!("Configured NSStatusItem autosaveName as 'brandybox'");
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -414,33 +533,16 @@ fn restore_window_geometry(win: &tauri::WebviewWindow) {
 #[tauri::command]
 fn show_main_window(app: tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
-        if let Some(geom) = config::get_settings_window_geometry() {
-            if let Some((x, y, w, h)) = parse_geometry(&geom) {
-                let _ = win.set_size(tauri::PhysicalSize::new(w, h));
-                let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-            }
-        } else {
-            // fallback to default size and position near tray
-            let _ = win.set_size(tauri::PhysicalSize::new(
-                DEFAULT_SETTINGS_WIDTH,
-                DEFAULT_SETTINGS_HEIGHT,
-            ));
-            if let Ok(Some(monitor)) = win.primary_monitor() {
-                let work = monitor.work_area();
-                let wa_x = work.position.x;
-                let wa_y = work.position.y;
-                let wa_w = work.size.width as i32;
-                let wa_h = work.size.height as i32;
-                let win_w = DEFAULT_SETTINGS_WIDTH as i32;
-                let win_h = DEFAULT_SETTINGS_HEIGHT as i32;
-                let x = (wa_x + wa_w - win_w - TRAY_SIDE_MARGIN).clamp(wa_x, (wa_x + wa_w - win_w).max(wa_x));
-                let y = (wa_y + wa_h - win_h - TRAY_SIDE_MARGIN).clamp(wa_y, (wa_y + wa_h - win_h).max(wa_y));
-                let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-            }
+        if !win.is_visible().unwrap_or(false) {
+            restore_window_geometry(&win);
         }
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
+        #[cfg(target_os = "macos")]
+        {
+            activate_macos_app();
+        }
     }
 }
 
@@ -454,16 +556,24 @@ fn hide_main_window(app: tauri::AppHandle) {
     }
 }
 
-/// Resize the settings window to fit content. Called from frontend when cards expand/collapse.
+/// Resize the settings window to fit content (optional fallback).
 #[tauri::command]
 fn fit_window_to_content(app: tauri::AppHandle, width: Option<u32>, height: Option<u32>) {
     if let Some(win) = app.get_webview_window("main") {
+        let scale = win.scale_factor().unwrap_or(1.0);
+        let min_w = (MIN_SETTINGS_WIDTH * scale).round() as u32;
+        let min_h = (MIN_SETTINGS_HEIGHT * scale).round() as u32;
+        let default_w = (DEFAULT_SETTINGS_WIDTH * scale).round() as u32;
+        let default_h = (DEFAULT_SETTINGS_HEIGHT * scale).round() as u32;
+
         let w = width
-            .map(|v| v.max(MIN_SETTINGS_WIDTH))
-            .unwrap_or(DEFAULT_SETTINGS_WIDTH);
+            .map(|v| ((v as f64) * scale).round() as u32)
+            .unwrap_or(default_w)
+            .max(min_w);
         let mut h = height
-            .map(|v| v.max(MIN_SETTINGS_HEIGHT))
-            .unwrap_or(DEFAULT_SETTINGS_HEIGHT);
+            .map(|v| ((v as f64) * scale).round() as u32)
+            .unwrap_or(default_h)
+            .max(min_h);
 
         // Cap height to monitor work area so window doesn't overflow the screen
         if let Ok(Some(monitor)) = win.current_monitor() {
@@ -475,7 +585,6 @@ fn fit_window_to_content(app: tauri::AppHandle, width: Option<u32>, height: Opti
         }
 
         if win.set_size(tauri::PhysicalSize::new(w, h)).is_ok() {
-            // Ensure window stays fully visible (clamp to monitor work area)
             if let Ok(Some(monitor)) = win.current_monitor() {
                 let work = monitor.work_area();
                 if let Ok(pos) = win.outer_position() {
@@ -578,6 +687,7 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                                 );
                             }
                             Err(e) => {
+                                log::error!("Brandy Box sync error: {}", e);
                                 eprintln!("Brandy Box sync error: {}", e);
                                 sync::set_sync_status(sync::SyncStatus::Error(e.clone()));
                                 update_tray_status(&app_handle, "error", Some(e));
@@ -595,12 +705,32 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
+                ])
+                .max_file_size(5 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+                .level(if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Info
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main_window(app.clone());
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            log::info!("Brandy Box client v{} starting up", env!("CARGO_PKG_VERSION"));
+            #[cfg(target_os = "macos")]
+            {
+                let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
             let show_settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let open_folder = MenuItem::with_id(app, "open_folder", "Open sync folder", true, None::<&str>)?;
             let sync_now = MenuItem::with_id(app, "sync_now", "Sync now", true, None::<&str>)?;
@@ -625,7 +755,7 @@ pub fn run() {
                 .tooltip("Brandy Box")
                 .menu(&menu)
                 .show_menu_on_left_click(true)
-                .icon_as_template(cfg!(target_os = "macos"))
+                .icon_as_template(false)
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
                         "settings" => {
@@ -653,6 +783,11 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            #[cfg(target_os = "macos")]
+            {
+                setup_macos_status_item();
+            }
 
             #[cfg(target_os = "macos")]
             {
@@ -748,6 +883,7 @@ pub fn run() {
             api_update_user_storage_limit,
             api_delete_user,
             open_sync_folder,
+            open_logs_folder,
             run_sync,
             get_sync_progress,
             get_sync_status,
@@ -759,12 +895,16 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = event {
-                show_main_window(app_handle.clone());
+            match event {
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    api.prevent_exit();
+                }
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { .. } => {
+                    show_main_window(app_handle.clone());
+                }
+                _ => {}
             }
-            #[cfg(not(target_os = "macos"))]
-            let _ = (app_handle, event);
         });
 }
 

@@ -30,6 +30,9 @@
     "targets": [
       "deb"
     ],
+    "macOS": {
+      "infoPlist": "Info.plist"
+    },
     "resources": [
       "icons/*"
     ],

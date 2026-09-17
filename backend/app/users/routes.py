@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_admin, get_current_user
@@ -39,6 +39,7 @@ from app.users.models import (
 from app.limiter import limiter
 from app.users.background_image import (
     USER_BACKGROUND_SENTINEL,
+    _MAX_BYTES,
     clear_user_background_image_files,
     find_stored_background_path,
     save_user_background_image_bytes,
@@ -182,7 +183,19 @@ async def upload_my_background_image(
     ``content_background_image`` to ``bb:server-background`` so the web client
     can load it with Bearer auth via this route and use a blob URL in CSS.
     """
-    body = await request.body()
+    # 🛡️ Sentinel: Enforce a hard limit on request body size to prevent DoS via unbounded memory consumption
+    chunks = []
+    bytes_read = 0
+    async for chunk in request.stream():
+        bytes_read += len(chunk)
+        if bytes_read > _MAX_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Image too large (max {_MAX_BYTES // (1024 * 1024)} MB)",
+            )
+        chunks.append(chunk)
+    body = b"".join(chunks)
+
     try:
         save_user_background_image_bytes(current_user.email, body)
     except ValueError as e:
@@ -344,9 +357,12 @@ async def admin_delete_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account",
         )
-    user = await get_user_by_email(session, email)
-    if not user:
+
+    # ⚡ Bolt: Use direct atomic DELETE query instead of SELECT then DELETE.
+    # Impact: Halves the database roundtrips required for deletion.
+    result = await session.execute(delete(User).where(User.email == email))
+    if result.rowcount == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
     log.info("Admin %s deleted user email=%s", current_user.email, email)
-    await session.delete(user)
     return None

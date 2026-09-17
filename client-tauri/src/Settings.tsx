@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
@@ -31,6 +31,7 @@ import {
 import ExpandMore from "@mui/icons-material/ExpandMore";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import Refresh from "@mui/icons-material/Refresh";
+import FolderOpen from "@mui/icons-material/FolderOpen";
 import { formatUserFacingError } from "./errors";
 
 function formatBytes(n: number): string {
@@ -77,27 +78,6 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const [syncProgress, setSyncProgress] = useState<{ phase: string; current: number; total: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-const fitWindowToContent = useCallback(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const timer = setTimeout(() => {
-      const contentHeight = el.scrollHeight || el.getBoundingClientRect().height;
-      const contentWidth = el.scrollWidth || el.getBoundingClientRect().width;
-      const height = Math.ceil(contentHeight + 64);
-      const width = Math.max(560, Math.ceil(contentWidth) + 48);
-      invoke("fit_window_to_content", { width, height }).catch(() => {});
-    }, 80);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    const cleanup = fitWindowToContent();
-    return () => {
-      if (cleanup) cleanup();
-    };
-  }, [storage, fitWindowToContent]);
 
   const loadSettings = async () => {
     try {
@@ -261,7 +241,7 @@ const fitWindowToContent = useCallback(() => {
   };
 
   return (
-    <Box ref={contentRef} sx={{ p: 2, maxWidth: 560, mx: "auto" }}>
+    <Box sx={{ p: 2, maxWidth: 560, mx: "auto" }}>
       <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
         Settings
       </Typography>
@@ -458,14 +438,23 @@ const fitWindowToContent = useCallback(() => {
           <Typography variant="subtitle2" color="text.secondary" gutterBottom>
             Sync
           </Typography>
-          <Button
-            variant="contained"
-            startIcon={syncing ? <CircularProgress size={18} color="inherit" /> : <Refresh />}
-            onClick={handleSyncNow}
-            disabled={syncing}
-          >
-            Sync now
-          </Button>
+          <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+            <Button
+              variant="contained"
+              startIcon={syncing ? <CircularProgress size={18} color="inherit" /> : <Refresh />}
+              onClick={handleSyncNow}
+              disabled={syncing}
+            >
+              Sync now
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<FolderOpen />}
+              onClick={() => invoke("open_logs_folder").catch(() => {})}
+            >
+              Open logs folder
+            </Button>
+          </Box>
           {syncError && (
             <Alert severity="error" role="alert" onClose={() => setSyncError(null)} sx={{ mt: 1 }}>
               {syncError}
@@ -495,7 +484,7 @@ const fitWindowToContent = useCallback(() => {
           >
             Admin – User management
           </Button>
-          <Collapse in={adminOpen} onEntered={fitWindowToContent} onExited={fitWindowToContent}>
+          <Collapse in={adminOpen}>
             <Box sx={{ mt: 1, maxHeight: 360, overflow: "auto" }}>
               {adminActionError && (
                 <Alert severity="error" sx={{ mb: 1 }} onClose={() => setAdminActionError(null)}>

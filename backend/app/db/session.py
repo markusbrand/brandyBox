@@ -45,10 +45,12 @@ def _add_google_sub_preferences_columns(conn) -> None:
 
 async def init_db() -> None:
     """Create tables if they do not exist, then run migrations."""
-    # Register models so create_all includes oauth + telemetry tables.
+    # Register models so create_all includes users, oauth, telemetry, files tables.
+    from app.users import models as _user_models  # noqa: F401
     from app.oauth import models as _oauth_models  # noqa: F401
     from app.telemetry import models as _telemetry_models  # noqa: F401
     from app.files import hash_model as _hash_models  # noqa: F401
+
 
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
