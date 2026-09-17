@@ -21,6 +21,8 @@ from app.users.routes import router as users_router
 from app.users.service import ensure_admin_exists
 from app.limiter import limiter
 
+from app.telemetry.context import TraceIdFilter, trace_id_ctx
+
 log = logging.getLogger(__name__)
 
 
@@ -29,21 +31,25 @@ def _setup_logging() -> None:
     settings = get_settings()
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
     fmt = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        "%(asctime)s [%(levelname)s]%(trace_id)s %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     root = logging.getLogger("app")
     root.setLevel(level)
     root.handlers.clear()
+    filt = TraceIdFilter()
+    root.addFilter(filt)
     sh = logging.StreamHandler()
     sh.setLevel(level)
     sh.setFormatter(fmt)
+    sh.addFilter(filt)
     root.addHandler(sh)
     if settings.log_file and str(settings.log_file).strip():
         try:
             fh = logging.FileHandler(settings.log_file, encoding="utf-8")
             fh.setLevel(level)
             fh.setFormatter(fmt)
+            fh.addFilter(filt)
             root.addHandler(fh)
             root.info("Logging to file %s", settings.log_file)
         except OSError as e:
@@ -76,8 +82,24 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     # 🛡️ Sentinel: Explicitly list allowed headers to prevent overly permissive cross-origin requests (avoiding wildcards).
-    allow_headers=["Accept", "Authorization", "Content-Type", "X-E2E-Return-Temp-Password"],
+    allow_headers=["Accept", "Authorization", "Content-Type", "X-E2E-Return-Temp-Password", "X-Sync-ID", "X-Trace-ID"],
+    expose_headers=["X-Sync-ID", "X-Trace-ID"],
 )
+
+
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    """Capture X-Sync-ID / X-Trace-ID and store in contextvars for logging and request correlation."""
+    trace_id = request.headers.get("X-Sync-ID") or request.headers.get("X-Trace-ID")
+    token = trace_id_ctx.set(trace_id)
+    try:
+        response = await call_next(request)
+        if trace_id:
+            response.headers["X-Sync-ID"] = trace_id
+        return response
+    finally:
+        trace_id_ctx.reset(token)
+
 
 
 @app.middleware("http")

@@ -12,9 +12,20 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.telemetry.models import ClientConnection, ServerEvent
+from app.telemetry.models import ClientConnection, DiagnosticEvent, ServerEvent, SyncSummary
 
 log = logging.getLogger(__name__)
+
+
+async def prune_telemetry_records(session: AsyncSession, retention_days: Optional[int] = None) -> None:
+    """Prune ServerEvent, DiagnosticEvent, and SyncSummary records older than retention threshold."""
+    settings = get_settings()
+    days = retention_days if retention_days is not None else settings.server_events_retention_days
+    if days and days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        await session.execute(delete(ServerEvent).where(ServerEvent.created_at < cutoff))
+        await session.execute(delete(DiagnosticEvent).where(DiagnosticEvent.created_at < cutoff))
+        await session.execute(delete(SyncSummary).where(SyncSummary.started_at < cutoff))
 
 
 async def log_server_event(
@@ -36,11 +47,8 @@ async def log_server_event(
     )
     session.add(row)
     await session.flush()
-    settings = get_settings()
-    days = settings.server_events_retention_days
-    if days and days > 0:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        await session.execute(delete(ServerEvent).where(ServerEvent.created_at < cutoff))
+    await prune_telemetry_records(session)
+
 
 
 async def upsert_client_ping(
@@ -104,3 +112,116 @@ async def list_server_events(session: AsyncSession, limit: int = 100) -> list[Se
     lim = max(1, min(limit, 500))
     result = await session.execute(select(ServerEvent).order_by(ServerEvent.id.desc()).limit(lim))
     return list(result.scalars().all())
+
+
+async def ingest_telemetry_batch(
+    session: AsyncSession,
+    *,
+    user_email: str,
+    events: list[Any],
+    summaries: list[Any],
+) -> None:
+    """Persist batch of diagnostic events and sync summaries reported by a client."""
+    now = datetime.now(timezone.utc)
+    for evt in events:
+        row = DiagnosticEvent(
+            trace_id=evt.trace_id,
+            created_at=evt.created_at or now,
+            user_email=user_email,
+            client_type=evt.client_type[:32] if evt.client_type else "",
+            device_name=evt.device_name[:128] if evt.device_name else "",
+            level=evt.level[:16] if evt.level else "ERROR",
+            category=evt.category[:64] if evt.category else "sync",
+            error_code=evt.error_code[:64] if evt.error_code else "",
+            message=evt.message,
+            context_json=evt.context_json,
+        )
+        session.add(row)
+
+    for sm in summaries:
+        stmt = insert(SyncSummary).values(
+            trace_id=sm.trace_id[:64],
+            user_email=user_email,
+            client_type=sm.client_type[:32] if sm.client_type else "",
+            client_version=sm.client_version[:64] if sm.client_version else "",
+            device_name=sm.device_name[:128] if sm.device_name else "",
+            started_at=sm.started_at,
+            completed_at=sm.completed_at or now,
+            duration_ms=sm.duration_ms,
+            status=sm.status[:16] if sm.status else "ok",
+            files_scanned=sm.files_scanned,
+            files_uploaded=sm.files_uploaded,
+            files_downloaded=sm.files_downloaded,
+            failure_count=sm.failure_count,
+            bytes_transferred=sm.bytes_transferred,
+            error_summary_json=sm.error_summary_json,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["trace_id"],
+            set_=dict(
+                client_type=stmt.excluded.client_type,
+                client_version=stmt.excluded.client_version,
+                device_name=stmt.excluded.device_name,
+                completed_at=stmt.excluded.completed_at,
+                duration_ms=stmt.excluded.duration_ms,
+                status=stmt.excluded.status,
+                files_scanned=stmt.excluded.files_scanned,
+                files_uploaded=stmt.excluded.files_uploaded,
+                files_downloaded=stmt.excluded.files_downloaded,
+                failure_count=stmt.excluded.failure_count,
+                bytes_transferred=stmt.excluded.bytes_transferred,
+                error_summary_json=stmt.excluded.error_summary_json,
+            ),
+        )
+        await session.execute(stmt)
+
+    await session.flush()
+    await prune_telemetry_records(session)
+
+
+async def list_sync_summaries(
+    session: AsyncSession,
+    *,
+    limit: int = 100,
+    user_email: Optional[str] = None,
+    status: Optional[str] = None,
+    trace_id: Optional[str] = None,
+) -> list[SyncSummary]:
+    """List sync summaries, newest first."""
+    lim = max(1, min(limit, 500))
+    query = select(SyncSummary)
+    if user_email:
+        query = query.where(SyncSummary.user_email == user_email)
+    if status:
+        query = query.where(SyncSummary.status == status)
+    if trace_id:
+        query = query.where(SyncSummary.trace_id == trace_id)
+    query = query.order_by(SyncSummary.started_at.desc()).limit(lim)
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def list_diagnostic_events(
+    session: AsyncSession,
+    *,
+    limit: int = 100,
+    trace_id: Optional[str] = None,
+    level: Optional[str] = None,
+    category: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> list[DiagnosticEvent]:
+    """List diagnostic events, newest first."""
+    lim = max(1, min(limit, 500))
+    query = select(DiagnosticEvent)
+    if trace_id:
+        query = query.where(DiagnosticEvent.trace_id == trace_id)
+    if level:
+        query = query.where(DiagnosticEvent.level == level)
+    if category:
+        query = query.where(DiagnosticEvent.category == category)
+    if user_email:
+        query = query.where(DiagnosticEvent.user_email == user_email)
+    query = query.order_by(DiagnosticEvent.id.desc()).limit(lim)
+    result = await session.execute(query)
+    return list(result.scalars().all())
+

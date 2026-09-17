@@ -41,3 +41,16 @@ def session_factory(init_test_db):
     """Yield get_session so tests can use async with session_factory() as session."""
     from app.db.session import get_session
     return get_session
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    """TestClient for the FastAPI app. Use as context manager so lifespan runs (init_db, admin bootstrap).
+    Override storage path so /me and other routes do not touch /mnt/shared_storage in CI."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    monkeypatch.setenv("BRANDYBOX_STORAGE_BASE_PATH", str(tmp_path))
+    with TestClient(app) as c:
+        yield c
+

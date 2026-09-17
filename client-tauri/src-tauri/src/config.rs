@@ -11,6 +11,8 @@ const DEFAULT_REMOTE_BASE_URL: &str = "https://brandybox.brandstaetter.rocks";
 const CONFIG_FILENAME: &str = "config.json";
 const SYNC_STATE_FILENAME: &str = "sync_state.json";
 const INSTANCE_LOCK_FILENAME: &str = "instance.lock";
+const TELEMETRY_QUEUE_FILENAME: &str = "sync_telemetry_queue.json";
+
 
 fn expand_tilde(path: &str) -> PathBuf {
     let s = path.trim();
@@ -282,3 +284,25 @@ pub fn clear_sync_state() {
     let content = r#"{"paths": [], "downloaded_paths": [], "file_hashes": {}}"#;
     let _ = std::fs::write(get_sync_state_path(), content);
 }
+
+pub fn get_telemetry_queue_path() -> PathBuf {
+    config_dir().join(TELEMETRY_QUEUE_FILENAME)
+}
+
+pub fn get_client_type() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "desktop-macos"
+    } else if cfg!(target_os = "windows") {
+        "desktop-windows"
+    } else {
+        "desktop-linux"
+    }
+}
+
+pub fn get_device_name() -> String {
+    std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("HOST"))
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .unwrap_or_else(|_| "Desktop-Client".to_string())
+}
+

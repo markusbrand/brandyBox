@@ -11,7 +11,89 @@ pub struct ApiClient {
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
     pub email: Option<String>,
+    pub sync_id: Option<String>,
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DiagnosticEventPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub client_type: String,
+    #[serde(default)]
+    pub device_name: String,
+    #[serde(default = "default_error_level")]
+    pub level: String,
+    #[serde(default = "default_sync_category")]
+    pub category: String,
+    #[serde(default)]
+    pub error_code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_json: Option<String>,
+}
+
+fn default_error_level() -> String {
+    "ERROR".to_string()
+}
+
+fn default_sync_category() -> String {
+    "sync".to_string()
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SyncSummaryPayload {
+    pub trace_id: String,
+    #[serde(default)]
+    pub client_type: String,
+    #[serde(default)]
+    pub client_version: String,
+    #[serde(default)]
+    pub device_name: String,
+    pub started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+    #[serde(default)]
+    pub duration_ms: i64,
+    #[serde(default = "default_status_ok")]
+    pub status: String,
+    #[serde(default)]
+    pub files_scanned: i64,
+    #[serde(default)]
+    pub files_uploaded: i64,
+    #[serde(default)]
+    pub files_downloaded: i64,
+    #[serde(default)]
+    pub failure_count: i64,
+    #[serde(default)]
+    pub bytes_transferred: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_summary_json: Option<String>,
+}
+
+fn default_status_ok() -> String {
+    "ok".to_string()
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct TelemetryBatchPayload {
+    #[serde(default)]
+    pub events: Vec<DiagnosticEventPayload>,
+    #[serde(default)]
+    pub summaries: Vec<SyncSummaryPayload>,
+}
+
+pub fn generate_trace_id() -> String {
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let rand_part = &uuid::Uuid::new_v4().to_string().replace('-', "")[..8];
+    format!("sync-{}-{}", millis, rand_part)
+}
+
 
 #[derive(Serialize)]
 struct LoginBody {
@@ -95,7 +177,13 @@ fn format_reqwest_error(e: reqwest::Error) -> String {
 
 impl ApiClient {
     pub fn new(base_url: String) -> Self {
-        ApiClient { base_url, access_token: None, refresh_token: None, email: None }
+        ApiClient {
+            base_url,
+            access_token: None,
+            refresh_token: None,
+            email: None,
+            sync_id: None,
+        }
     }
 
     pub fn set_email(&mut self, email: Option<String>) {
@@ -108,6 +196,10 @@ impl ApiClient {
 
     pub fn set_refresh_token(&mut self, token: Option<String>) {
         self.refresh_token = token;
+    }
+
+    pub fn set_sync_id(&mut self, sync_id: Option<String>) {
+        self.sync_id = sync_id;
     }
 
     pub fn try_refresh(&mut self) -> Result<(), String> {
@@ -170,8 +262,25 @@ impl ApiClient {
             let v = format!("Bearer {}", t);
             h.insert(reqwest::header::AUTHORIZATION, v.parse().unwrap());
         }
+        if let Some(s) = &self.sync_id {
+            if let Ok(v) = s.parse() {
+                h.insert("X-Sync-ID", v);
+            }
+        }
         h
     }
+
+    pub fn post_telemetry_events(&self, payload: &TelemetryBatchPayload) -> Result<(), String> {
+        let url = format!("{}/api/telemetry/events", self.base_url.trim_end_matches('/'));
+        let mut headers = self.headers();
+        headers.insert(reqwest::header::CONTENT_TYPE, "application/json".parse().unwrap());
+        let r = self.client().post(&url).headers(headers).json(payload).send().map_err(format_reqwest_error)?;
+        if r.status().is_success() || r.status() == reqwest::StatusCode::NO_CONTENT || r.status() == reqwest::StatusCode::ACCEPTED {
+            return Ok(());
+        }
+        Err(format!("{} {}", r.status(), r.text().unwrap_or_default()))
+    }
+
 
     pub fn login(&self, email: &str, password: &str) -> Result<LoginResponse, String> {
         let url = format!("{}/api/auth/login", self.base_url.trim_end_matches('/'));
@@ -728,3 +837,36 @@ impl ApiClient {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trace_id_generation() {
+        let trace1 = generate_trace_id();
+        let trace2 = generate_trace_id();
+        assert!(trace1.starts_with("sync-"));
+        assert!(trace2.starts_with("sync-"));
+        assert_ne!(trace1, trace2);
+    }
+
+    #[test]
+    fn test_x_sync_id_header_inclusion() {
+        let mut client = ApiClient::new("http://localhost:8080".to_string());
+        let h_initial = client.headers();
+        assert!(!h_initial.contains_key("X-Sync-ID"));
+
+        client.set_sync_id(Some("sync-test-456".to_string()));
+        let h_with_sync = client.headers();
+        assert_eq!(
+            h_with_sync.get("X-Sync-ID").and_then(|v| v.to_str().ok()),
+            Some("sync-test-456")
+        );
+
+        client.set_sync_id(None);
+        let h_without = client.headers();
+        assert!(!h_without.contains_key("X-Sync-ID"));
+    }
+}
+

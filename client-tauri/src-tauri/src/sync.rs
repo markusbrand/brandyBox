@@ -139,14 +139,150 @@ fn set_progress(phase: &str, current: u64, total: u64) {
     let _ = SYNC_PROGRESS.lock().map(|mut g| *g = Some(SyncProgress { phase: phase.to_string(), current, total }));
 }
 
+pub fn classify_error(err_str: &str) -> &'static str {
+    let lower = err_str.to_lowercase();
+    if lower.contains("524") {
+        "CLOUDFLARE_524"
+    } else if lower.contains("401") || lower.contains("403") || lower.contains("unauthorized") || lower.contains("forbidden") {
+        "AUTH_FAILED"
+    } else if lower.contains("404") || lower.contains("not found") {
+        "NOT_FOUND"
+    } else if lower.contains("413") || lower.contains("too large") {
+        "PAYLOAD_TOO_LARGE"
+    } else if lower.contains("timeout") || lower.contains("timed out") {
+        "NETWORK_TIMEOUT"
+    } else if lower.contains("permission denied") || lower.contains("os error 13") || lower.contains("access is denied") {
+        "IO_PERMISSION_DENIED"
+    } else if lower.contains("hash mismatch") || lower.contains("checksum") {
+        "HASH_MISMATCH"
+    } else if lower.contains("connection refused") {
+        "CONNECTION_REFUSED"
+    } else {
+        "SYNC_ERROR"
+    }
+}
+
+const MAX_QUEUE_ITEMS: usize = 200;
+
+pub fn load_telemetry_queue() -> crate::api::TelemetryBatchPayload {
+    let path = config::get_telemetry_queue_path();
+    if !path.exists() {
+        return crate::api::TelemetryBatchPayload::default();
+    }
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(queue) = serde_json::from_str(&content) {
+            return queue;
+        }
+    }
+    crate::api::TelemetryBatchPayload::default()
+}
+
+pub fn save_telemetry_queue(queue: &crate::api::TelemetryBatchPayload) {
+    let path = config::get_telemetry_queue_path();
+    let _ = std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
+    let _ = std::fs::write(path, serde_json::to_string_pretty(queue).unwrap_or_default());
+}
+
+pub fn enqueue_diagnostic_event(event: crate::api::DiagnosticEventPayload) {
+    let mut queue = load_telemetry_queue();
+    queue.events.push(event);
+    if queue.events.len() > MAX_QUEUE_ITEMS {
+        let drain_count = queue.events.len() - MAX_QUEUE_ITEMS;
+        queue.events.drain(0..drain_count);
+    }
+    save_telemetry_queue(&queue);
+}
+
+pub fn enqueue_sync_summary(summary: crate::api::SyncSummaryPayload) {
+    let mut queue = load_telemetry_queue();
+    queue.summaries.push(summary);
+    if queue.summaries.len() > MAX_QUEUE_ITEMS {
+        let drain_count = queue.summaries.len() - MAX_QUEUE_ITEMS;
+        queue.summaries.drain(0..drain_count);
+    }
+    save_telemetry_queue(&queue);
+}
+
+pub fn flush_telemetry_queue(client: &ApiClient) -> Result<(), String> {
+    let queue = load_telemetry_queue();
+    if queue.events.is_empty() && queue.summaries.is_empty() {
+        return Ok(());
+    }
+    match client.post_telemetry_events(&queue) {
+        Ok(()) => {
+            save_telemetry_queue(&crate::api::TelemetryBatchPayload::default());
+            log::info!(
+                "Flushed {} telemetry events and {} summaries to backend",
+                queue.events.len(),
+                queue.summaries.len()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            log::warn!("Failed to flush telemetry batch (buffered offline): {}", e);
+            Err(e)
+        }
+    }
+}
+
+
 pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, Option<String>), String> {
+    let trace_id = match &client.sync_id {
+        Some(tid) => tid.clone(),
+        None => {
+            let tid = crate::api::generate_trace_id();
+            client.set_sync_id(Some(tid.clone()));
+            tid
+        }
+    };
+    let started_at = chrono::Utc::now().to_rfc3339();
+    let start_instant = std::time::Instant::now();
+
+    // Flush any pending events from previous offline runs
+    let _ = flush_telemetry_queue(client);
+
     let mut state = load_sync_state();
     let last_synced: HashSet<String> = state.paths.iter().cloned().collect();
     let prev_downloaded: HashSet<String> = state.downloaded_paths.iter().cloned().collect();
 
     set_progress("listing", 0, 0);
     let local_list = list_local(local_root);
-    let remote_list = client.list_files()?;
+    let remote_list = match client.list_files() {
+        Ok(list) => list,
+        Err(e) => {
+            let err_code = classify_error(&e);
+            enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
+                trace_id: Some(trace_id.clone()),
+                created_at: Some(chrono::Utc::now().to_rfc3339()),
+                client_type: config::get_client_type().to_string(),
+                device_name: config::get_device_name(),
+                level: "ERROR".to_string(),
+                category: "sync.list".to_string(),
+                error_code: err_code.to_string(),
+                message: format!("List remote files failed: {}", e),
+                context_json: None,
+            });
+            enqueue_sync_summary(crate::api::SyncSummaryPayload {
+                trace_id: trace_id.clone(),
+                client_type: config::get_client_type().to_string(),
+                client_version: env!("CARGO_PKG_VERSION").to_string(),
+                device_name: config::get_device_name(),
+                started_at: started_at.clone(),
+                completed_at: Some(chrono::Utc::now().to_rfc3339()),
+                duration_ms: start_instant.elapsed().as_millis() as i64,
+                status: "failed".to_string(),
+                files_scanned: local_list.len() as i64,
+                files_uploaded: 0,
+                files_downloaded: 0,
+                failure_count: 1,
+                bytes_transferred: 0,
+                error_summary_json: Some(serde_json::json!({ "error": e }).to_string()),
+            });
+            let _ = flush_telemetry_queue(client);
+            return Err(e);
+        }
+    };
+
 
     log::info!(
         "Sync: {} remote, {} local (sync_folder={})",
@@ -194,7 +330,21 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
 
     for path in &to_del_remote {
         set_progress("delete_server", done, total_work);
-        client.delete_file(path).map_err(|e| format!("Delete server {}: {}", path, e))?;
+        if let Err(e) = client.delete_file(path) {
+            let err_code = classify_error(&e);
+            enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
+                trace_id: Some(trace_id.clone()),
+                created_at: Some(chrono::Utc::now().to_rfc3339()),
+                client_type: config::get_client_type().to_string(),
+                device_name: config::get_device_name(),
+                level: "ERROR".to_string(),
+                category: "sync.delete".to_string(),
+                error_code: err_code.to_string(),
+                message: format!("Delete server {}: {}", path, e),
+                context_json: Some(serde_json::json!({ "path": path }).to_string()),
+            });
+            return Err(format!("Delete server {}: {}", path, e));
+        }
         done += 1;
     }
     for path in &to_del_local {
@@ -332,6 +482,18 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                 }
             }
             Err(e) => {
+                let err_code = classify_error(&e);
+                enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
+                    trace_id: Some(trace_id.clone()),
+                    created_at: Some(chrono::Utc::now().to_rfc3339()),
+                    client_type: config::get_client_type().to_string(),
+                    device_name: config::get_device_name(),
+                    level: if e.contains("404") { "WARN".to_string() } else { "ERROR".to_string() },
+                    category: "sync.download".to_string(),
+                    error_code: err_code.to_string(),
+                    message: format!("Download {}: {}", path, e),
+                    context_json: Some(serde_json::json!({ "path": path }).to_string()),
+                });
                 if e.contains("404") {
                     log::debug!("Download {}: 404, file no longer on server", path);
                     if local_path.exists() && local_path.is_file() {
@@ -375,6 +537,18 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                     }
                 }
                 Err(e) => {
+                    let err_code = classify_error(&e);
+                    enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
+                        trace_id: Some(trace_id.clone()),
+                        created_at: Some(chrono::Utc::now().to_rfc3339()),
+                        client_type: config::get_client_type().to_string(),
+                        device_name: config::get_device_name(),
+                        level: "ERROR".to_string(),
+                        category: "sync.upload".to_string(),
+                        error_code: err_code.to_string(),
+                        message: format!("Upload {}: {}", path, e),
+                        context_json: Some(serde_json::json!({ "path": path, "size_bytes": file_len }).to_string()),
+                    });
                     log::warn!("Upload {}: {}, skipping file for this cycle", path, e);
                     skipped_uploads.insert(path.clone());
                 }
@@ -421,6 +595,38 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
 
     set_progress("idle", 0, 0);
 
+    let total_failures = (skipped_downloads.len() + skipped_uploads.len()) as i64;
+    let summary_status = if total_failures > 0 { "warning".to_string() } else { "ok".to_string() };
+    let summary_error_json = if !warnings.is_empty() {
+        let sample_downloads: Vec<String> = skipped_downloads.iter().cloned().take(10).collect();
+        let sample_uploads: Vec<String> = skipped_uploads.iter().cloned().take(10).collect();
+        Some(serde_json::json!({
+            "warnings": warnings,
+            "skipped_downloads": sample_downloads,
+            "skipped_uploads": sample_uploads,
+        }).to_string())
+    } else {
+        None
+    };
+
+    enqueue_sync_summary(crate::api::SyncSummaryPayload {
+        trace_id: trace_id.clone(),
+        client_type: config::get_client_type().to_string(),
+        client_version: env!("CARGO_PKG_VERSION").to_string(),
+        device_name: config::get_device_name(),
+        started_at: started_at.clone(),
+        completed_at: Some(chrono::Utc::now().to_rfc3339()),
+        duration_ms: start_instant.elapsed().as_millis() as i64,
+        status: summary_status,
+        files_scanned: (local_list.len() + remote_list.len()) as i64,
+        files_uploaded: completed_uploads.len() as i64,
+        files_downloaded: completed_downloads.len() as i64,
+        failure_count: total_failures,
+        bytes_transferred: (bytes_downloaded + bytes_uploaded) as i64,
+        error_summary_json: summary_error_json,
+    });
+    let _ = flush_telemetry_queue(client);
+
     log::info!(
         "Sync cycle complete: {} downloaded ({} bytes), {} skipped, {} uploaded ({} bytes), {} synced paths{}",
         completed_downloads.len(),
@@ -431,6 +637,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         state.paths.len(),
         if warning_msg.is_some() { " [WARNING]" } else { "" }
     );
+
 
     Ok((bytes_downloaded, bytes_uploaded, warning_msg))
 }
@@ -470,4 +677,67 @@ mod tests {
             "file deleted locally must not be in to_download (must not be re-downloaded)"
         );
     }
+
+    #[test]
+    fn test_error_classification() {
+        assert_eq!(classify_error("524 Gateway Timeout"), "CLOUDFLARE_524");
+        assert_eq!(classify_error("401 Unauthorized"), "AUTH_FAILED");
+        assert_eq!(classify_error("403 Forbidden"), "AUTH_FAILED");
+        assert_eq!(classify_error("404 Not Found"), "NOT_FOUND");
+        assert_eq!(classify_error("413 Request Entity Too Large"), "PAYLOAD_TOO_LARGE");
+        assert_eq!(classify_error("connection timed out after 30s"), "NETWORK_TIMEOUT");
+        assert_eq!(classify_error("Permission denied (os error 13)"), "IO_PERMISSION_DENIED");
+        assert_eq!(classify_error("hash mismatch expected abc got def"), "HASH_MISMATCH");
+        assert_eq!(classify_error("Connection refused"), "CONNECTION_REFUSED");
+        assert_eq!(classify_error("unknown disk error"), "SYNC_ERROR");
+    }
+
+    #[test]
+    fn test_telemetry_queue_persistence() {
+        let temp_dir = std::env::temp_dir().join(format!("test_telemetry_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let queue_file = temp_dir.join("test_telemetry_queue.json");
+
+
+        let mut queue = crate::api::TelemetryBatchPayload::default();
+        queue.events.push(crate::api::DiagnosticEventPayload {
+            trace_id: Some("sync-unit-1".to_string()),
+            created_at: Some("2026-09-16T21:00:00Z".to_string()),
+            client_type: "desktop-macos".to_string(),
+            device_name: "UnitTestDevice".to_string(),
+            level: "ERROR".to_string(),
+            category: "sync.upload".to_string(),
+            error_code: "CLOUDFLARE_524".to_string(),
+            message: "Upload timeout test".to_string(),
+            context_json: Some("{\"path\":\"test.txt\"}".to_string()),
+        });
+        queue.summaries.push(crate::api::SyncSummaryPayload {
+            trace_id: "sync-unit-1".to_string(),
+            client_type: "desktop-macos".to_string(),
+            client_version: "1.3.2".to_string(),
+            device_name: "UnitTestDevice".to_string(),
+            started_at: "2026-09-16T21:00:00Z".to_string(),
+            completed_at: Some("2026-09-16T21:01:00Z".to_string()),
+            duration_ms: 60000,
+            status: "failed".to_string(),
+            files_scanned: 10,
+            files_uploaded: 0,
+            files_downloaded: 0,
+            failure_count: 1,
+            bytes_transferred: 0,
+            error_summary_json: None,
+        });
+
+        let json = serde_json::to_string_pretty(&queue).expect("serialize");
+        std::fs::write(&queue_file, json).expect("write");
+
+        let loaded_str = std::fs::read_to_string(&queue_file).expect("read");
+        let loaded: crate::api::TelemetryBatchPayload = serde_json::from_str(&loaded_str).expect("deserialize");
+
+        assert_eq!(loaded.events.len(), 1);
+        assert_eq!(loaded.events[0].error_code, "CLOUDFLARE_524");
+        assert_eq!(loaded.summaries.len(), 1);
+        assert_eq!(loaded.summaries[0].status, "failed");
+    }
 }
+

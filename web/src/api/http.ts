@@ -354,6 +354,39 @@ export type ClientConn = {
   backend_version_at_ping?: string | null;
 };
 
+export type SyncSummary = {
+  id: number;
+  trace_id: string;
+  user_email: string;
+  client_type: string;
+  client_version: string;
+  device_name: string;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  status: string;
+  files_scanned: number;
+  files_uploaded: number;
+  files_downloaded: number;
+  failure_count: number;
+  bytes_transferred: number;
+  error_summary_json?: string | null;
+};
+
+export type DiagnosticEvent = {
+  id: number;
+  trace_id?: string | null;
+  created_at: string;
+  user_email?: string | null;
+  client_type: string;
+  device_name: string;
+  level: string;
+  category: string;
+  error_code: string;
+  message: string;
+  context_json?: string | null;
+};
+
 export async function adminEvents(limit = 100): Promise<ServerEvent[]> {
   const res = await apiFetchAuth(`/api/admin/events?limit=${limit}`);
   if (!res.ok) {
@@ -369,6 +402,47 @@ export async function adminClients(): Promise<ClientConn[]> {
   }
   return res.json() as Promise<ClientConn[]>;
 }
+
+export async function adminSyncSummaries(params?: {
+  limit?: number;
+  user_email?: string;
+  status?: string;
+  trace_id?: string;
+}): Promise<SyncSummary[]> {
+  const q = new URLSearchParams();
+  if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.user_email) q.set("user_email", params.user_email);
+  if (params?.status) q.set("status", params.status);
+  if (params?.trace_id) q.set("trace_id", params.trace_id);
+  const qs = q.toString();
+  const res = await apiFetchAuth(`/api/admin/telemetry/summaries${qs ? `?${qs}` : ""}`);
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json() as Promise<SyncSummary[]>;
+}
+
+export async function adminDiagnosticEvents(params?: {
+  limit?: number;
+  trace_id?: string;
+  level?: string;
+  category?: string;
+  user_email?: string;
+}): Promise<DiagnosticEvent[]> {
+  const q = new URLSearchParams();
+  if (params?.limit) q.set("limit", String(params.limit));
+  if (params?.trace_id) q.set("trace_id", params.trace_id);
+  if (params?.level) q.set("level", params.level);
+  if (params?.category) q.set("category", params.category);
+  if (params?.user_email) q.set("user_email", params.user_email);
+  const qs = q.toString();
+  const res = await apiFetchAuth(`/api/admin/telemetry/events${qs ? `?${qs}` : ""}`);
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res));
+  }
+  return res.json() as Promise<DiagnosticEvent[]>;
+}
+
 
 export async function adminListUsers(): Promise<MeUser[]> {
   const res = await apiFetchAuth("/api/users");

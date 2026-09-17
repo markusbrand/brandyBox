@@ -16,6 +16,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app/ ./app/
+RUN printf '#!/bin/sh\nexec python -m app.cli.doctor "$@"\n' > /usr/local/bin/brandybox-doctor && chmod +x /usr/local/bin/brandybox-doctor
 
 COPY --from=webbuild /web/dist ./web_dist
 
