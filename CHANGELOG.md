@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.4.0...brandybox-v1.4.1) (2026-09-18)
+
+
+### Documentation
+
+* **openspec:** archive diagnostics-and-llm-logging and sync specs ([480c7ba](https://github.com/markusbrand/brandyBox/commit/480c7bab2160f5c8e4ce2c77331261cb876a337e))
+
 ## [1.4.0](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.2...brandybox-v1.4.0) (2026-09-17)
 
 
