@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.2...brandybox-v1.4.0) (2026-09-17)
+
+
+### Features
+
+* **client-tauri:** macOS menu bar integration, dock suppression & logo consistency ([e498f80](https://github.com/markusbrand/brandyBox/commit/e498f80f23f1e6d93e9e4a6a731cb717ac32195a))
+* **client:** add file logging and fix window geometry persistence ([cd9ada8](https://github.com/markusbrand/brandyBox/commit/cd9ada82c2699e51d9086c0fdebb2495724fc55c))
+* **telemetry:** implement diagnostics and LLM logging ([5f9ca78](https://github.com/markusbrand/brandyBox/commit/5f9ca78ae3f5c570cfacc6c2268cf7e236788abe))
+
+
+### Documentation
+
+* **openspec:** add diagnostics-and-llm-logging change proposal ([a655944](https://github.com/markusbrand/brandyBox/commit/a655944de50f04988ec89491c1bba0d1d4d6435d))
+
 ## [1.3.2](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.1...brandybox-v1.3.2) (2026-09-13)
 
 
