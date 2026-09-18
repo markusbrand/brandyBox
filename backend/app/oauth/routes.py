@@ -10,7 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_access_token, create_refresh_token
@@ -116,8 +116,7 @@ async def google_oauth_callback(
         await session.commit()
         return red("/login?error=oauth_invalid")
 
-    res = await session.execute(select(OAuthState).where(OAuthState.state == state))
-    row = res.scalar_one_or_none()
+    row = await session.get(OAuthState, state)
     if not row:
         log.warning("Google OAuth invalid state")
         await log_server_event(
@@ -133,7 +132,9 @@ async def google_oauth_callback(
     await session.flush()
 
     redirect_uri = _google_redirect_uri(settings, request)
-    token_json = await exchange_authorization_code(settings, code=code, redirect_uri=redirect_uri)
+    token_json = await exchange_authorization_code(
+        settings, code=code, redirect_uri=redirect_uri
+    )
     if not token_json or "access_token" not in token_json:
         await log_server_event(
             session,
@@ -201,10 +202,12 @@ async def oauth_complete(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> TokenPair:
     """Redeem one-time exchange id for JWT pair (SPA)."""
-    res = await session.execute(select(OAuthExchange).where(OAuthExchange.id == body.exchange.strip()))
-    row = res.scalar_one_or_none()
+    row = await session.get(OAuthExchange, body.exchange.strip())
     if not row:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired exchange")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired exchange",
+        )
 
     created = row.created_at
     if created.tzinfo is None:
@@ -212,7 +215,9 @@ async def oauth_complete(
     if datetime.now(timezone.utc) - created > timedelta(minutes=2):
         await session.delete(row)
         await session.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Exchange expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Exchange expired"
+        )
 
     access = row.access_token
     refresh = row.refresh_token
