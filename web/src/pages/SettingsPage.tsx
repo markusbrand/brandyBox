@@ -585,6 +585,7 @@ export default function SettingsPage() {
                                 <IconButton
                                   size="small"
                                   color="primary"
+                                  aria-label="Copy LLM Context"
                                   onClick={() => copySummaryLlmContext(ss)}
                                 >
                                   <ContentCopyIcon fontSize="small" />
@@ -686,7 +687,7 @@ export default function SettingsPage() {
                               Details
                             </Button>
                             <Tooltip title="Copy LLM Context">
-                              <IconButton size="small" onClick={() => copyEventLlmContext(ev)}>
+                              <IconButton size="small" aria-label="Copy LLM Context" onClick={() => copyEventLlmContext(ev)}>
                                 <ContentCopyIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
