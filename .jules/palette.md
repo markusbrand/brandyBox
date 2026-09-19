@@ -23,3 +23,6 @@
 ## 2026-09-14 - Semantic interactive elements in AppLayout
 **Learning:** Using a `<Typography>` text element with an `onClick` handler as a pseudo-button is a severe accessibility anti-pattern. It lacks keyboard focusability, screen-reader role recognition (as a button), and standard interaction states (hover/focus rings). Replacing it with a semantic MUI `<Button>` inherently resolves these issues.
 **Action:** Always use semantic elements (like `<Button>`) for interactive actions, avoiding attaching `onClick` handlers to non-interactive elements like text or containers.
+## 2026-09-15 - Add aria-labels to Settings diagnostic event actions
+**Learning:** Icon-only buttons used for copying LLM context in the Settings page diagnostic panel were missing aria-labels, which are critical for screen reader users to identify the purpose of these buttons. Tooltips are not enough.
+**Action:** Always verify that icon-only buttons have descriptive aria-labels when creating or reviewing components.
