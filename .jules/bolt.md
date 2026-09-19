@@ -31,3 +31,6 @@
 **Learning:** In SQLAlchemy, `session.execute(select(Model).where(Model.id == id))` forces a query to the database in all circumstances and bypasses the session's identity map. `session.get(Model, id)` looks up the object in the identity map first, and will not issue a DB query if the object is already loaded, offering drastic speedups in hot paths.
 **Action:** When looking up a single entity by its primary key, use `session.get()` instead of building a `select()` query with a `where()` clause.
 
+## 2025-02-12 - Using atomic DELETE queries instead of SELECT + DELETE
+**Learning:** In `backend/app/oauth/routes.py`, consuming an OAuth state used to perform a `SELECT` followed by `session.delete()`. While functional, it forced 2 database roundtrips for a simple deletion where the data was not needed prior to deletion.
+**Action:** When a database object's data is not needed prior to deletion, use a single atomic `sqlalchemy.delete` query (e.g., `session.execute(delete(...).where(...))`) and check `res.rowcount` to cut database roundtrips in half and improve performance.
