@@ -116,9 +116,10 @@ async def google_oauth_callback(
         await session.commit()
         return red("/login?error=oauth_invalid")
 
-    res = await session.execute(select(OAuthState).where(OAuthState.state == state))
-    row = res.scalar_one_or_none()
-    if not row:
+    # ⚡ Bolt: Use direct atomic DELETE query instead of SELECT then DELETE.
+    # Impact: Halves the database roundtrips required for consuming the OAuth state.
+    res = await session.execute(delete(OAuthState).where(OAuthState.state == state))
+    if res.rowcount == 0:
         log.warning("Google OAuth invalid state")
         await log_server_event(
             session,
@@ -129,7 +130,6 @@ async def google_oauth_callback(
         await session.commit()
         return red("/login?error=oauth_invalid")
 
-    await session.delete(row)
     await session.flush()
 
     redirect_uri = _google_redirect_uri(settings, request)
