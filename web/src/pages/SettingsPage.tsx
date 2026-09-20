@@ -583,6 +583,7 @@ export default function SettingsPage() {
                             <TableCell align="center">
                               <Tooltip title="Copy LLM Context">
                                 <IconButton
+                                  aria-label="Copy LLM Context"
                                   size="small"
                                   color="primary"
                                   onClick={() => copySummaryLlmContext(ss)}
@@ -686,7 +687,7 @@ export default function SettingsPage() {
                               Details
                             </Button>
                             <Tooltip title="Copy LLM Context">
-                              <IconButton size="small" onClick={() => copyEventLlmContext(ev)}>
+                              <IconButton aria-label="Copy LLM Context" size="small" onClick={() => copyEventLlmContext(ev)}>
                                 <ContentCopyIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
