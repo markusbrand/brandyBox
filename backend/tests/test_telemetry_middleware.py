@@ -4,7 +4,6 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.telemetry.context import get_current_trace_id
 
 

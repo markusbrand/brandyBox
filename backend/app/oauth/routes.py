@@ -76,7 +76,16 @@ async def google_oauth_start(
     )
     url = f"{GOOGLE_AUTH}?{q}"
     log.info("Google OAuth start redirect_uri=%s", redirect_uri)
-    return RedirectResponse(url=url, status_code=302)
+    response = RedirectResponse(url=url, status_code=302)
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=900,  # 15 minutes
+    )
+    return response
 
 
 @router.get("/google/callback")
@@ -112,6 +121,19 @@ async def google_oauth_callback(
             level="WARNING",
             category="oauth",
             message="Google OAuth callback missing code or state",
+        )
+        await session.commit()
+        return red("/login?error=oauth_invalid")
+
+    # 🛡️ Sentinel: Bind OAuth state to user's browser session via cookie to prevent Login CSRF
+    cookie_state = request.cookies.get("oauth_state")
+    if not cookie_state or cookie_state != state:
+        log.warning("Google OAuth invalid or missing state cookie")
+        await log_server_event(
+            session,
+            level="WARNING",
+            category="oauth",
+            message="Google OAuth CSRF protection failed (state mismatch)",
         )
         await session.commit()
         return red("/login?error=oauth_invalid")

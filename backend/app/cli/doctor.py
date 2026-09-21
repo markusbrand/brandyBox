@@ -6,13 +6,12 @@ import argparse
 import asyncio
 from datetime import datetime, timedelta, timezone
 import json
-import os
 from pathlib import Path
 import shutil
 import sys
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.db.session import get_session, init_db
@@ -219,7 +218,7 @@ async def generate_llm_prompt(trace_id: Optional[str] = None) -> None:
     print(f"- **Backend API Version**: `{settings.api_version}`")
     print(f"- **Server Timestamp**: `{now.strftime('%Y-%m-%d %H:%M:%S UTC')}`")
     print(f"- **Storage Disk Status**: `{disk_info}`")
-    print(f"- **Database**: `SQLite`")
+    print("- **Database**: `SQLite`")
 
     print("\n## 2. Incident Summary")
     if target_summary:
