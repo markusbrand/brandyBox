@@ -76,7 +76,16 @@ async def google_oauth_start(
     )
     url = f"{GOOGLE_AUTH}?{q}"
     log.info("Google OAuth start redirect_uri=%s", redirect_uri)
-    return RedirectResponse(url=url, status_code=302)
+    response = RedirectResponse(url=url, status_code=302)
+    response.set_cookie(
+        "oauth_state",
+        value=state,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+        max_age=900,
+    )
+    return response
 
 
 @router.get("/google/callback")
@@ -93,7 +102,9 @@ async def google_oauth_callback(
     base = _public_origin(settings, request)
 
     def red(path: str) -> RedirectResponse:
-        return RedirectResponse(url=f"{base}{path}", status_code=302)
+        response = RedirectResponse(url=f"{base}{path}", status_code=302)
+        response.delete_cookie("oauth_state", httponly=True, samesite="lax", secure=True)
+        return response
 
     if error:
         log.warning("Google OAuth error query=%s", error)
@@ -112,6 +123,18 @@ async def google_oauth_callback(
             level="WARNING",
             category="oauth",
             message="Google OAuth callback missing code or state",
+        )
+        await session.commit()
+        return red("/login?error=oauth_invalid")
+
+    cookie_state = request.cookies.get("oauth_state")
+    if not cookie_state or cookie_state != state:
+        log.warning("Google OAuth CSRF error: state mismatch")
+        await log_server_event(
+            session,
+            level="WARNING",
+            category="oauth",
+            message="Google OAuth callback CSRF state mismatch",
         )
         await session.commit()
         return red("/login?error=oauth_invalid")

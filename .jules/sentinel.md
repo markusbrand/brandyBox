@@ -22,3 +22,8 @@
 **Vulnerability:** Memory Exhaustion DoS in `/users/me/background-image` caused by loading the entire request body into RAM using `await request.body()`.
 **Learning:** `await request.body()` reads the full payload into memory before returning it. For potentially large uploads, this allows an attacker to exhaust server memory.
 **Prevention:** Instead of `await request.body()`, stream the request using `async for chunk in request.stream():` and enforce size limits progressively.
+
+## 2025-02-12 - [HIGH] Fix Login CSRF in Google OAuth flow
+**Vulnerability:** Google OAuth flow was missing CSRF protection, allowing an attacker to log a victim into the attacker's account (Login CSRF). The `state` parameter was generated and verified against a database table, but it was not bound to the user's browser session.
+**Learning:** Storing the `state` parameter only in the database and checking if it exists is insufficient for CSRF protection in OAuth. The `state` must be bound to the user's specific browser session (e.g., via an HttpOnly cookie) so that when the callback occurs, we can verify the request originated from the same browser that initiated the flow.
+**Prevention:** Always bind the OAuth `state` parameter to a secure, HttpOnly, and SameSite=lax browser cookie during the start phase, and verify it matches the `state` query parameter during the callback phase.
