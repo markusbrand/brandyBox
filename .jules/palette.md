@@ -23,3 +23,7 @@
 ## 2026-09-14 - Semantic interactive elements in AppLayout
 **Learning:** Using a `<Typography>` text element with an `onClick` handler as a pseudo-button is a severe accessibility anti-pattern. It lacks keyboard focusability, screen-reader role recognition (as a button), and standard interaction states (hover/focus rings). Replacing it with a semantic MUI `<Button>` inherently resolves these issues.
 **Action:** Always use semantic elements (like `<Button>`) for interactive actions, avoiding attaching `onClick` handlers to non-interactive elements like text or containers.
+
+## 2026-10-01 - Add aria-label to IconButtons in Tooltips
+**Learning:** IconButtons inside Tooltips still need explicit `aria-label`s for accessibility, as screen readers rely on this attribute to describe the button's action when it receives focus, independent of the tooltip's visual pop-up text.
+**Action:** Always ensure that `IconButton` components have descriptive `aria-label` attributes, even if they are wrapped in a `Tooltip`.
