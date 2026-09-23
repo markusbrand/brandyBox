@@ -260,3 +260,51 @@ def test_make_directory_rejects_traversal(monkeypatch, tmp_path) -> None:
     (tmp_path / "u@x.co").mkdir()
     with pytest.raises(ValueError):
         make_directory("u@x.co", "../escape")
+
+
+def test_user_base_path_with_plus_alias(monkeypatch):
+    """Email addresses with + (plus aliasing) are valid for user base path."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/mnt/shared_storage/brandyBox")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    base = user_base_path("user+tag@gmail.com")
+    assert base == Path("/mnt/shared_storage/brandyBox/user+tag@gmail.com")
+
+
+def test_resolve_user_path_rejects_uploads(monkeypatch):
+    """Direct access to internal .uploads directory is rejected."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data/brandyBox")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    with pytest.raises(ValueError, match="internal upload directory"):
+        resolve_user_path("u@x.co", ".uploads/some_id/.path")
+    with pytest.raises(ValueError, match="internal upload directory"):
+        resolve_user_path("u@x.co", ".uploads")
+
+
+def test_list_files_recursive_excludes_uploads_and_temp_files(tmp_path):
+    """list_files_recursive must exclude .uploads directory and .bb_upload_ temp files."""
+    (tmp_path / "normal.txt").write_text("ok")
+    (tmp_path / ".bb_upload_tmp123").write_text("in progress")
+    (tmp_path / ".bb_assemble_tmp456").write_text("assembling")
+    uploads_dir = tmp_path / ".uploads" / "upload_id"
+    uploads_dir.mkdir(parents=True)
+    (uploads_dir / ".path").write_text("target.txt")
+    (uploads_dir / "chunk_000000").write_bytes(b"data")
+
+    res = list_files_recursive(tmp_path)
+    paths = [r["path"] for r in res]
+    assert paths == ["normal.txt"]
+
+
+def test_list_directories_recursive_excludes_uploads(tmp_path):
+    """list_directories_recursive must exclude .uploads directory."""
+    (tmp_path / "normal_dir").mkdir()
+    uploads_dir = tmp_path / ".uploads" / "upload_id"
+    uploads_dir.mkdir(parents=True)
+
+    res = list_directories_recursive(tmp_path)
+    paths = [r["path"] for r in res]
+    assert paths == ["normal_dir"]
