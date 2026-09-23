@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.1](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.4.0...brandybox-v1.4.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **sync,storage:** fix credential refresh loops, sync path traversal, and upload collisions ([f5009f3](https://github.com/markusbrand/brandyBox/commit/f5009f30231fd193473d633d2145ab77178da2b5))
+* **sync,storage:** fix credential refresh loops, sync path traversal, and upload collisions ([5da806b](https://github.com/markusbrand/brandyBox/commit/5da806b5758385a71e5e784e67e2ed20a60aba59))
+
+
+### Documentation
+
+* **openspec:** archive diagnostics-and-llm-logging and sync specs ([480c7ba](https://github.com/markusbrand/brandyBox/commit/480c7bab2160f5c8e4ce2c77331261cb876a337e))
+* **openspec:** archive fix-expired-credentials-and-sync-corruption and sync specs ([2db97d0](https://github.com/markusbrand/brandyBox/commit/2db97d02c34cd3e869d6debd9cab17d3c1347d48))
+
+
+### Code Refactoring
+
+* **oauth:** use RETURNING to combine SELECT and DELETE ([a78b975](https://github.com/markusbrand/brandyBox/commit/a78b97596bb8de440e4125481401ec0041f384a7))
+
 ## [1.4.0](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.2...brandybox-v1.4.0) (2026-09-17)
 
 
