@@ -31,3 +31,6 @@
 **Learning:** In SQLAlchemy, `session.execute(select(Model).where(Model.id == id))` forces a query to the database in all circumstances and bypasses the session's identity map. `session.get(Model, id)` looks up the object in the identity map first, and will not issue a DB query if the object is already loaded, offering drastic speedups in hot paths.
 **Action:** When looking up a single entity by its primary key, use `session.get()` instead of building a `select()` query with a `where()` clause.
 
+## 2026-09-23 - [Combine SELECT and DELETE with RETURNING in SQLAlchemy]
+**Learning:** For single-object retrieval and deletion in the database (like fetching a transient OAuth token and immediately removing it), running a `select` query followed by a `delete` query doubles the database overhead unnecessarily. Modern SQLite and PostgreSQL fully support SQLAlchemy's `delete(...).returning(...)` syntax, which allows safely merging both steps into one atomic operation.
+**Action:** Whenever a simple, unconditional deletion of a specific row is needed where the properties of the deleted object must still be accessed, use `session.execute(delete(Model).where(...).returning(Model))` to halve the database roundtrips.

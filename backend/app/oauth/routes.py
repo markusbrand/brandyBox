@@ -10,7 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import create_access_token, create_refresh_token
@@ -116,7 +116,11 @@ async def google_oauth_callback(
         await session.commit()
         return red("/login?error=oauth_invalid")
 
-    res = await session.execute(select(OAuthState).where(OAuthState.state == state))
+    # ⚡ Bolt: Use direct DELETE with RETURNING to combine SELECT and DELETE.
+    # Impact: Reduces database roundtrips from 2 to 1 in the OAuth callback.
+    res = await session.execute(
+        delete(OAuthState).where(OAuthState.state == state).returning(OAuthState)
+    )
     row = res.scalar_one_or_none()
     if not row:
         log.warning("Google OAuth invalid state")
@@ -128,8 +132,6 @@ async def google_oauth_callback(
         )
         await session.commit()
         return red("/login?error=oauth_invalid")
-
-    await session.delete(row)
     await session.flush()
 
     redirect_uri = _google_redirect_uri(settings, request)
@@ -201,7 +203,11 @@ async def oauth_complete(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> TokenPair:
     """Redeem one-time exchange id for JWT pair (SPA)."""
-    res = await session.execute(select(OAuthExchange).where(OAuthExchange.id == body.exchange.strip()))
+    # ⚡ Bolt: Use direct DELETE with RETURNING to combine SELECT and DELETE.
+    # Impact: Reduces database roundtrips from 2 to 1 in the OAuth completion.
+    res = await session.execute(
+        delete(OAuthExchange).where(OAuthExchange.id == body.exchange.strip()).returning(OAuthExchange)
+    )
     row = res.scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired exchange")
@@ -210,13 +216,12 @@ async def oauth_complete(
     if created.tzinfo is None:
         created = created.replace(tzinfo=timezone.utc)
     if datetime.now(timezone.utc) - created > timedelta(minutes=2):
-        await session.delete(row)
+        # Already deleted by the query, just commit
         await session.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Exchange expired")
 
     access = row.access_token
     refresh = row.refresh_token
-    await session.delete(row)
     await session.commit()
 
     settings = get_settings()
