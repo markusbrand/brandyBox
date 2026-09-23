@@ -64,11 +64,24 @@ pub fn update_tray_status(app: &tauri::AppHandle, status: &str, message: Option<
     }
 }
 
-#[derive(Default)]
-#[allow(dead_code)]
-struct AppState {
-    /// Cached access token (set after login or refresh). Cleared on logout.
-    access_token: Mutex<Option<String>>,
+static CACHED_ACCESS_TOKEN: Mutex<Option<(String, i64)>> = Mutex::new(None);
+
+pub fn set_cached_access_token(token: Option<(String, i64)>) {
+    if let Ok(mut lock) = CACHED_ACCESS_TOKEN.lock() {
+        *lock = token;
+    }
+}
+
+pub fn get_cached_access_token() -> Option<String> {
+    if let Ok(lock) = CACHED_ACCESS_TOKEN.lock() {
+        if let Some((ref token, expires_at)) = *lock {
+            let now = chrono::Utc::now().timestamp();
+            if expires_at > now + 60 && !credentials::is_jwt_expired(token) {
+                return Some(token.clone());
+            }
+        }
+    }
+    None
 }
 
 #[derive(Serialize)]
@@ -148,6 +161,9 @@ fn login(email: String, password: String) -> Result<serde_json::Value, String> {
     if credentials::get_stored().is_none() {
         return Err("Failed to save credentials locally on this device.".to_string());
     }
+    let now = chrono::Utc::now().timestamp();
+    let expires_in = res.expires_in.unwrap_or(1800) as i64;
+    set_cached_access_token(Some((res.access_token.clone(), now + expires_in)));
     Ok(serde_json::json!({
         "access_token": res.access_token,
         "refresh_token": res.refresh_token
@@ -156,6 +172,7 @@ fn login(email: String, password: String) -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 fn logout() {
+    set_cached_access_token(None);
     credentials::clear_stored();
 }
 
@@ -166,12 +183,29 @@ fn get_stored_email() -> Option<String> {
 
 #[tauri::command]
 fn get_valid_access_token() -> Option<String> {
+    if let Some(token) = get_cached_access_token() {
+        return Some(token);
+    }
     let (email, refresh_token) = credentials::get_stored()?;
     let base_url = network::get_base_url();
     let client = ApiClient::new(base_url);
-    let res = client.refresh(&refresh_token).ok()?;
-    credentials::set_stored(&email, &res.refresh_token);
-    Some(res.access_token)
+    match client.refresh(&refresh_token) {
+        Ok(res) => {
+            credentials::set_stored(&email, &res.refresh_token);
+            let now = chrono::Utc::now().timestamp();
+            let expires_in = res.expires_in.unwrap_or(1800) as i64;
+            set_cached_access_token(Some((res.access_token.clone(), now + expires_in)));
+            Some(res.access_token)
+        }
+        Err(e) => {
+            log::warn!("get_valid_access_token: token refresh failed: {}", e);
+            if e.contains("401") || e.to_lowercase().contains("unauthorized") || e.to_lowercase().contains("invalid or expired") {
+                log::info!("get_valid_access_token: refresh token rejected (401), clearing stored credentials");
+                credentials::clear_stored();
+            }
+            None
+        }
+    }
 }
 
 #[tauri::command]
@@ -896,8 +930,10 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|app_handle, event| {
             match event {
-                tauri::RunEvent::ExitRequested { api, .. } => {
-                    api.prevent_exit();
+                tauri::RunEvent::ExitRequested { code, api, .. } => {
+                    if code.is_none() {
+                        api.prevent_exit();
+                    }
                 }
                 #[cfg(target_os = "macos")]
                 tauri::RunEvent::Reopen { .. } => {

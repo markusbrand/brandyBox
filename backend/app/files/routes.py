@@ -203,6 +203,17 @@ async def upload_init(
     if not path_param:
         raise HTTPException(status_code=400, detail="path required")
 
+    try:
+        target = resolve_user_path(current_user.email, path_param)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if target.exists() and target.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A directory already exists at path: {path_param}",
+        )
+
     upload_id = str(uuid.uuid4())
 
     user_base = user_base_path(current_user.email)
@@ -271,12 +282,29 @@ async def upload_finalize(
     try:
         target = resolve_user_path(current_user.email, path_param)
     except ValueError as e:
+        shutil.rmtree(upload_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail=str(e))
+
+    if target.exists() and target.is_dir():
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A directory already exists at path: {path_param}",
+        )
 
     # Sort chunks by index
     chunks = sorted([f for f in upload_dir.iterdir() if f.name.startswith("chunk_")])
     if not chunks:
+        shutil.rmtree(upload_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail="No chunks found")
+
+    for expected_idx, chunk_path in enumerate(chunks):
+        if chunk_path.name != f"chunk_{expected_idx:06d}":
+            shutil.rmtree(upload_dir, ignore_errors=True)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing chunk index {expected_idx}",
+            )
 
     # Determine quotas before assembling
     old_size = 0
@@ -340,6 +368,8 @@ async def upload_finalize(
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+        if upload_dir.exists():
+            shutil.rmtree(upload_dir, ignore_errors=True)
         if isinstance(e, HTTPException):
             raise e
         log.exception("upload_finalize failed for %s: %s", path_param, e)
@@ -370,6 +400,12 @@ async def upload_file(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
+        )
+
+    if target.exists() and target.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A directory already exists at path: {path_param}",
         )
 
     # Determine quotas before starting

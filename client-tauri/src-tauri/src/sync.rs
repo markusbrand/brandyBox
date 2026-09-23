@@ -9,7 +9,7 @@ use crate::config;
 use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const SYNC_IGNORE: &[&str] = &[".directory", "Thumbs.db", "Desktop.ini", ".DS_Store"];
 
@@ -23,6 +23,9 @@ struct SyncStateFile {
 fn is_ignored(path_str: &str) -> bool {
     let normalized = path_str.replace('\\', "/");
     if normalized.contains("/.git/") || normalized.starts_with(".git/") {
+        return true;
+    }
+    if normalized.ends_with(".tmp_download") {
         return true;
     }
     let name = Path::new(&normalized).file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -51,6 +54,27 @@ fn list_local(root: &Path) -> Vec<(String, f64)> {
         }
     }
     out
+}
+
+pub(crate) fn safe_local_path(root: &Path, rel: &str) -> Option<PathBuf> {
+    let trimmed = rel.trim_matches(|c| c == '/' || c == '\\');
+    if trimmed.is_empty() {
+        return None;
+    }
+    for segment in trimmed.split(['/', '\\']) {
+        if segment.is_empty() || segment == "." {
+            continue;
+        }
+        if segment == ".." {
+            return None;
+        }
+    }
+    let local = root.join(trimmed.replace('/', std::path::MAIN_SEPARATOR_STR));
+    if local.starts_with(root) {
+        Some(local)
+    } else {
+        None
+    }
 }
 
 fn compute_file_hash(path: &Path) -> Option<String> {
@@ -349,7 +373,14 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     }
     for path in &to_del_local {
         set_progress("delete_local", done, total_work);
-        let full = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let full = match safe_local_path(local_root, path) {
+            Some(p) => p,
+            None => {
+                log::warn!("delete_local: skipping unsafe path: {}", path);
+                done += 1;
+                continue;
+            }
+        };
         if full.exists() && full.is_file() {
             let _ = std::fs::remove_file(&full);
             let mut parent = full.parent();
@@ -380,12 +411,13 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             let remote_mtime = remote_by_path.get(path).copied().unwrap_or(0.0);
             if remote_mtime > *local_mtime {
                 if let Some(server_hash) = remote_hashes.get(path) {
-                    let local_path = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
-                    if local_path.exists() && local_path.is_file() {
-                        if let Some(local_hash) = compute_file_hash(&local_path) {
-                            if local_hash == *server_hash {
-                                state.file_hashes.insert(path.clone(), server_hash.clone());
-                                continue;
+                    if let Some(local_path) = safe_local_path(local_root, path) {
+                        if local_path.exists() && local_path.is_file() {
+                            if let Some(local_hash) = compute_file_hash(&local_path) {
+                                if local_hash == *server_hash {
+                                    state.file_hashes.insert(path.clone(), server_hash.clone());
+                                    continue;
+                                }
                             }
                         }
                     }
@@ -410,11 +442,12 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                         return false;
                     }
                     if let Some(server_hash) = &r.hash {
-                        let local_path = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
-                        if local_path.exists() && local_path.is_file() {
-                            if let Some(local_hash) = compute_file_hash(&local_path) {
-                                if local_hash == *server_hash {
-                                    return false;
+                        if let Some(local_path) = safe_local_path(local_root, path) {
+                            if local_path.exists() && local_path.is_file() {
+                                if let Some(local_hash) = compute_file_hash(&local_path) {
+                                    if local_hash == *server_hash {
+                                        return false;
+                                    }
                                 }
                             }
                         }
@@ -457,8 +490,16 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     let mut download_counter = 0usize;
     for path in &to_download {
         set_progress("download", done, total_work);
+        let local_path = match safe_local_path(local_root, path) {
+            Some(p) => p,
+            None => {
+                log::warn!("download: skipping unsafe path: {}", path);
+                skipped_downloads.insert(path.clone());
+                done += 1;
+                continue;
+            }
+        };
         let skip = prev_downloaded.contains(path);
-        let local_path = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
         if skip && local_path.exists() && local_path.is_file() {
             done += 1;
             continue;
@@ -524,7 +565,15 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     let mut upload_counter = 0usize;
     for path in &to_upload {
         set_progress("upload", done, total_work);
-        let full = local_root.join(path.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let full = match safe_local_path(local_root, path) {
+            Some(p) => p,
+            None => {
+                log::warn!("upload: skipping unsafe path: {}", path);
+                skipped_uploads.insert(path.clone());
+                done += 1;
+                continue;
+            }
+        };
         if full.exists() && full.is_file() {
             let file_len = std::fs::metadata(&full).map(|m| m.len()).unwrap_or(0);
             match client.upload_file_from_path(path, &full) {
@@ -738,6 +787,30 @@ mod tests {
         assert_eq!(loaded.events[0].error_code, "CLOUDFLARE_524");
         assert_eq!(loaded.summaries.len(), 1);
         assert_eq!(loaded.summaries[0].status, "failed");
+    }
+
+    #[test]
+    fn test_is_ignored_tmp_download() {
+        assert!(is_ignored("file.tmp_download"));
+        assert!(is_ignored("nested/path/.file.txt.tmp_download"));
+        assert!(is_ignored(".git/config"));
+        assert!(is_ignored("sub/.git/HEAD"));
+        assert!(is_ignored(".DS_Store"));
+        assert!(!is_ignored("file.txt"));
+        assert!(!is_ignored("notes/document.pdf"));
+    }
+
+    #[test]
+    fn test_safe_local_path() {
+        let root = Path::new("/user/sync");
+        assert_eq!(safe_local_path(root, "docs/hello.txt"), Some(PathBuf::from("/user/sync/docs/hello.txt")));
+        assert_eq!(safe_local_path(root, "/docs/hello.txt"), Some(PathBuf::from("/user/sync/docs/hello.txt")));
+        assert_eq!(safe_local_path(root, "//docs///hello.txt"), Some(PathBuf::from("/user/sync/docs/hello.txt")));
+        assert_eq!(safe_local_path(root, "../outside.txt"), None);
+        assert_eq!(safe_local_path(root, "docs/../../outside.txt"), None);
+        assert_eq!(safe_local_path(root, "/etc/passwd"), Some(PathBuf::from("/user/sync/etc/passwd")));
+        assert_eq!(safe_local_path(root, ""), None);
+        assert_eq!(safe_local_path(root, "/"), None);
     }
 }
 

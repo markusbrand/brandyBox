@@ -14,8 +14,8 @@ log = logging.getLogger(__name__)
 # Safe path segment: letters, numbers, common punctuation. No / \ (traversal).
 # Allow: . _ - space ( ) + ~ # ! & ' , ; = [ ] @ for "File (1).txt", "user@host.txt", etc.
 _SAFE_SEGMENT_ASCII = re.compile(r"^[a-zA-Z0-9_. \-()+~#!&',;=\[\]@]+$")
-# Email used as folder name: allow @ and dots
-_SAFE_EMAIL = re.compile(r"^[a-zA-Z0-9_.@-]+$")
+# Email used as folder name: allow @, dots, and + (plus aliasing)
+_SAFE_EMAIL = re.compile(r"^[a-zA-Z0-9_.@+-]+$")
 
 
 def _is_safe_path_char(c: str) -> bool:
@@ -80,6 +80,8 @@ def resolve_user_path(email: str, relative_path: str) -> Path:
         safe = _sanitize_segment(part)
         if not safe:
             raise ValueError(f"Unsafe path segment: {part!r}")
+        if safe == ".uploads":
+            raise ValueError("Access to internal upload directory is denied")
         resolved = resolved / safe
     return resolved
 
@@ -127,6 +129,8 @@ def list_files_recursive(root: Path) -> List[dict]:
             with os.scandir(current_dir) as it:
                 for entry in it:
                     if entry.is_file(follow_symlinks=False):
+                        if entry.name.startswith(".bb_upload_") or entry.name.startswith(".bb_assemble_"):
+                            continue
                         try:
                             st = entry.stat(follow_symlinks=False)
                             rel = f"{current_rel}/{entry.name}" if current_rel else entry.name
@@ -138,6 +142,8 @@ def list_files_recursive(root: Path) -> List[dict]:
                         except OSError:
                             continue
                     elif entry.is_dir(follow_symlinks=False):
+                        if entry.name == ".uploads":
+                            continue
                         rel = f"{current_rel}/{entry.name}" if current_rel else entry.name
                         dirs.append((entry.path, rel))
         except OSError as e:
@@ -163,6 +169,8 @@ def list_directories_recursive(root: Path) -> List[dict]:
             with os.scandir(current_dir) as it:
                 for entry in it:
                     if entry.is_dir(follow_symlinks=False):
+                        if entry.name == ".uploads":
+                            continue
                         try:
                             st = entry.stat(follow_symlinks=False)
                             rel = f"{current_rel}/{entry.name}" if current_rel else entry.name

@@ -180,17 +180,16 @@ pub fn set_settings_window_geometry(geometry: String) {
 }
 
 fn executable_command() -> Vec<String> {
-    if cfg!(windows) {
-        vec![
-            std::env::current_exe()
-                .unwrap_or_else(|_| PathBuf::from("BrandyBox.exe"))
-                .to_string_lossy()
-                .to_string(),
-            "--autostart".to_string(),
-        ]
-    } else {
-        vec!["BrandyBox".to_string(), "--autostart".to_string()]
-    }
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| {
+            if cfg!(windows) {
+                "BrandyBox.exe".to_string()
+            } else {
+                "BrandyBox".to_string()
+            }
+        });
+    vec![exe, "--autostart".to_string()]
 }
 
 fn apply_autostart_platform(enabled: bool) {

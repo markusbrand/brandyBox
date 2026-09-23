@@ -105,8 +105,7 @@ struct LoginBody {
 pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
-    #[serde(rename = "expires_in")]
-    pub _expires_in: Option<u64>,
+    pub expires_in: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -204,14 +203,26 @@ impl ApiClient {
 
     pub fn try_refresh(&mut self) -> Result<(), String> {
         if let Some(ref rt) = self.refresh_token.clone() {
-            let res = self.refresh(rt)?;
-            self.access_token = Some(res.access_token);
-            self.refresh_token = Some(res.refresh_token.clone());
-            if let Some(ref em) = self.email {
-                crate::credentials::set_stored(em, &res.refresh_token);
+            log::info!("Attempting automatic token refresh...");
+            match self.refresh(rt) {
+                Ok(res) => {
+                    let now = chrono::Utc::now().timestamp();
+                    let expires_in = res.expires_in.unwrap_or(1800) as i64;
+                    crate::set_cached_access_token(Some((res.access_token.clone(), now + expires_in)));
+                    self.access_token = Some(res.access_token);
+                    self.refresh_token = Some(res.refresh_token.clone());
+                    if let Some(ref em) = self.email {
+                        crate::credentials::set_stored(em, &res.refresh_token);
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    log::warn!("Automatic token refresh failed: {}", e);
+                    return Err(e);
+                }
             }
-            return Ok(());
         }
+        log::warn!("Automatic token refresh failed: no refresh token available");
         Err("No refresh token available".to_string())
     }
 
@@ -521,7 +532,8 @@ impl ApiClient {
                         if let Some(parent) = dest_path.parent() {
                             let _ = std::fs::create_dir_all(parent);
                         }
-                        let tmp_path = dest_path.with_extension("tmp_download");
+                        let file_name = dest_path.file_name().unwrap_or_default().to_string_lossy();
+                        let tmp_path = dest_path.with_file_name(format!(".{}.tmp_download", file_name));
                         let mut tmp_file = File::create(&tmp_path).map_err(|e| e.to_string())?;
 
                         match r.copy_to(&mut tmp_file) {
@@ -619,6 +631,7 @@ impl ApiClient {
 
             let mut chunk_err = String::new();
             let mut success = false;
+            let mut chunk_refreshed = false;
             for attempt in 0..5 {
                 let mut headers = self.headers();
                 headers.insert(reqwest::header::CONTENT_TYPE, "application/octet-stream".parse().unwrap());
@@ -629,7 +642,15 @@ impl ApiClient {
                         success = true;
                         break;
                     }
-                    Ok(r) => chunk_err = format!("chunk {} failed: {}", index, r.status()),
+                    Ok(r) => {
+                        if r.status() == reqwest::StatusCode::UNAUTHORIZED && !chunk_refreshed && self.refresh_token.is_some() {
+                            if self.try_refresh().is_ok() {
+                                chunk_refreshed = true;
+                                continue;
+                            }
+                        }
+                        chunk_err = format!("chunk {} failed: {}", index, r.status());
+                    }
                     Err(e) => chunk_err = format!("chunk {} network error: {}", index, e),
                 }
                 if attempt < 4 {
@@ -649,11 +670,18 @@ impl ApiClient {
         let finalize_url = format!("{}/api/files/upload/finalize?upload_id={}", base, upload_id);
         let mut final_success = false;
         let mut final_err = String::new();
+        let mut final_refreshed = false;
 
         for attempt in 0..4 {
             let client = self.chunk_client();
             match client.post(&finalize_url).headers(self.headers()).send() {
                 Ok(resp) => {
+                    if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !final_refreshed && self.refresh_token.is_some() {
+                        if self.try_refresh().is_ok() {
+                            final_refreshed = true;
+                            continue;
+                        }
+                    }
                     if resp.status().is_success() {
                         final_success = true;
                         break;
