@@ -432,7 +432,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     // Build to_upload with hash-based skip when local matches server (avoids clock skew)
     let to_upload: Vec<String> = local_list
         .iter()
-        .filter(|(path, _)| !is_ignored(path))
+        .filter(|(path, _)| !is_ignored(path) && !to_del_local_set.contains(path.as_str()))
         .filter(|(path, local_mtime)| {
             let remote = remote_by_item.get(path);
             match remote {
@@ -724,6 +724,41 @@ mod tests {
         assert!(
             !to_download.contains(&"DJI_0011.MP4".to_string()),
             "file deleted locally must not be in to_download (must not be re-downloaded)"
+        );
+    }
+
+    /// Scenario: file was in last_synced, deleted on server; sync must delete locally, not re-upload.
+    #[test]
+    fn delete_remote_then_sync_removes_locally_not_upload() {
+        let last_synced: HashSet<String> = ["notes.txt".to_string()].into_iter().collect();
+        let local_list = vec![("notes.txt".to_string(), 100.0)];
+        let current_remote: HashSet<String> = HashSet::new();
+        let remote_by_item: std::collections::HashMap<String, &crate::api::FileItem> = std::collections::HashMap::new();
+
+        let to_delete_local: HashSet<String> = last_synced.difference(&current_remote).cloned().collect();
+        assert!(
+            to_delete_local.contains("notes.txt"),
+            "file deleted on server must be in to_delete_local so it is removed from local disk"
+        );
+
+        let to_del_local_set: HashSet<String> = to_delete_local.iter().cloned().collect();
+
+        let to_upload: Vec<String> = local_list
+            .iter()
+            .filter(|(path, _)| !is_ignored(path) && !to_del_local_set.contains(path.as_str()))
+            .filter(|(path, _local_mtime)| {
+                let remote = remote_by_item.get(path);
+                match remote {
+                    None => true,
+                    Some(_) => false,
+                }
+            })
+            .map(|(path, _)| path.clone())
+            .collect();
+
+        assert!(
+            !to_upload.contains(&"notes.txt".to_string()),
+            "file deleted on server must not be in to_upload (must not be re-uploaded)"
         );
     }
 
