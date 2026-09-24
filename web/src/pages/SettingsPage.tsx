@@ -83,6 +83,7 @@ export default function SettingsPage() {
   const [newLast, setNewLast] = useState("");
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
+  const [isSavingAppearance, setIsSavingAppearance] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -137,6 +138,7 @@ export default function SettingsPage() {
   }, [user?.is_admin, loadUsers]);
 
   const saveAppearance = async () => {
+    setIsSavingAppearance(true);
     try {
       const trimmed = bg.trim();
       let nextImage: string | null;
@@ -156,6 +158,8 @@ export default function SettingsPage() {
       setOpenAppear(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setIsSavingAppearance(false);
     }
   };
 
@@ -447,9 +451,16 @@ export default function SettingsPage() {
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenAppear(false)}>Cancel</Button>
-            <Button type="submit" variant="contained">
-              Save
+            <Button onClick={() => setOpenAppear(false)} disabled={isSavingAppearance}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={isSavingAppearance}
+              startIcon={isSavingAppearance ? <CircularProgress size={20} color="inherit" /> : null}
+            >
+              {isSavingAppearance ? "Saving..." : "Save"}
             </Button>
           </DialogActions>
         </form>
