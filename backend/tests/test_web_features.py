@@ -90,6 +90,40 @@ def test_delete_background_image_clears_file_and_preference(client: TestClient) 
     assert rg.status_code == 404
 
 
+def test_background_image_does_not_leak_into_files_or_folders(client: TestClient) -> None:
+    """Internal .brandybox directory and background image must not appear in /api/files/list or /api/files/folders."""
+    h = _auth_headers(client)
+    up = client.post(
+        "/api/users/me/background-image",
+        headers={**h, "Content-Type": "image/png"},
+        content=_TINY_PNG,
+    )
+    assert up.status_code == 200
+
+    # Ensure background image is accessible via dedicated endpoint
+    rg = client.get("/api/users/me/background-image", headers=h)
+    assert rg.status_code == 200
+
+    # Check file list
+    r_files = client.get("/api/files/list", headers=h)
+    assert r_files.status_code == 200
+    files = r_files.json()
+    assert not any(".brandybox" in f["path"] for f in files)
+
+    # Check folder list
+    r_folders = client.get("/api/files/folders", headers=h)
+    assert r_folders.status_code == 200
+    folders = r_folders.json()
+    assert not any(".brandybox" in f["path"] for f in folders)
+
+    # Check direct access rejection
+    r_direct = client.get("/api/files/download", params={"path": ".brandybox/content-bg.png"}, headers=h)
+    assert r_direct.status_code == 400
+
+    r_delete = client.delete("/api/files/delete", params={"path": ".brandybox/content-bg.png"}, headers=h)
+    assert r_delete.status_code == 400
+
+
 def test_patch_preferences_to_url_removes_uploaded_background_file(client: TestClient) -> None:
     h = _auth_headers(client)
     up = client.post(

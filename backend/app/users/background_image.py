@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple
 
-from app.files.storage import resolve_user_path
+from app.files.storage import user_base_path
 
 log = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ _MAX_BYTES = 5 * 1024 * 1024
 
 
 def _user_brandybox_dir(email: str) -> Path:
-    return resolve_user_path(email, _REL_FOLDER)
+    return user_base_path(email) / _REL_FOLDER
 
 
 def sniff_image_format(data: bytes) -> Optional[Tuple[str, str]]:
