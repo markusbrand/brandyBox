@@ -25,6 +25,12 @@ fn is_ignored(path_str: &str) -> bool {
     if normalized.contains("/.git/") || normalized.starts_with(".git/") {
         return true;
     }
+    if normalized.contains("/.brandybox/") || normalized.starts_with(".brandybox/") || normalized == ".brandybox" {
+        return true;
+    }
+    if normalized.contains("/.uploads/") || normalized.starts_with(".uploads/") || normalized == ".uploads" {
+        return true;
+    }
     if normalized.ends_with(".tmp_download") {
         return true;
     }
@@ -795,6 +801,12 @@ mod tests {
         assert!(is_ignored("nested/path/.file.txt.tmp_download"));
         assert!(is_ignored(".git/config"));
         assert!(is_ignored("sub/.git/HEAD"));
+        assert!(is_ignored(".brandybox"));
+        assert!(is_ignored(".brandybox/content-bg.png"));
+        assert!(is_ignored("folder/.brandybox/file"));
+        assert!(is_ignored(".uploads"));
+        assert!(is_ignored(".uploads/abc/chunk_0"));
+        assert!(is_ignored("folder/.uploads/xyz"));
         assert!(is_ignored(".DS_Store"));
         assert!(!is_ignored("file.txt"));
         assert!(!is_ignored("notes/document.pdf"));
