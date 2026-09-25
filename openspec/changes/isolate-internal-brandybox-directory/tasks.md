@@ -14,4 +14,4 @@
 
 - [x] 3.1 Run `pytest backend` and verify all tests pass
 - [x] 3.2 Run `cargo test` in `client-tauri/src-tauri` and verify all tests pass
-- [ ] 3.3 Create git commit and pull request
+- [x] 3.3 Create git commit and pull request
