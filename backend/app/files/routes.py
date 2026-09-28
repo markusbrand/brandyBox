@@ -45,8 +45,16 @@ log = logging.getLogger(__name__)
 
 
 def _normalize_path_param(path: Optional[str]) -> str:
-    """Return path from query string. Do not replace + with space: filenames may contain +."""
-    return path or ""
+    """Return canonical relative path from query string.
+    Normalizes backslashes, strips leading/trailing slashes and whitespace,
+    and removes redundant empty segments.
+    Does not replace + with space: filenames may contain +.
+    """
+    if not path:
+        return ""
+    segments = [s.strip() for s in path.replace("\\", "/").strip("/").split("/") if s.strip()]
+    return "/".join(segments)
+
 
 
 @router.get("/storage")
@@ -208,22 +216,24 @@ async def upload_init(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    user_base = user_base_path(current_user.email)
+    canonical_path = target.relative_to(user_base).as_posix()
+
     if target.exists() and target.is_dir():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"A directory already exists at path: {path_param}",
+            detail=f"A directory already exists at path: {canonical_path}",
         )
 
     upload_id = str(uuid.uuid4())
 
-    user_base = user_base_path(current_user.email)
     upload_dir = user_base / ".uploads" / str(upload_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     # Store the intended path in a metadata file
-    (upload_dir / ".path").write_text(path_param, encoding="utf-8")
+    (upload_dir / ".path").write_text(canonical_path, encoding="utf-8")
 
-    log.info("upload_init user=%s path=%s upload_id=%s", current_user.email, path_param, upload_id)
+    log.info("upload_init user=%s path=%s upload_id=%s", current_user.email, canonical_path, upload_id)
     return {"upload_id": upload_id}
 
 
@@ -278,18 +288,20 @@ async def upload_finalize(
     if not path_file.exists():
         raise HTTPException(status_code=400, detail="Invalid upload state")
 
-    path_param = path_file.read_text(encoding="utf-8")
+    path_param = _normalize_path_param(path_file.read_text(encoding="utf-8"))
     try:
         target = resolve_user_path(current_user.email, path_param)
     except ValueError as e:
         shutil.rmtree(upload_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail=str(e))
 
+    canonical_path = target.relative_to(user_base).as_posix()
+
     if target.exists() and target.is_dir():
         shutil.rmtree(upload_dir, ignore_errors=True)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"A directory already exists at path: {path_param}",
+            detail=f"A directory already exists at path: {canonical_path}",
         )
 
     # Sort chunks by index
@@ -353,18 +365,20 @@ async def upload_finalize(
 
         # Update cached usage
         current_user.storage_used_bytes += (total_size - old_size)
+        if current_user.storage_used_bytes < 0:
+            current_user.storage_used_bytes = 0
         session.add(current_user)
         content_hash = hasher.hexdigest()
-        await set_hash(session, current_user.email, path_param, content_hash)
+        await set_hash(session, current_user.email, canonical_path, content_hash)
 
         # Cleanup
         shutil.rmtree(upload_dir)
 
         log.info(
             "upload_finalize user=%s path=%s size=%d hash=%s",
-            current_user.email, path_param, total_size, content_hash
+            current_user.email, canonical_path, total_size, content_hash
         )
-        return {"path": path_param, "size": total_size, "hash": content_hash}
+        return {"path": canonical_path, "size": total_size, "hash": content_hash}
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -402,10 +416,12 @@ async def upload_file(
             detail=str(e),
         )
 
+    canonical_path = target.relative_to(user_base_path(current_user.email)).as_posix()
+
     if target.exists() and target.is_dir():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"A directory already exists at path: {path_param}",
+            detail=f"A directory already exists at path: {canonical_path}",
         )
 
     # Determine quotas before starting
@@ -465,17 +481,19 @@ async def upload_file(
         # Atomic move to final destination
         shutil.move(temp_path, target)
         content_hash = hasher.hexdigest()
-        await set_hash(session, current_user.email, path_param, content_hash)
+        await set_hash(session, current_user.email, canonical_path, content_hash)
 
         # Update cached usage
         current_user.storage_used_bytes += (bytes_written - old_size)
+        if current_user.storage_used_bytes < 0:
+            current_user.storage_used_bytes = 0
         session.add(current_user)
 
         log.info(
             "upload_file user=%s path=%s size=%d resolved=%s",
-            current_user.email, path_param, bytes_written, target
+            current_user.email, canonical_path, bytes_written, target
         )
-        return {"path": path_param, "size": bytes_written, "hash": content_hash}
+        return {"path": canonical_path, "size": bytes_written, "hash": content_hash}
 
     except Exception as e:
         if os.path.exists(temp_path):
@@ -542,11 +560,12 @@ async def delete_file(
     try:
         # Get file size before deletion for quota update
         target = resolve_user_path(current_user.email, path_param)
+        canonical_path = target.relative_to(user_base_path(current_user.email)).as_posix()
         file_size = 0
         if target.exists() and target.is_file():
             file_size = target.stat().st_size
 
-        storage_delete_file(current_user.email, path_param)
+        storage_delete_file(current_user.email, canonical_path)
 
         # Update cached usage
         current_user.storage_used_bytes -= file_size
@@ -561,10 +580,13 @@ async def delete_file(
             detail=str(e),
         )
     except FileNotFoundError:
+        if "canonical_path" in locals():
+            await delete_hash(session, current_user.email, canonical_path)
+            await session.commit()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
-    await delete_hash(session, current_user.email, path_param)
-    log.info("delete_file user=%s path=%s", current_user.email, path_param)
-    return {"path": path_param, "deleted": True}
+    await delete_hash(session, current_user.email, canonical_path)
+    log.info("delete_file user=%s path=%s", current_user.email, canonical_path)
+    return {"path": canonical_path, "deleted": True}

@@ -197,9 +197,10 @@ def make_directory(email: str, relative_path: str) -> dict:
     Returns ``{"path": str, "created": bool}``.
     """
     target = resolve_user_path(email, relative_path)
+    canonical = target.relative_to(user_base_path(email)).as_posix()
     if target.exists():
         if target.is_dir():
-            return {"path": relative_path, "created": False}
-        raise FileExistsError(f"A file already exists at: {relative_path}")
+            return {"path": canonical, "created": False}
+        raise FileExistsError(f"A file already exists at: {canonical}")
     target.mkdir(parents=True, exist_ok=True)
-    return {"path": relative_path, "created": True}
+    return {"path": canonical, "created": True}
