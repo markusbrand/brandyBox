@@ -225,6 +225,20 @@ def test_make_directory_creates_new(monkeypatch, tmp_path) -> None:
     assert (user_dir / "vacations" / "2024").is_dir()
 
 
+def test_make_directory_canonicalizes_path(monkeypatch, tmp_path) -> None:
+    """make_directory returns canonical path even if given leading/trailing slashes."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = tmp_path
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    user_dir = tmp_path / "u@x.co"
+    user_dir.mkdir()
+    res = make_directory("u@x.co", "/vacations/2025/")
+    assert res == {"path": "vacations/2025", "created": True}
+    assert (user_dir / "vacations" / "2025").is_dir()
+
+
+
 def test_make_directory_idempotent(monkeypatch, tmp_path) -> None:
     """Creating an existing folder returns created=False (no error)."""
     from app.files import storage
