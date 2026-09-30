@@ -77,6 +77,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const [syncFolderError, setSyncFolderError] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<{ phase: string; current: number; total: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "warning" | "error">("idle");
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const loadSettings = async () => {
@@ -126,7 +127,18 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   useEffect(() => {
     invoke<{ status: string; message?: string | null }>("get_sync_status")
       .then((s) => {
-        if (s.status === "error" && s.message) setSyncError(s.message);
+        if (s.status === "syncing") {
+          setSyncing(true);
+          setSyncStatus("syncing");
+        } else if (s.status === "warning") {
+          setSyncStatus("warning");
+          if (s.message) setSyncError(s.message);
+        } else if (s.status === "error") {
+          setSyncStatus("error");
+          if (s.message) setSyncError(s.message);
+        } else if (s.status === "synced") {
+          setSyncStatus("synced");
+        }
       })
       .catch(() => {});
   }, []);
@@ -138,11 +150,24 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   useEffect(() => {
     const unlistenPromise = listen<{ status: string; message?: string | null }>("sync-status", (event) => {
       const { status, message } = event.payload;
-      if (status === "synced" || status === "error") {
+      if (status === "synced" || status === "error" || status === "warning") {
         setSyncing(false);
         setSyncProgress(null);
-        if (status === "error" && message) setSyncError(message);
-        if (status === "synced") loadSettings();
+        if (status === "error") {
+          setSyncStatus("error");
+          setSyncError(message || "Sync failed");
+        } else if (status === "warning") {
+          setSyncStatus("warning");
+          setSyncError(message || "Sync completed with warnings");
+          loadSettings();
+        } else if (status === "synced") {
+          setSyncStatus("synced");
+          setSyncError(null);
+          loadSettings();
+        }
+      } else if (status === "syncing") {
+        setSyncing(true);
+        setSyncStatus("syncing");
       }
     });
     return () => {
@@ -227,6 +252,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
 
   const handleSyncNow = async () => {
     setSyncing(true);
+    setSyncStatus("syncing");
     setSyncError(null);
     setSyncProgress({ phase: "Starting…", current: 0, total: 0 });
     try {
@@ -234,6 +260,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
       // Sync runs in background; sync-status event will set syncing false and update error
     } catch (e) {
       setSyncing(false);
+      setSyncStatus("error");
       setSyncProgress(null);
       setSyncError(formatUserFacingError(e));
       console.error(e);
@@ -456,7 +483,12 @@ export default function Settings({ email, onLogout }: SettingsProps) {
             </Button>
           </Box>
           {syncError && (
-            <Alert severity="error" role="alert" onClose={() => setSyncError(null)} sx={{ mt: 1 }}>
+            <Alert
+              severity={syncStatus === "warning" ? "warning" : "error"}
+              role="alert"
+              onClose={() => setSyncError(null)}
+              sx={{ mt: 1 }}
+            >
               {syncError}
             </Alert>
           )}
