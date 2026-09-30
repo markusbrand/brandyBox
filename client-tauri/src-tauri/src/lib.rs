@@ -320,6 +320,10 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     if !config::user_has_set_sync_folder() {
         return Err("Sync folder not set".to_string());
     }
+    let (status, _) = sync::get_sync_status();
+    if status == "syncing" || sync::is_sync_running() {
+        return Err("A sync is already in progress.".to_string());
+    }
     let token = get_valid_access_token().ok_or("Not logged in")?;
     let base_url = network::get_base_url();
     let root = config::get_sync_folder_path();
@@ -689,6 +693,7 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
         loop {
             let (status, _) = sync::get_sync_status();
             if status != "syncing"
+                && !sync::is_sync_running()
                 && config::user_has_set_sync_folder()
                 && get_valid_access_token().is_some()
             {
@@ -706,6 +711,8 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                             client.set_refresh_token(Some(refresh_token));
                         }
                         let result = sync::run_sync(&mut client, &root);
+                        let sync_ok = result.is_ok();
+                        let last_sync_at = chrono::Utc::now().to_rfc3339();
                         match &result {
                             Ok((bytes_downloaded, bytes_uploaded, warning)) => {
                                 if let Some(msg) = warning {
@@ -726,6 +733,9 @@ fn spawn_background_sync_loop(app: tauri::AppHandle) {
                                 sync::set_sync_status(sync::SyncStatus::Error(e.clone()));
                                 update_tray_status(&app_handle, "error", Some(e));
                             }
+                        }
+                        if let Err(e) = client.client_ping(Some(sync_ok), Some(last_sync_at)) {
+                            log::warn!("client_ping failed in background sync: {}", e);
                         }
                         let _ = app_handle.emit("sync-status", sync::get_sync_status_payload());
                     }
