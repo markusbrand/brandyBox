@@ -27,3 +27,7 @@
 ## 2026-10-01 - Add aria-label to IconButtons in Tooltips
 **Learning:** IconButtons inside Tooltips still need explicit `aria-label`s for accessibility, as screen readers rely on this attribute to describe the button's action when it receives focus, independent of the tooltip's visual pop-up text.
 **Action:** Always ensure that `IconButton` components have descriptive `aria-label` attributes, even if they are wrapped in a `Tooltip`.
+
+## 2026-10-02 - Use semantic icons and clear typography for empty states
+**Learning:** Text-only empty states offer poor UX as they lack visual hierarchy and fail to draw user attention. Using large, muted semantic icons (e.g., `DriveFolderUploadIcon` or `FolderIcon`) paired with strong headings (e.g., `h6`) and concise, actionable helper text significantly improves the intuitiveness and aesthetic of empty states.
+**Action:** Always replace text-only empty states with visually polished versions containing semantic icons and structured typography (headings and body text).
