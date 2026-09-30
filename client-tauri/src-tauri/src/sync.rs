@@ -10,6 +10,38 @@ use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// RAII guard that holds the exclusive synchronization lock.
+/// Dropping this guard resets the lock flag, allowing subsequent sync runs.
+#[derive(Debug)]
+pub struct SyncLockGuard;
+
+impl Drop for SyncLockGuard {
+    fn drop(&mut self) {
+        SYNC_IN_PROGRESS.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Attempt to acquire the exclusive sync lock.
+/// Returns `Some(SyncLockGuard)` if acquired, or `None` if a sync is already running.
+pub fn try_acquire_sync_lock() -> Option<SyncLockGuard> {
+    if SYNC_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        Some(SyncLockGuard)
+    } else {
+        None
+    }
+}
+
+/// Returns `true` if a synchronization run is currently active.
+pub fn is_sync_running() -> bool {
+    SYNC_IN_PROGRESS.load(Ordering::SeqCst)
+}
 
 const SYNC_IGNORE: &[&str] = &[".directory", "Thumbs.db", "Desktop.ini", ".DS_Store"];
 
@@ -251,6 +283,10 @@ pub fn flush_telemetry_queue(client: &ApiClient) -> Result<(), String> {
 
 
 pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, Option<String>), String> {
+    let _lock = match try_acquire_sync_lock() {
+        Some(l) => l,
+        None => return Err("A sync operation is already in progress".to_string()),
+    };
     let trace_id = match &client.sync_id {
         Some(tid) => tid.clone(),
         None => {
@@ -811,6 +847,25 @@ mod tests {
         assert_eq!(safe_local_path(root, "/etc/passwd"), Some(PathBuf::from("/user/sync/etc/passwd")));
         assert_eq!(safe_local_path(root, ""), None);
         assert_eq!(safe_local_path(root, "/"), None);
+    }
+
+    #[test]
+    fn test_sync_lock_guard_mutual_exclusion() {
+        assert!(!is_sync_running(), "initially sync should not be running");
+        let guard1 = try_acquire_sync_lock();
+        assert!(guard1.is_some(), "first acquire should succeed");
+        assert!(is_sync_running(), "sync should now report running");
+
+        let guard2 = try_acquire_sync_lock();
+        assert!(guard2.is_none(), "second concurrent acquire must fail");
+
+        drop(guard1);
+        assert!(!is_sync_running(), "after dropping guard, sync should not be running");
+
+        let guard3 = try_acquire_sync_lock();
+        assert!(guard3.is_some(), "acquire after drop should succeed");
+        drop(guard3);
+        assert!(!is_sync_running());
     }
 }
 
