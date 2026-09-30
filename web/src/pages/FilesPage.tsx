@@ -585,22 +585,26 @@ export default function FilesPage() {
           Loading files…
         </Typography>
       ) : !err && !hasAnyContent ? (
-        <Paper variant="outlined" sx={{ p: 3, textAlign: "center" }}>
-          <Typography variant="body1" color="text.secondary" gutterBottom>
-            No files in your account yet.
+        <Paper variant="outlined" sx={{ p: 6, textAlign: "center" }}>
+          <DriveFolderUploadIcon sx={{ fontSize: 64, color: "text.secondary", mb: 2, opacity: 0.5 }} />
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            No files in your account yet
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Upload from here, create a folder, or sync from the desktop app — files are listed from
-            the server folder for your signed-in email.
+          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400, mx: "auto" }}>
+            Upload a file, create a folder, or sync from the desktop app to get started. Files are securely stored and synced across your devices.
           </Typography>
         </Paper>
       ) : entries.length === 0 || (entries.length === 1 && entries[0].kind === "parent") ? (
         <Paper variant="outlined">
           <List disablePadding>
             {currentFolder ? renderParentRow(goUp, true) : null}
-            <Box sx={{ p: 3, textAlign: "center" }}>
+            <Box sx={{ p: 6, textAlign: "center" }}>
+              <FolderIcon sx={{ fontSize: 64, color: "text.secondary", mb: 2, opacity: 0.5 }} />
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                This folder is empty
+              </Typography>
               <Typography variant="body2" color="text.secondary">
-                This folder is empty.
+                Use the buttons above to upload files or create new folders here.
               </Typography>
             </Box>
           </List>
