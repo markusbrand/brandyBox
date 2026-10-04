@@ -27,3 +27,6 @@
 ## 2026-10-01 - Add aria-label to IconButtons in Tooltips
 **Learning:** IconButtons inside Tooltips still need explicit `aria-label`s for accessibility, as screen readers rely on this attribute to describe the button's action when it receives focus, independent of the tooltip's visual pop-up text.
 **Action:** Always ensure that `IconButton` components have descriptive `aria-label` attributes, even if they are wrapped in a `Tooltip`.
+## 2026-10-04 - Embed primary actions directly into empty state components
+**Learning:** When displaying an empty state for a list or container (like an empty folder or new account), leaving the user with just text creates friction. Embedding the primary and secondary actions (e.g., Upload, New Folder) directly into the empty state component reduces cognitive load and seamlessly guides the user's next steps.
+**Action:** When creating empty states for lists or containers, always embed primary and secondary actions (e.g., Upload, New Folder) directly into the empty state component to reduce cognitive load and seamlessly guide the user's next steps.
