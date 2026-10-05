@@ -27,3 +27,8 @@
 **Vulnerability:** Google OAuth flow was missing CSRF protection, allowing an attacker to log a victim into the attacker's account (Login CSRF). The `state` parameter was generated and verified against a database table, but it was not bound to the user's browser session.
 **Learning:** Storing the `state` parameter only in the database and checking if it exists is insufficient for CSRF protection in OAuth. The `state` must be bound to the user's specific browser session (e.g., via an HttpOnly cookie) so that when the callback occurs, we can verify the request originated from the same browser that initiated the flow.
 **Prevention:** Always bind the OAuth `state` parameter to a secure, HttpOnly, and SameSite=lax browser cookie during the start phase, and verify it matches the `state` query parameter during the callback phase.
+
+## 2024-05-28 - Missing input length limits on Chunk index (DoS risk)
+**Vulnerability:** The `/upload/chunk` endpoint lacked bounds checking on the `index` parameter, creating a vulnerability where an attacker could provide exceptionally large indices, resulting in Denial of Service (DoS) through abnormal disk consumption/memory exhaustion or potential out-of-bounds array operations during chunk assembly.
+**Learning:** Even internal formatting values (like integers passed to string interpolations, e.g., `f"chunk_{index:06d}"`) can cause security risks when completely unbounded.
+**Prevention:** Explicitly enforce bounds on all user-supplied numerical inputs in API endpoints, such as checking `0 <= index <= 10000`, before using them in file paths or other resource-intensive operations.
