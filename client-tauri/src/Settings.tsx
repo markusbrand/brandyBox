@@ -78,6 +78,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const [syncProgress, setSyncProgress] = useState<{ phase: string; current: number; total: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncWarning, setSyncWarning] = useState<string | null>(null);
 
   const loadSettings = async () => {
     try {
@@ -127,6 +128,7 @@ export default function Settings({ email, onLogout }: SettingsProps) {
     invoke<{ status: string; message?: string | null }>("get_sync_status")
       .then((s) => {
         if (s.status === "error" && s.message) setSyncError(s.message);
+        if (s.status === "warning" && s.message) setSyncWarning(s.message);
       })
       .catch(() => {});
   }, []);
@@ -138,11 +140,12 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   useEffect(() => {
     const unlistenPromise = listen<{ status: string; message?: string | null }>("sync-status", (event) => {
       const { status, message } = event.payload;
-      if (status === "synced" || status === "error") {
+      if (status === "synced" || status === "error" || status === "warning") {
         setSyncing(false);
         setSyncProgress(null);
         if (status === "error" && message) setSyncError(message);
-        if (status === "synced") loadSettings();
+        if (status === "warning" && message) setSyncWarning(message);
+        if (status === "synced" || status === "warning") loadSettings();
       }
     });
     return () => {
@@ -228,10 +231,16 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const handleSyncNow = async () => {
     setSyncing(true);
     setSyncError(null);
+    setSyncWarning(null);
     setSyncProgress({ phase: "Starting…", current: 0, total: 0 });
     try {
-      await invoke<{ started?: boolean }>("run_sync");
-      // Sync runs in background; sync-status event will set syncing false and update error
+      const res = await invoke<{ started?: boolean; message?: string }>("run_sync");
+      if (res && res.started === false) {
+        setSyncing(false);
+        setSyncProgress(null);
+        if (res.message) setSyncWarning(res.message);
+      }
+      // Sync runs in background; sync-status event will set syncing false and update error/warning
     } catch (e) {
       setSyncing(false);
       setSyncProgress(null);
@@ -458,6 +467,11 @@ export default function Settings({ email, onLogout }: SettingsProps) {
           {syncError && (
             <Alert severity="error" role="alert" onClose={() => setSyncError(null)} sx={{ mt: 1 }}>
               {syncError}
+            </Alert>
+          )}
+          {syncWarning && (
+            <Alert severity="warning" role="alert" onClose={() => setSyncWarning(null)} sx={{ mt: 1 }}>
+              {syncWarning}
             </Alert>
           )}
           {syncProgress && (

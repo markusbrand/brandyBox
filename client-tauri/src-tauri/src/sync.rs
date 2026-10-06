@@ -428,10 +428,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
 
     let remaining_local: HashSet<String> = current_local.difference(&to_del_local_set).cloned().collect();
     let remaining_remote: HashSet<String> = current_remote.difference(&to_del_remote_set).cloned().collect();
-    let mut base_synced: HashSet<String> = remaining_local.intersection(&remaining_remote).filter(|p| !is_ignored(p)).cloned().collect();
-    for path in &failed_local_deletions {
-        base_synced.insert(path.clone());
-    }
+
 
     let mut to_download: Vec<String> = current_remote
         .difference(&current_local)
@@ -503,6 +500,17 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         })
         .map(|(path, _)| path.clone())
         .collect();
+
+    let to_download_set: HashSet<String> = to_download.iter().cloned().collect();
+    let to_upload_set: HashSet<String> = to_upload.iter().cloned().collect();
+    let mut base_synced: HashSet<String> = remaining_local
+        .intersection(&remaining_remote)
+        .filter(|p| !is_ignored(p) && !to_download_set.contains(p.as_str()) && !to_upload_set.contains(p.as_str()))
+        .cloned()
+        .collect();
+    for path in &failed_local_deletions {
+        base_synced.insert(path.clone());
+    }
 
     log::info!(
         "Sync plan: {} to_download, {} to_upload, {} delete_server, {} delete_local",
@@ -819,6 +827,58 @@ mod tests {
             !to_upload.contains(&"notes.txt".to_string()),
             "file deleted on server must not be in to_upload (must not be re-uploaded)"
         );
+    }
+
+    #[test]
+    fn skipped_transfer_of_existing_file_excluded_from_synced_state() {
+        let current_local: HashSet<String> = [
+            "unchanged.txt".to_string(),
+            "failed_download.txt".to_string(),
+            "failed_upload.txt".to_string(),
+        ]
+        .into_iter()
+        .collect();
+        let current_remote: HashSet<String> = [
+            "unchanged.txt".to_string(),
+            "failed_download.txt".to_string(),
+            "failed_upload.txt".to_string(),
+        ]
+        .into_iter()
+        .collect();
+        let to_del_local_set = HashSet::new();
+        let to_del_remote_set = HashSet::new();
+
+        let remaining_local: HashSet<String> = current_local.difference(&to_del_local_set).cloned().collect();
+        let remaining_remote: HashSet<String> = current_remote.difference(&to_del_remote_set).cloned().collect();
+
+        let to_download = vec!["failed_download.txt".to_string()];
+        let to_upload = vec!["failed_upload.txt".to_string()];
+
+        let to_download_set: HashSet<String> = to_download.iter().cloned().collect();
+        let to_upload_set: HashSet<String> = to_upload.iter().cloned().collect();
+
+        let base_synced: HashSet<String> = remaining_local
+            .intersection(&remaining_remote)
+            .filter(|p| !is_ignored(p) && !to_download_set.contains(p.as_str()) && !to_upload_set.contains(p.as_str()))
+            .cloned()
+            .collect();
+
+        assert!(base_synced.contains("unchanged.txt"));
+        assert!(!base_synced.contains("failed_download.txt"));
+        assert!(!base_synced.contains("failed_upload.txt"));
+
+        let completed_downloads: HashSet<String> = HashSet::new();
+        let completed_uploads: HashSet<String> = HashSet::new();
+
+        let new_synced: HashSet<String> = base_synced
+            .union(&completed_downloads)
+            .cloned()
+            .chain(completed_uploads.iter().cloned())
+            .collect();
+
+        assert!(new_synced.contains("unchanged.txt"));
+        assert!(!new_synced.contains("failed_download.txt"));
+        assert!(!new_synced.contains("failed_upload.txt"));
     }
 
     #[test]
