@@ -589,19 +589,55 @@ export default function FilesPage() {
           <Typography variant="body1" color="text.secondary" gutterBottom>
             No files in your account yet.
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Upload from here, create a folder, or sync from the desktop app — files are listed from
             the server folder for your signed-in email.
           </Typography>
+          <Stack direction="row" spacing={2} justifyContent="center">
+            <Button
+              variant="contained"
+              component="label"
+              disabled={uploadBusy}
+              startIcon={uploadBusy ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
+            >
+              {uploadBusy ? "Uploading..." : "Upload file"}
+              <input type="file" hidden onChange={onUpload} disabled={uploadBusy} />
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<CreateNewFolderIcon />}
+              onClick={openNewFolderDialog}
+            >
+              New folder
+            </Button>
+          </Stack>
         </Paper>
       ) : entries.length === 0 || (entries.length === 1 && entries[0].kind === "parent") ? (
         <Paper variant="outlined">
           <List disablePadding>
             {currentFolder ? renderParentRow(goUp, true) : null}
             <Box sx={{ p: 3, textAlign: "center" }}>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                 This folder is empty.
               </Typography>
+              <Stack direction="row" spacing={2} justifyContent="center">
+                <Button
+                  variant="contained"
+                  component="label"
+                  disabled={uploadBusy}
+                  startIcon={uploadBusy ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
+                >
+                  {uploadBusy ? "Uploading..." : "Upload file"}
+                  <input type="file" hidden onChange={onUpload} disabled={uploadBusy} />
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<CreateNewFolderIcon />}
+                  onClick={openNewFolderDialog}
+                >
+                  New folder
+                </Button>
+              </Stack>
             </Box>
           </List>
         </Paper>
