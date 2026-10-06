@@ -320,6 +320,10 @@ fn run_sync(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     if !config::user_has_set_sync_folder() {
         return Err("Sync folder not set".to_string());
     }
+    let (status, _) = sync::get_sync_status();
+    if status == "syncing" {
+        return Ok(serde_json::json!({ "started": false, "message": "Sync already in progress" }));
+    }
     let token = get_valid_access_token().ok_or("Not logged in")?;
     let base_url = network::get_base_url();
     let root = config::get_sync_folder_path();
