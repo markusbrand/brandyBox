@@ -1,6 +1,6 @@
 //! Resolve backend base URL: LAN vs Cloudflare (matches Python client logic).
 
-const LAN_HOST: &str = "192.168.0.150";
+const LAN_HOST: &str = "192.168.0.152";
 #[allow(dead_code)]
 const LAN_NETWORK_NAME: &str = "brandstaetter";
 const BACKEND_PORT: &str = "8081";

@@ -7,7 +7,7 @@ I want to use that app to access my raspberry pi storage from everywhere and syn
 
 To ensure access to the raspberry pi we use a cloudflare tunnel, which I map to the subdomain: brandybox.brandstaetter.rocks
 The cloudflare service is already running on a docker container on the raspberry pi.
-If the client PC is connected to the local network with name 'brandstaetter'. It should automatically switch from the cloudflare tunnel to the direct host address of the raspberry pi which is 192.168.0.150.
+If the client PC is connected to the local network with name 'brandstaetter'. It should automatically switch from the cloudflare tunnel to the direct host address of the server which is 192.168.0.152.
 
 the backend service for brandybox to be installed on the raspberry pi should run in a docker container and also implemented in python.
 

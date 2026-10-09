@@ -37,7 +37,7 @@ The webhook calls the Pi when the workflow completes; the listener runs `update_
 SSH in and inspect the last lines of `backend/webhook.log`:
 
 ```bash
-ssh pi 'tail -30 ~/brandyBox/backend/webhook.log'
+ssh bosgame 'tail -30 ~/brandyBox/backend/webhook.log'
 ```
 
 You should see:
@@ -49,11 +49,11 @@ If the webhook is not configured or the listener isn’t running, you won’t se
 
 **Option B — Check backend health**
 
-From your PC (Pi at **192.168.0.150**, port from your setup, e.g. 8081):
+From your PC (server at **192.168.0.152**, port from your setup, e.g. 8081):
 
 ```bash
 sleep 120
-curl -s http://192.168.0.150:8081/health
+curl -s http://192.168.0.152:8081/health
 ```
 
 Expected: `{"status":"ok"}`. This confirms the backend is up; for proof that the *update* ran, use Option A.
@@ -64,12 +64,12 @@ Expected: `{"status":"ok"}`. This confirms the backend is up; for proof that the
 
 Use this when you want to **build and run from code on the Raspberry Pi**—no GHCR, no webhook (e.g. **direct update**, **build from source**, **without GitHub**, **without GHCR**, **test build**).
 
-1. **SSH into the Pi** (from your PC, Pi at **192.168.0.150**):
+1. **SSH into the server** (from your PC, server at **192.168.0.152**):
 
    ```bash
-   ssh pi
+   ssh bosgame
    ```
-   Or with a key: `ssh -i ~/.ssh/your_key pi@192.168.0.150`.
+   Or with a key: `ssh -i ~/.ssh/your_key markus@192.168.0.152`.
 
 2. **Pull code, build image, restart** (repo path `~/brandyBox`; change if different):
 
@@ -88,15 +88,15 @@ Use this when you want to **build and run from code on the Raspberry Pi**—no G
    ```bash
    curl -s http://localhost:8081/health
    ```
-   Expected: `{"status":"ok"}`. From your PC: `curl -s http://192.168.0.150:8081/health`.
+   Expected: `{"status":"ok"}`. From your PC: `curl -s http://192.168.0.152:8081/health`.
 
 **One-liner from your PC:**
 
 ```bash
-ssh pi 'cd ~/brandyBox && git fetch origin && git pull origin master && cd backend && docker compose build --no-cache && docker compose up -d'
+ssh bosgame 'cd ~/brandyBox && git fetch origin && git pull origin master && cd backend && docker compose build --no-cache && docker compose up -d'
 ```
 
-Then check health: `sleep 15 && curl -s http://192.168.0.150:8081/health`.
+Then check health: `sleep 15 && curl -s http://192.168.0.152:8081/health`.
 
 ---
 

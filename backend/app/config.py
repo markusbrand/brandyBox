@@ -64,13 +64,14 @@ class Settings(BaseSettings):
 
     # CORS: set as comma-separated string in env (e.g. https://brandybox.example.com)
     # so pydantic-settings does not try to JSON-decode it
-    cors_origins: str = "https://brandybox.brandstaetter.rocks"
+    cors_origins: str = "https://brandybox.brandstaetter.rocks,http://192.168.0.152:8081"
 
     @property
     def cors_origins_list(self) -> List[str]:
         """CORS origins as a list (split on comma)."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()] or [
-            "https://brandybox.brandstaetter.rocks"
+            "https://brandybox.brandstaetter.rocks",
+            "http://192.168.0.152:8081",
         ]
 
     # Server

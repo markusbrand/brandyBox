@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run on the Pi to verify the backend container has the right config for "Server disk (Pi)" in Settings.
+# Run on the server (bosgame) to verify the backend container has the right config for "Server disk" in Settings.
 # Usage: ./check_server_disk_config.sh
 
 set -e

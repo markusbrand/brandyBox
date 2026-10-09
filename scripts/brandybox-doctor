@@ -2,7 +2,7 @@
 set -e
 
 # Wrapper script to execute brandybox-doctor either inside running Docker container or locally.
-# Allows direct invocation on the Raspberry Pi host via `ssh pi brandybox-doctor --summary`
+# Allows direct invocation on the server host via `ssh bosgame brandybox-doctor --summary`
 
 if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^brandybox-backend$"; then
     exec docker exec -i brandybox-backend python -m app.cli.doctor "$@"

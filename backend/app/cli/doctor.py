@@ -1,4 +1,4 @@
-"""CLI diagnostic inspector and LLM prompt generator for BrandyBox on Raspberry Pi."""
+"""CLI diagnostic inspector and LLM prompt generator for BrandyBox server."""
 
 from __future__ import annotations
 
@@ -280,7 +280,7 @@ async def generate_llm_prompt(trace_id: Optional[str] = None) -> None:
 
 
 async def main_async() -> None:
-    parser = argparse.ArgumentParser(description="BrandyBox Raspberry Pi Diagnostic Tool")
+    parser = argparse.ArgumentParser(description="BrandyBox Server Diagnostic Tool")
     parser.add_argument("--summary", action="store_true", help="Display system & client health summary")
     parser.add_argument("--trace", type=str, help="Display chronological timeline for given trace ID")
     parser.add_argument("--llm-prompt", dest="llm_prompt", action="store_true", help="Generate LLM-ready markdown diagnostic prompt")
