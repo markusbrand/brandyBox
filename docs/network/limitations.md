@@ -33,6 +33,6 @@ If Brandy Box is deployed behind AWS CloudFront:
 
 ## Recommendations for Large Files
 
-1. **Use LAN**: When connected to the local network (`brandstaetter`), the client automatically switches to the local IP (`192.168.0.150`), bypassing these limits.
+1. **Use LAN**: When connected to the local network (`brandstaetter`), the client automatically switches to the local IP (`192.168.0.152`), bypassing these limits.
 2. **Chunked Uploads**: (Future improvement) Implementing chunked uploads would allow bypassing the 100MB Cloudflare limit on Free plans.
 3. **Unproxied Subdomain**: For very large files over the internet, using an unproxied DNS record (grey-clouded in Cloudflare) or a direct VPN connection to the Raspberry Pi is recommended.

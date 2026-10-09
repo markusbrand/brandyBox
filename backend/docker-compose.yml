@@ -1,9 +1,9 @@
-# Brandy Box backend + web UI - run on Raspberry Pi
+# Brandy Box backend + web UI - run on server (bosgame)
 # Usage (from this directory):
 #   cp .env.example .env && edit .env, then: docker compose up -d --build
 #   Build context is the repository root (parent); image includes the React web app.
 #   Host port maps container 8080 → HOST_PORT (default 8081). Set HOST_PORT in .env to change
-#   the LAN URL (e.g. http://192.168.0.150:8081). Cloudflare tunnel should target the same port.
+#   the LAN URL (e.g. http://192.168.0.152:8081). Cloudflare tunnel should target the same port.
 #
 # To use the pre-built image from GitHub Container Registry instead of building locally:
 #   docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
@@ -19,7 +19,7 @@ services:
       - "${HOST_PORT:-8081}:8080"
     environment:
       - BRANDYBOX_STORAGE_BASE_PATH=/mnt/shared_storage/brandyBox
-      # Path for "Server disk (Pi)" in Settings (full HDD usage). Must be mounted; default uses storage path.
+      # Path for "Server disk" in Settings (full HDD usage). Must be mounted; default uses storage path.
       - BRANDYBOX_SERVER_DISK_PATH=/mnt/shared_storage
       # Max storage for all users: e.g. 70% (default), 500GB, 1TB
       # BRANDYBOX_STORAGE_LIMIT=70%
@@ -40,7 +40,7 @@ services:
     volumes:
       # Persist SQLite DB
       - brandybox_data:/data
-      # Mount Pi HDD so backend can read/write user folders and report full disk usage in Settings
+      # Mount server storage drive so backend can read/write user folders and report full disk usage in Settings
       - /mnt/shared_storage:/mnt/shared_storage
     restart: unless-stopped
 

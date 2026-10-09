@@ -14,7 +14,7 @@
 
 - **OAuth:** Redirect URI must match `BRANDYBOX_PUBLIC_BASE_URL` + `/api/auth/google/callback`; register both tunnel and LAN URLs in Google Cloud if both are used. One-time `exchange` id expires in 2 minutes.
 - **Admin routes:** `/api/admin/clients` and `/api/admin/events` require `is_admin`.
-- **CORS:** Add every browser origin (comma-separated), e.g. `https://brandybox…,http://192.168.0.150:8081`, or browsers will block API calls.
+- **CORS:** Add every browser origin (comma-separated), e.g. `https://brandybox…,http://192.168.0.152:8081`, or browsers will block API calls.
 
 ## Exploratory (recommended follow-up)
 
