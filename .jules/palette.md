@@ -31,3 +31,7 @@
 ## 2026-10-02 - Add loading state to Save Appearance button
 **Learning:** Adding a loading state to async forms is critical. The "Appearance" dialog lacked a loading state on its "Save" button, which could lead to confusion or double submissions if the API call is slow.
 **Action:** When creating or modifying dialogs that submit data to the backend, always add a `loading` (or similar) state that disables the primary action buttons and provides visual feedback (e.g., `CircularProgress` and updating button text) during execution.
+
+## 2023-10-09 - Embed Primary and Secondary Actions in Empty States
+**Learning:** Embedding primary and secondary actions (e.g., Upload, New Folder) directly into empty states ("No files in your account yet." or "This folder is empty.") significantly reduces cognitive load and intuitively guides users on their next steps, as opposed to forcing them to find buttons elsewhere on the page.
+**Action:** When creating empty states for lists or containers, always embed primary and secondary actions directly into the empty state component to seamlessly guide the user's next steps.

@@ -585,23 +585,59 @@ export default function FilesPage() {
           Loading files…
         </Typography>
       ) : !err && !hasAnyContent ? (
-        <Paper variant="outlined" sx={{ p: 3, textAlign: "center" }}>
-          <Typography variant="body1" color="text.secondary" gutterBottom>
+        <Paper variant="outlined" sx={{ p: 4, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <Typography variant="body1" color="text.secondary">
             No files in your account yet.
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400 }}>
             Upload from here, create a folder, or sync from the desktop app — files are listed from
             the server folder for your signed-in email.
           </Typography>
+          <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 1 }}>
+            <Button
+              variant="contained"
+              component="label"
+              disabled={uploadBusy}
+              startIcon={uploadBusy ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
+            >
+              {uploadBusy ? "Uploading..." : "Upload file"}
+              <input type="file" hidden onChange={onUpload} disabled={uploadBusy} />
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<CreateNewFolderIcon />}
+              onClick={openNewFolderDialog}
+            >
+              New folder
+            </Button>
+          </Stack>
         </Paper>
       ) : entries.length === 0 || (entries.length === 1 && entries[0].kind === "parent") ? (
         <Paper variant="outlined">
           <List disablePadding>
             {currentFolder ? renderParentRow(goUp, true) : null}
-            <Box sx={{ p: 3, textAlign: "center" }}>
+            <Box sx={{ p: 4, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
               <Typography variant="body2" color="text.secondary">
                 This folder is empty.
               </Typography>
+              <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 1 }}>
+                <Button
+                  variant="contained"
+                  component="label"
+                  disabled={uploadBusy}
+                  startIcon={uploadBusy ? <CircularProgress size={20} color="inherit" /> : <UploadIcon />}
+                >
+                  {uploadBusy ? "Uploading..." : "Upload file"}
+                  <input type="file" hidden onChange={onUpload} disabled={uploadBusy} />
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<CreateNewFolderIcon />}
+                  onClick={openNewFolderDialog}
+                >
+                  New folder
+                </Button>
+              </Stack>
             </Box>
           </List>
         </Paper>
