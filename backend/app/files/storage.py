@@ -17,6 +17,9 @@ _SAFE_SEGMENT_ASCII = re.compile(r"^[a-zA-Z0-9_. \-()+~#!&',;=\[\]@]+$")
 # Email used as folder name: allow @, dots, and + (plus aliasing)
 _SAFE_EMAIL = re.compile(r"^[a-zA-Z0-9_.@+-]+$")
 
+# Internal directories excluded from listing and blocked from direct user resolution
+INTERNAL_DIRS = {".uploads", ".brandybox"}
+
 
 def _is_safe_path_char(c: str) -> bool:
     """True if char is allowed in a path segment (no traversal, no control chars)."""
@@ -82,6 +85,8 @@ def resolve_user_path(email: str, relative_path: str) -> Path:
             raise ValueError(f"Unsafe path segment: {part!r}")
         if safe == ".uploads":
             raise ValueError("Access to internal upload directory is denied")
+        if safe in INTERNAL_DIRS:
+            raise ValueError(f"Access to internal directory '{safe}' is denied")
         resolved = resolved / safe
     return resolved
 
@@ -142,7 +147,7 @@ def list_files_recursive(root: Path) -> List[dict]:
                         except OSError:
                             continue
                     elif entry.is_dir(follow_symlinks=False):
-                        if entry.name == ".uploads":
+                        if entry.name in INTERNAL_DIRS:
                             continue
                         rel = f"{current_rel}/{entry.name}" if current_rel else entry.name
                         dirs.append((entry.path, rel))
@@ -169,7 +174,7 @@ def list_directories_recursive(root: Path) -> List[dict]:
             with os.scandir(current_dir) as it:
                 for entry in it:
                     if entry.is_dir(follow_symlinks=False):
-                        if entry.name == ".uploads":
+                        if entry.name in INTERNAL_DIRS:
                             continue
                         try:
                             st = entry.stat(follow_symlinks=False)

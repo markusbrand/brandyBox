@@ -308,3 +308,39 @@ def test_list_directories_recursive_excludes_uploads(tmp_path):
     res = list_directories_recursive(tmp_path)
     paths = [r["path"] for r in res]
     assert paths == ["normal_dir"]
+
+
+def test_resolve_user_path_rejects_brandybox(monkeypatch):
+    """Direct access to internal .brandybox directory is rejected."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data/brandyBox")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+    with pytest.raises(ValueError, match="internal directory"):
+        resolve_user_path("u@x.co", ".brandybox/content-bg.png")
+    with pytest.raises(ValueError, match="internal directory"):
+        resolve_user_path("u@x.co", ".brandybox")
+
+
+def test_list_files_recursive_excludes_brandybox(tmp_path):
+    """list_files_recursive must exclude .brandybox directory."""
+    (tmp_path / "normal.txt").write_text("ok")
+    bb_dir = tmp_path / ".brandybox"
+    bb_dir.mkdir(parents=True)
+    (bb_dir / "content-bg.png").write_bytes(b"image")
+
+    res = list_files_recursive(tmp_path)
+    paths = [r["path"] for r in res]
+    assert paths == ["normal.txt"]
+
+
+def test_list_directories_recursive_excludes_brandybox(tmp_path):
+    """list_directories_recursive must exclude .brandybox directory."""
+    (tmp_path / "normal_dir").mkdir()
+    bb_dir = tmp_path / ".brandybox"
+    bb_dir.mkdir(parents=True)
+
+    res = list_directories_recursive(tmp_path)
+    paths = [r["path"] for r in res]
+    assert paths == ["normal_dir"]
+
