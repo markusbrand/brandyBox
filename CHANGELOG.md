@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.4.1](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.4.0...brandybox-v1.4.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **backend:** declare sqlalchemy[asyncio] and greenlet dependencies ([#103](https://github.com/markusbrand/brandyBox/issues/103)) ([e0688a0](https://github.com/markusbrand/brandyBox/commit/e0688a082405d16c33cbb9a2bc9171db6d218d7f))
+* **client:** handle Windows backslashes in tilde expansion and path confinement ([027c31f](https://github.com/markusbrand/brandyBox/commit/027c31f6993d6e02a800612a42794b94c8130001))
+* **client:** handle Windows backslashes in tilde expansion and path confinement ([66b5eb9](https://github.com/markusbrand/brandyBox/commit/66b5eb93f6b7874b6d6cfb0b3f8f2e4b5f841b09))
+* **files:** canonicalize file paths for hash storage and delete sync ([060af44](https://github.com/markusbrand/brandyBox/commit/060af4401878784107275d82ac474851a0f12c2a))
+* **files:** canonicalize file paths for hash storage and delete sync ([bd318f5](https://github.com/markusbrand/brandyBox/commit/bd318f5a18ec0e0fbe4ef5a49c5ec81d0734bb8b))
+* migrate backend host and IP to bosgame (192.168.0.152) ([#118](https://github.com/markusbrand/brandyBox/issues/118)) ([3d6b950](https://github.com/markusbrand/brandyBox/commit/3d6b950da289a49f9f72eefb3ca7649c1b6057f9))
+* **storage,sync:** isolate internal .brandybox directory from file listing and sync ([3206364](https://github.com/markusbrand/brandyBox/commit/32063645f73da135106507ec253158a3d367ab65))
+* **storage,sync:** isolate internal .brandybox directory from file listing and sync ([b343e40](https://github.com/markusbrand/brandyBox/commit/b343e40c33b8f3bb75d802bd9639a6248da8e6f3))
+* **sync,client:** exclude failed transfers from synced state and handle warning status ([0c64e44](https://github.com/markusbrand/brandyBox/commit/0c64e44e9222b9a5493a716c81d60828ab0073b6))
+* **sync,storage:** fix credential refresh loops, sync path traversal, and upload collisions ([f5009f3](https://github.com/markusbrand/brandyBox/commit/f5009f30231fd193473d633d2145ab77178da2b5))
+* **sync,storage:** fix credential refresh loops, sync path traversal, and upload collisions ([5da806b](https://github.com/markusbrand/brandyBox/commit/5da806b5758385a71e5e784e67e2ed20a60aba59))
+* **sync:** exclude remotely deleted files from upload candidate list ([#99](https://github.com/markusbrand/brandyBox/issues/99)) ([589218e](https://github.com/markusbrand/brandyBox/commit/589218e1dbd8bcb68c92287a0506e108e9ed7294))
+* **sync:** resolve hash reconciliation on clock skew and prevent deletion resurrection ([6fa4ff0](https://github.com/markusbrand/brandyBox/commit/6fa4ff00f88f5be9b93b651901226fc812e81b74))
+* **sync:** resolve hash reconciliation on clock skew and prevent deletion resurrection ([871f41b](https://github.com/markusbrand/brandyBox/commit/871f41be89af91928ee1083d896ec57eff2cd446))
+
+
+### Documentation
+
+* **openspec:** archive diagnostics-and-llm-logging and sync specs ([480c7ba](https://github.com/markusbrand/brandyBox/commit/480c7bab2160f5c8e4ce2c77331261cb876a337e))
+* **openspec:** archive fix-expired-credentials-and-sync-corruption and sync specs ([2db97d0](https://github.com/markusbrand/brandyBox/commit/2db97d02c34cd3e869d6debd9cab17d3c1347d48))
+* **openspec:** mark tasks complete ([a9db00f](https://github.com/markusbrand/brandyBox/commit/a9db00fd64a75f458cdd9143590a0f69821af9fd))
+
+
+### Code Refactoring
+
+* **oauth:** use RETURNING to combine SELECT and DELETE ([a78b975](https://github.com/markusbrand/brandyBox/commit/a78b97596bb8de440e4125481401ec0041f384a7))
+
 ## [1.4.0](https://github.com/markusbrand/brandyBox/compare/brandybox-v1.3.2...brandybox-v1.4.0) (2026-09-17)
 
 
