@@ -12,6 +12,7 @@ import {
   ListItemIcon,
   ListItemText,
   Toolbar,
+  Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
@@ -122,9 +123,11 @@ export default function AppLayout() {
         }}
       >
         <Toolbar>
-          <IconButton aria-label="Toggle navigation menu" color="inherit" edge="start" onClick={() => setOpen((o) => !o)} sx={{ mr: 1 }}>
-            <MenuIcon />
-          </IconButton>
+          <Tooltip title="Toggle navigation menu">
+            <IconButton aria-label="Toggle navigation menu" color="inherit" edge="start" onClick={() => setOpen((o) => !o)} sx={{ mr: 1 }}>
+              <MenuIcon />
+            </IconButton>
+          </Tooltip>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             Brandy Box
           </Typography>
