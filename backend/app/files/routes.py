@@ -246,6 +246,14 @@ async def upload_chunk(
     index: int,
 ) -> dict:
     """Upload a single chunk for a chunked upload."""
+    # 🛡️ Sentinel: Enforce a hard limit on chunk index to prevent DoS via unbounded disk usage and memory exhaustion.
+    # 10000 chunks of 20MB is roughly 200GB, which is way more than any individual upload needs.
+    if index < 0 or index > 10000:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid chunk index",
+        )
+
     user_base = user_base_path(current_user.email)
     upload_dir = user_base / ".uploads" / str(upload_id)
     if not upload_dir.is_dir():
