@@ -67,6 +67,8 @@ pub(crate) fn safe_local_path(root: &Path, rel: &str) -> Option<PathBuf> {
     if trimmed.is_empty() {
         return None;
     }
+    let mut local = root.to_path_buf();
+    let mut has_segments = false;
     for segment in trimmed.split(['/', '\\']) {
         if segment.is_empty() || segment == "." {
             continue;
@@ -74,9 +76,10 @@ pub(crate) fn safe_local_path(root: &Path, rel: &str) -> Option<PathBuf> {
         if segment == ".." {
             return None;
         }
+        local.push(segment);
+        has_segments = true;
     }
-    let local = root.join(trimmed.replace('/', std::path::MAIN_SEPARATOR_STR));
-    if local.starts_with(root) {
+    if has_segments && local.starts_with(root) {
         Some(local)
     } else {
         None
@@ -903,11 +906,14 @@ mod tests {
         assert_eq!(safe_local_path(root, "docs/hello.txt"), Some(PathBuf::from("/user/sync/docs/hello.txt")));
         assert_eq!(safe_local_path(root, "/docs/hello.txt"), Some(PathBuf::from("/user/sync/docs/hello.txt")));
         assert_eq!(safe_local_path(root, "//docs///hello.txt"), Some(PathBuf::from("/user/sync/docs/hello.txt")));
+        assert_eq!(safe_local_path(root, "docs\\hello.txt"), Some(root.join("docs").join("hello.txt")));
+        assert_eq!(safe_local_path(root, "\\docs\\sub\\hello.txt"), Some(root.join("docs").join("sub").join("hello.txt")));
         assert_eq!(safe_local_path(root, "../outside.txt"), None);
         assert_eq!(safe_local_path(root, "docs/../../outside.txt"), None);
         assert_eq!(safe_local_path(root, "/etc/passwd"), Some(PathBuf::from("/user/sync/etc/passwd")));
         assert_eq!(safe_local_path(root, ""), None);
         assert_eq!(safe_local_path(root, "/"), None);
+        assert_eq!(safe_local_path(root, "."), None);
     }
 
     #[test]

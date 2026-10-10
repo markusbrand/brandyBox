@@ -17,9 +17,15 @@ const TELEMETRY_QUEUE_FILENAME: &str = "sync_telemetry_queue.json";
 fn expand_tilde(path: &str) -> PathBuf {
     let s = path.trim();
     if s.starts_with('~') {
-        let rest = s.trim_start_matches('~').trim_start_matches('/');
+        let rest = s
+            .trim_start_matches('~')
+            .trim_start_matches(|c| c == '/' || c == '\\');
         if let Some(home) = dirs::home_dir() {
-            return home.join(rest);
+            return if rest.is_empty() {
+                home
+            } else {
+                home.join(rest)
+            };
         }
     }
     PathBuf::from(s)
@@ -303,5 +309,39 @@ pub fn get_device_name() -> String {
         .or_else(|_| std::env::var("HOST"))
         .or_else(|_| std::env::var("COMPUTERNAME"))
         .unwrap_or_else(|_| "Desktop-Client".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_expand_tilde_home_only() {
+        if let Some(home) = dirs::home_dir() {
+            assert_eq!(expand_tilde("~"), home);
+            assert_eq!(expand_tilde("~/"), home);
+            assert_eq!(expand_tilde("~\\"), home);
+            assert_eq!(expand_tilde("~//"), home);
+            assert_eq!(expand_tilde("~\\\\"), home);
+            assert_eq!(expand_tilde("  ~  "), home);
+        }
+    }
+
+    #[test]
+    fn test_expand_tilde_with_subpath() {
+        if let Some(home) = dirs::home_dir() {
+            assert_eq!(expand_tilde("~/brandyBox"), home.join("brandyBox"));
+            assert_eq!(expand_tilde("~\\brandyBox"), home.join("brandyBox"));
+            assert_eq!(expand_tilde("~\\\\brandyBox"), home.join("brandyBox"));
+            assert_eq!(expand_tilde("~/nested/sync"), home.join("nested/sync"));
+        }
+    }
+
+    #[test]
+    fn test_expand_tilde_non_tilde_path() {
+        assert_eq!(expand_tilde("/var/brandyBox"), PathBuf::from("/var/brandyBox"));
+        assert_eq!(expand_tilde("C:\\brandyBox"), PathBuf::from("C:\\brandyBox"));
+        assert_eq!(expand_tilde("relative/path"), PathBuf::from("relative/path"));
+    }
 }
 
