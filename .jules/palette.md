@@ -27,3 +27,7 @@
 ## 2026-10-01 - Add aria-label to IconButtons in Tooltips
 **Learning:** IconButtons inside Tooltips still need explicit `aria-label`s for accessibility, as screen readers rely on this attribute to describe the button's action when it receives focus, independent of the tooltip's visual pop-up text.
 **Action:** Always ensure that `IconButton` components have descriptive `aria-label` attributes, even if they are wrapped in a `Tooltip`.
+
+## 2026-10-02 - Add loading state to Save Appearance button
+**Learning:** Adding a loading state to async forms is critical. The "Appearance" dialog lacked a loading state on its "Save" button, which could lead to confusion or double submissions if the API call is slow.
+**Action:** When creating or modifying dialogs that submit data to the backend, always add a `loading` (or similar) state that disables the primary action buttons and provides visual feedback (e.g., `CircularProgress` and updating button text) during execution.
