@@ -375,8 +375,10 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             });
             return Err(format!("Delete server {}: {}", path, e));
         }
+        state.file_hashes.remove(path);
         done += 1;
     }
+    let mut failed_local_deletions: HashSet<String> = HashSet::new();
     for path in &to_del_local {
         set_progress("delete_local", done, total_work);
         let full = match safe_local_path(local_root, path) {
@@ -388,23 +390,45 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             }
         };
         if full.exists() && full.is_file() {
-            let _ = std::fs::remove_file(&full);
-            let mut parent = full.parent();
-            while let Some(p) = parent {
-                if p != local_root && p.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false) {
-                    let _ = std::fs::remove_dir(p);
-                    parent = p.parent();
-                } else {
-                    break;
+            if let Err(e) = std::fs::remove_file(&full) {
+                log::warn!("Delete local {}: {}, keeping in synced state to avoid resurrection", path, e);
+                failed_local_deletions.insert(path.clone());
+                let err_code = classify_error(&e.to_string());
+                enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
+                    trace_id: Some(trace_id.clone()),
+                    created_at: Some(chrono::Utc::now().to_rfc3339()),
+                    client_type: config::get_client_type().to_string(),
+                    device_name: config::get_device_name(),
+                    level: "ERROR".to_string(),
+                    category: "sync.delete_local".to_string(),
+                    error_code: err_code.to_string(),
+                    message: format!("Delete local {}: {}", path, e),
+                    context_json: Some(serde_json::json!({ "path": path }).to_string()),
+                });
+            } else {
+                state.file_hashes.remove(path);
+                let mut parent = full.parent();
+                while let Some(p) = parent {
+                    if p != local_root && p.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false) {
+                        let _ = std::fs::remove_dir(p);
+                        parent = p.parent();
+                    } else {
+                        break;
+                    }
                 }
             }
+        } else {
+            state.file_hashes.remove(path);
         }
         done += 1;
     }
 
     let remaining_local: HashSet<String> = current_local.difference(&to_del_local_set).cloned().collect();
     let remaining_remote: HashSet<String> = current_remote.difference(&to_del_remote_set).cloned().collect();
-    let base_synced: HashSet<String> = remaining_local.intersection(&remaining_remote).filter(|p| !is_ignored(p)).cloned().collect();
+    let mut base_synced: HashSet<String> = remaining_local.intersection(&remaining_remote).filter(|p| !is_ignored(p)).cloned().collect();
+    for path in &failed_local_deletions {
+        base_synced.insert(path.clone());
+    }
 
     let mut to_download: Vec<String> = current_remote
         .difference(&current_local)
@@ -413,29 +437,36 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         .collect();
     to_download.retain(|path| !to_del_remote_set.contains(path));
     for (path, local_mtime) in &local_list {
-        if !is_ignored(path) && current_remote.contains(path) {
+        if !is_ignored(path) && current_remote.contains(path) && !to_del_local_set.contains(path) {
             let remote_mtime = remote_by_path.get(path).copied().unwrap_or(0.0);
-            if remote_mtime > *local_mtime {
-                if let Some(server_hash) = remote_hashes.get(path) {
-                    if let Some(local_path) = safe_local_path(local_root, path) {
-                        if local_path.exists() && local_path.is_file() {
-                            if let Some(local_hash) = compute_file_hash(&local_path) {
-                                if local_hash == *server_hash {
-                                    state.file_hashes.insert(path.clone(), server_hash.clone());
-                                    continue;
-                                }
-                            }
-                        }
+            let server_hash = remote_hashes.get(path);
+            let local_path = safe_local_path(local_root, path);
+            let local_hash = local_path.as_ref().filter(|p| p.exists() && p.is_file()).and_then(|p| compute_file_hash(p));
+            let base_hash = state.file_hashes.get(path.as_str());
+
+            match (local_hash, server_hash, base_hash) {
+                (Some(ref lh), Some(sh), _) if lh == sh => {
+                    state.file_hashes.insert(path.clone(), sh.clone());
+                }
+                (Some(ref lh), Some(sh), Some(bh)) if sh == bh && lh != bh => {
+                    // Local modified, server unchanged: will be handled by to_upload, do not download
+                }
+                (Some(ref lh), Some(sh), Some(bh)) if lh == bh && sh != bh => {
+                    // Server modified, local unchanged: download
+                    to_download.push(path.clone());
+                }
+                _ => {
+                    if remote_mtime > *local_mtime {
+                        to_download.push(path.clone());
                     }
                 }
-                to_download.push(path.clone());
             }
         }
     }
     to_download.sort();
     to_download.dedup();
 
-    // Build to_upload with hash-based skip when local matches server (avoids clock skew)
+    // Build to_upload with 3-way hash check and clock-skew resilience
     let to_upload: Vec<String> = local_list
         .iter()
         .filter(|(path, _)| !is_ignored(path) && !to_del_local_set.contains(path.as_str()))
@@ -444,21 +475,26 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             match remote {
                 None => true,
                 Some(r) => {
-                    if *local_mtime <= r.mtime {
-                        return false;
-                    }
-                    if let Some(server_hash) = &r.hash {
-                        if let Some(local_path) = safe_local_path(local_root, path) {
-                            if local_path.exists() && local_path.is_file() {
-                                if let Some(local_hash) = compute_file_hash(&local_path) {
-                                    if local_hash == *server_hash {
-                                        return false;
-                                    }
-                                }
-                            }
+                    let local_path = safe_local_path(local_root, path);
+                    let local_hash = local_path.as_ref().filter(|p| p.exists() && p.is_file()).and_then(|p| compute_file_hash(p));
+                    let base_hash = state.file_hashes.get(path.as_str());
+
+                    match (local_hash, &r.hash, base_hash) {
+                        (Some(ref lh), Some(sh), _) if lh == sh => {
+                            false
+                        }
+                        (Some(ref lh), Some(sh), Some(bh)) if sh == bh && lh != bh => {
+                            // Local modified, server unchanged: upload (resilient to clock skew)
+                            true
+                        }
+                        (Some(ref lh), Some(sh), Some(bh)) if lh == bh && sh != bh => {
+                            // Server modified, local unchanged: do not upload
+                            false
+                        }
+                        _ => {
+                            *local_mtime > r.mtime
                         }
                     }
-                    true
                 }
             }
         })
@@ -510,10 +546,15 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             done += 1;
             continue;
         }
-        if let Some(ref hash) = remote_hashes.get(path) {
-            if state.file_hashes.get(path.as_str()) == Some(hash) && local_path.exists() && local_path.is_file() {
-                done += 1;
-                continue;
+        if let Some(hash) = remote_hashes.get(path) {
+            if local_path.exists() && local_path.is_file() {
+                if let Some(local_hash) = compute_file_hash(&local_path) {
+                    if local_hash == *hash {
+                        state.file_hashes.insert(path.clone(), hash.clone());
+                        done += 1;
+                        continue;
+                    }
+                }
             }
         }
         match client.download_file_to_path(path, &local_path) {
@@ -586,6 +627,9 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                 Ok(()) => {
                     bytes_uploaded += file_len;
                     completed_uploads.insert(path.clone());
+                    if let Some(h) = compute_file_hash(&full) {
+                        state.file_hashes.insert(path.clone(), h);
+                    }
                     upload_counter += 1;
                     if upload_counter % 25 == 0 {
                         persist_current_state(&mut state, &base_synced, &completed_downloads, &completed_uploads);
@@ -639,6 +683,12 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
             skipped_uploads.len()
         ));
     }
+    if !failed_local_deletions.is_empty() {
+        warnings.push(format!(
+            "{} local file(s) failed to delete (permission denied or locked)",
+            failed_local_deletions.len()
+        ));
+    }
     if !warnings.is_empty() {
         warning_msg = Some(warnings.join("; "));
     }
@@ -650,7 +700,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
 
     set_progress("idle", 0, 0);
 
-    let total_failures = (skipped_downloads.len() + skipped_uploads.len()) as i64;
+    let total_failures = (skipped_downloads.len() + skipped_uploads.len() + failed_local_deletions.len()) as i64;
     let summary_status = if total_failures > 0 { "warning".to_string() } else { "ok".to_string() };
     let summary_error_json = if !warnings.is_empty() {
         let sample_downloads: Vec<String> = skipped_downloads.iter().cloned().take(10).collect();
@@ -858,6 +908,139 @@ mod tests {
         assert_eq!(safe_local_path(root, "/etc/passwd"), Some(PathBuf::from("/user/sync/etc/passwd")));
         assert_eq!(safe_local_path(root, ""), None);
         assert_eq!(safe_local_path(root, "/"), None);
+    }
+
+    #[test]
+    fn test_sync_clock_skew_local_modification_detected_for_upload() {
+        let temp_dir = std::env::temp_dir().join(format!("test_clock_skew_upload_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let file_path = temp_dir.join("doc.txt");
+        std::fs::write(&file_path, "local modified content").unwrap();
+
+        let local_hash = compute_file_hash(&file_path);
+        let base_hash = "unchanged_server_and_base_hash".to_string();
+        let server_hash = "unchanged_server_and_base_hash".to_string();
+
+        let path = "doc.txt".to_string();
+        let local_mtime = 1000.0f64;
+        let remote_mtime = 2000.0f64; // Server clock is ahead
+
+        let mut state = SyncStateFile::default();
+        state.file_hashes.insert(path.clone(), base_hash.clone());
+
+        // Test to_download decision: server has base_hash and local differs, so must NOT download
+        let should_download = match (local_hash.as_ref(), Some(&server_hash), state.file_hashes.get(&path)) {
+            (Some(lh), Some(sh), _) if lh == sh => false,
+            (Some(lh), Some(sh), Some(bh)) if sh == bh && lh != bh => false,
+            (Some(lh), Some(sh), Some(bh)) if lh == bh && sh != bh => true,
+            _ => remote_mtime > local_mtime,
+        };
+        assert!(!should_download, "Local edit must not be overwritten by download under clock skew");
+
+        // Test to_upload decision: server has base_hash and local differs, so MUST upload
+        let should_upload = match (local_hash.as_ref(), Some(&server_hash), state.file_hashes.get(&path)) {
+            (Some(lh), Some(sh), _) if lh == sh => false,
+            (Some(lh), Some(sh), Some(bh)) if sh == bh && lh != bh => true,
+            (Some(lh), Some(sh), Some(bh)) if lh == bh && sh != bh => false,
+            _ => local_mtime > remote_mtime,
+        };
+        assert!(should_upload, "Local edit must be uploaded even when local_mtime <= remote_mtime (clock skew)");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_sync_clock_skew_remote_modification_detected_for_download() {
+        let temp_dir = std::env::temp_dir().join(format!("test_clock_skew_download_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let file_path = temp_dir.join("doc.txt");
+        std::fs::write(&file_path, "base content").unwrap();
+
+        let local_hash = compute_file_hash(&file_path).unwrap();
+        let base_hash = local_hash.clone();
+        let server_hash = "new_remote_hash_after_edit".to_string();
+
+        let path = "doc.txt".to_string();
+        let local_mtime = 2000.0f64; // Local clock is ahead
+        let remote_mtime = 1000.0f64;
+
+        let mut state = SyncStateFile::default();
+        state.file_hashes.insert(path.clone(), base_hash.clone());
+
+        // Test to_download decision: local has base_hash and server differs, so MUST download
+        let should_download = match (Some(&local_hash), Some(&server_hash), state.file_hashes.get(&path)) {
+            (Some(lh), Some(sh), _) if lh == sh => false,
+            (Some(lh), Some(sh), Some(bh)) if sh == bh && lh != bh => false,
+            (Some(lh), Some(sh), Some(bh)) if lh == bh && sh != bh => true,
+            _ => remote_mtime > local_mtime,
+        };
+        assert!(should_download, "Remote edit must be downloaded even when remote_mtime <= local_mtime");
+
+        // Test to_upload decision: local has base_hash and server differs, so must NOT upload
+        let should_upload = match (Some(&local_hash), Some(&server_hash), state.file_hashes.get(&path)) {
+            (Some(lh), Some(sh), _) if lh == sh => false,
+            (Some(lh), Some(sh), Some(bh)) if sh == bh && lh != bh => true,
+            (Some(lh), Some(sh), Some(bh)) if lh == bh && sh != bh => false,
+            _ => local_mtime > remote_mtime,
+        };
+        assert!(!should_upload, "Remote edit must not be overwritten by upload");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_sync_failed_local_delete_prevents_file_resurrection() {
+        let last_synced: HashSet<String> = ["locked_file.txt".to_string()].into_iter().collect();
+        let current_local: HashSet<String> = ["locked_file.txt".to_string()].into_iter().collect();
+        let current_remote: HashSet<String> = HashSet::new(); // Deleted on server
+
+        // Remote deletion identified
+        let to_del_local: HashSet<String> = last_synced.difference(&current_remote).cloned().collect();
+        assert!(to_del_local.contains("locked_file.txt"));
+
+        // Simulate local deletion failure:
+        let mut failed_local_deletions = HashSet::new();
+        failed_local_deletions.insert("locked_file.txt".to_string());
+
+        let remaining_local: HashSet<String> = current_local.difference(&to_del_local).cloned().collect();
+        let remaining_remote: HashSet<String> = current_remote.clone();
+        let mut base_synced: HashSet<String> = remaining_local.intersection(&remaining_remote).cloned().collect();
+
+        // Failed deletions are retained in base_synced
+        for path in &failed_local_deletions {
+            base_synced.insert(path.clone());
+        }
+        assert!(
+            base_synced.contains("locked_file.txt"),
+            "Failed deletion must remain in base_synced"
+        );
+
+        // Next sync cycle:
+        let next_last_synced = base_synced;
+        let next_to_del_local: HashSet<String> = next_last_synced.difference(&current_remote).cloned().collect();
+        assert!(
+            next_to_del_local.contains("locked_file.txt"),
+            "Next cycle must still attempt local deletion"
+        );
+
+        let next_to_upload: Vec<String> = current_local
+            .into_iter()
+            .filter(|p| !next_to_del_local.contains(p))
+            .collect();
+        assert!(
+            !next_to_upload.contains(&"locked_file.txt".to_string()),
+            "Failed deletion must not be resurrected and uploaded to server"
+        );
+    }
+
+    #[test]
+    fn test_sync_hash_cache_pruning_on_deletion() {
+        let mut state = SyncStateFile::default();
+        state.file_hashes.insert("deleted.txt".to_string(), "abc123hash".to_string());
+        assert_eq!(state.file_hashes.len(), 1);
+
+        state.file_hashes.remove("deleted.txt");
+        assert_eq!(state.file_hashes.len(), 0);
     }
 }
 
