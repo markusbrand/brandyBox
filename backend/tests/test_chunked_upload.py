@@ -206,3 +206,92 @@ def test_chunked_upload_non_contiguous_chunks_fails_400(auth_headers):
     upload_dir = user_base / ".uploads" / upload_id
     assert not upload_dir.exists()
 
+
+def test_chunked_upload_leading_slash_and_hash_sync(auth_headers, session_factory):
+    import hashlib
+    from app.files.hash_store import FileHash
+    from sqlalchemy import select
+
+    content = b"chunk1 content " + b"chunk2 content"
+    expected_hash = hashlib.sha256(content).hexdigest()
+
+    # 1. Init with leading slash
+    res_init = client.post("/api/files/upload/init?path=/chunked_dir/test.txt", headers=auth_headers)
+    assert res_init.status_code == 200
+    upload_id = res_init.json()["upload_id"]
+
+    # 2. Upload chunks
+    client.post(f"/api/files/upload/chunk?upload_id={upload_id}&index=0", content=b"chunk1 content ", headers=auth_headers)
+    client.post(f"/api/files/upload/chunk?upload_id={upload_id}&index=1", content=b"chunk2 content", headers=auth_headers)
+
+    # 3. Finalize
+    res_final = client.post(f"/api/files/upload/finalize?upload_id={upload_id}", headers=auth_headers)
+    assert res_final.status_code == 200
+    assert res_final.json()["path"] == "chunked_dir/test.txt"
+    assert res_final.json()["hash"] == expected_hash
+
+    # 4. Verify file list includes the hash under canonical path
+    list_resp = client.get("/api/files/list", headers=auth_headers)
+    assert list_resp.status_code == 200
+    files = list_resp.json()
+    item = next((f for f in files if f["path"] == "chunked_dir/test.txt"), None)
+    assert item is not None
+    assert item["hash"] == expected_hash
+
+    # 5. Delete file and verify hash is removed from DB
+    del_resp = client.delete("/api/files/delete?path=chunked_dir/test.txt", headers=auth_headers)
+    assert del_resp.status_code == 200
+
+    import asyncio
+    async def verify_hashes():
+        async with session_factory() as session:
+            res = await session.execute(
+                select(FileHash).where(
+                    FileHash.user_email == "test@example.com",
+                    FileHash.path.in_(["chunked_dir/test.txt", "/chunked_dir/test.txt"])
+                )
+            )
+            assert len(res.scalars().all()) == 0
+    asyncio.run(verify_hashes())
+
+
+def test_chunked_upload_overwrite_smaller_file_clamps_quota(auth_headers, session_factory):
+    from app.users.models import User
+    from sqlalchemy import select, update
+    import asyncio
+
+    # Upload initial 100-byte file
+    res_init = client.post("/api/files/upload/init?path=chunk_clamp.txt", headers=auth_headers)
+    uid = res_init.json()["upload_id"]
+    client.post(f"/api/files/upload/chunk?upload_id={uid}&index=0", content=b"x" * 100, headers=auth_headers)
+    client.post(f"/api/files/upload/finalize?upload_id={uid}", headers=auth_headers)
+
+    # Set storage_used_bytes to 10
+    async def set_usage():
+        async with session_factory() as session:
+            await session.execute(
+                update(User)
+                .where(User.email == "test@example.com")
+                .values(storage_used_bytes=10)
+            )
+            await session.commit()
+    asyncio.run(set_usage())
+
+    # Overwrite with 20-byte file
+    res_init2 = client.post("/api/files/upload/init?path=chunk_clamp.txt", headers=auth_headers)
+    uid2 = res_init2.json()["upload_id"]
+    client.post(f"/api/files/upload/chunk?upload_id={uid2}&index=0", content=b"y" * 20, headers=auth_headers)
+    res_final = client.post(f"/api/files/upload/finalize?upload_id={uid2}", headers=auth_headers)
+    assert res_final.status_code == 200
+
+    # Verify storage_used_bytes was clamped to 0
+    async def check_usage():
+        async with session_factory() as session:
+            res = await session.execute(
+                select(User).where(User.email == "test@example.com")
+            )
+            user = res.scalar_one()
+            assert user.storage_used_bytes == 0
+    asyncio.run(check_usage())
+
+
