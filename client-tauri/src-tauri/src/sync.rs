@@ -22,7 +22,7 @@ struct SyncStateFile {
 
 fn is_ignored(path_str: &str) -> bool {
     let normalized = path_str.replace('\\', "/");
-    if normalized.contains("/.git/") || normalized.starts_with(".git/") {
+    if normalized.contains("/.git/") || normalized.starts_with(".git/") || normalized == ".git" || normalized.ends_with("/.git") {
         return true;
     }
     if normalized.contains("/.brandybox/") || normalized.starts_with(".brandybox/") || normalized == ".brandybox" {
@@ -554,6 +554,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         };
         let skip = prev_downloaded.contains(path);
         if skip && local_path.exists() && local_path.is_file() {
+            completed_downloads.insert(path.clone());
             done += 1;
             continue;
         }
@@ -562,6 +563,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                 if let Some(local_hash) = compute_file_hash(&local_path) {
                     if local_hash == *hash {
                         state.file_hashes.insert(path.clone(), hash.clone());
+                        completed_downloads.insert(path.clone());
                         done += 1;
                         continue;
                     }
@@ -1107,6 +1109,102 @@ mod tests {
 
         state.file_hashes.remove("deleted.txt");
         assert_eq!(state.file_hashes.len(), 0);
+    }
+
+    #[test]
+    fn test_is_ignored_bare_git_files() {
+        assert!(is_ignored(".git"));
+        assert!(is_ignored("sub/.git"));
+        assert!(is_ignored("deeply/nested/repo/.git"));
+        assert!(is_ignored(".git/config"));
+        assert!(is_ignored("sub/.git/HEAD"));
+    }
+
+    #[test]
+    fn test_skipped_download_matching_hash_retained_in_synced_state() {
+        let temp_dir = std::env::temp_dir().join(format!("test_skip_match_hash_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let file_path = temp_dir.join("existing.txt");
+        std::fs::write(&file_path, "identical content").unwrap();
+
+        let path = "existing.txt".to_string();
+        let local_hash = compute_file_hash(&file_path).unwrap();
+        let mut remote_hashes = HashMap::new();
+        remote_hashes.insert(path.clone(), local_hash.clone());
+
+        let mut state = SyncStateFile::default();
+        let mut completed_downloads = HashSet::new();
+
+        // Simulate the download loop logic for hash match
+        if let Some(hash) = remote_hashes.get(&path) {
+            if file_path.exists() && file_path.is_file() {
+                if let Some(lh) = compute_file_hash(&file_path) {
+                    if lh == *hash {
+                        state.file_hashes.insert(path.clone(), hash.clone());
+                        completed_downloads.insert(path.clone());
+                    }
+                }
+            }
+        }
+
+        assert!(completed_downloads.contains("existing.txt"));
+        assert_eq!(state.file_hashes.get("existing.txt"), Some(&local_hash));
+
+        let base_synced = HashSet::new();
+        let completed_uploads = HashSet::new();
+        let new_synced: HashSet<String> = base_synced
+            .union(&completed_downloads)
+            .cloned()
+            .chain(completed_uploads.iter().cloned())
+            .collect();
+        state.paths = new_synced.into_iter().collect();
+
+        assert!(state.paths.contains(&"existing.txt".to_string()));
+
+        // Ensure next cycle does not resurrect if deleted locally
+        let last_synced: HashSet<String> = state.paths.into_iter().collect();
+        let current_local: HashSet<String> = HashSet::new(); // User deleted locally
+        let to_delete_remote: HashSet<String> = last_synced.difference(&current_local).cloned().collect();
+        assert!(
+            to_delete_remote.contains("existing.txt"),
+            "Deleted file must be deleted on server, not resurrected"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_resumed_download_retained_in_synced_state() {
+        let temp_dir = std::env::temp_dir().join(format!("test_resumed_download_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let file_path = temp_dir.join("partial.txt");
+        std::fs::write(&file_path, "resumed file content").unwrap();
+
+        let path = "partial.txt".to_string();
+        let prev_downloaded: HashSet<String> = [path.clone()].into_iter().collect();
+        let mut completed_downloads = HashSet::new();
+
+        // Simulate resume logic
+        let skip = prev_downloaded.contains(&path);
+        if skip && file_path.exists() && file_path.is_file() {
+            completed_downloads.insert(path.clone());
+        }
+
+        assert!(completed_downloads.contains("partial.txt"));
+
+        let base_synced = HashSet::new();
+        let completed_uploads = HashSet::new();
+        let new_synced: HashSet<String> = base_synced
+            .union(&completed_downloads)
+            .cloned()
+            .chain(completed_uploads.iter().cloned())
+            .collect();
+
+        let mut state = SyncStateFile::default();
+        state.paths = new_synced.into_iter().collect();
+        assert!(state.paths.contains(&"partial.txt".to_string()));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
 
