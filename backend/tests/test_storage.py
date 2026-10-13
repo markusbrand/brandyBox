@@ -167,6 +167,40 @@ def test_resolve_user_path_accepts_fullwidth_parens(monkeypatch) -> None:
     assert got == Path("/data/u@x.co/Documents/3D print/1. 3D Printer User Manual/Ender-3 V2-SM-002_User Manual（CN）.pdf")
 
 
+def test_resolve_user_path_accepts_dollar_and_currency_symbols(monkeypatch) -> None:
+    """Path segments with $ and Unicode currency symbols (€, £, ¥) are accepted."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+
+    for path in [
+        "Finances/Invoice_$100.pdf",
+        "Finances/Price_€50.pdf",
+        "Finances/Statement_£25.xlsx",
+        "Finances/Budget_¥1000.txt",
+    ]:
+        got = resolve_user_path("u@x.co", path)
+        assert got == Path(f"/data/u@x.co/{path}")
+
+
+def test_resolve_user_path_accepts_office_lockfile_and_symbols(monkeypatch) -> None:
+    """Path segments with office lockfiles (~$) and symbols (©, ™, °) are accepted."""
+    from app.files import storage
+    mock_settings = MagicMock()
+    mock_settings.storage_base_path = Path("/data")
+    monkeypatch.setattr(storage, "get_settings", lambda: mock_settings)
+
+    for path in [
+        "Docs/~$ProjectPlan.docx",
+        "Docs/Copyright_©2024.pdf",
+        "Docs/Trademark_Brand™_v1.txt",
+        "Videos/VR_360°.mp4",
+    ]:
+        got = resolve_user_path("u@x.co", path)
+        assert got == Path(f"/data/u@x.co/{path}")
+
+
 def test_user_base_path_rejects_invalid_email(monkeypatch) -> None:
     """Email with slash or empty raises ValueError."""
     from app.files import storage
