@@ -12,8 +12,8 @@ from app.config import get_settings
 log = logging.getLogger(__name__)
 
 # Safe path segment: letters, numbers, common punctuation. No / \ (traversal).
-# Allow: . _ - space ( ) + ~ # ! & ' , ; = [ ] @ for "File (1).txt", "user@host.txt", etc.
-_SAFE_SEGMENT_ASCII = re.compile(r"^[a-zA-Z0-9_. \-()+~#!&',;=\[\]@]+$")
+# Allow: . _ - space ( ) + ~ # ! & ' , ; = [ ] @ $ for "File (1).txt", "user@host.txt", "Invoice_$100.pdf", etc.
+_SAFE_SEGMENT_ASCII = re.compile(r"^[a-zA-Z0-9_. \-()+~#!&',;=\[\]@$]+$")
 # Email used as folder name: allow @, dots, and + (plus aliasing)
 _SAFE_EMAIL = re.compile(r"^[a-zA-Z0-9_.@+-]+$")
 
@@ -29,11 +29,11 @@ def _is_safe_path_char(c: str) -> bool:
         return False  # % can be used in encoding/URLs; keep path segments safe
     if ord(c) < 32:
         return False
-    if ("a" <= c <= "z") or ("A" <= c <= "Z") or ("0" <= c <= "9") or c in "_. -()+~#!&',;=[]@":
+    if ("a" <= c <= "z") or ("A" <= c <= "Z") or ("0" <= c <= "9") or c in "_. -()+~#!&',;=[]@$":
         return True
     cat = unicodedata.category(c)
-    # Letter, Number, or Punctuation (e.g. fullwidth parentheses （） in "Manual（CN）.pdf")
-    return cat.startswith("L") or cat.startswith("N") or cat.startswith("P")
+    # Letter, Number, Punctuation (e.g. fullwidth parentheses （） in "Manual（CN）.pdf"), or Symbol (e.g. €, £, ¥, ©, ™)
+    return cat.startswith("L") or cat.startswith("N") or cat.startswith("P") or cat.startswith("S")
 
 
 def _sanitize_segment(segment: str) -> Optional[str]:
