@@ -144,6 +144,10 @@ def test_telemetry_api_routes(client):
     token = login_r.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
+    now = datetime.now(timezone.utc)
+    started_at = (now - timedelta(minutes=5)).isoformat()
+    completed_at = now.isoformat()
+
     # 2. Ingest telemetry batch
     payload = {
         "events": [
@@ -164,8 +168,8 @@ def test_telemetry_api_routes(client):
                 "client_type": "desktop-macos",
                 "client_version": "1.3.2",
                 "device_name": "TestMac",
-                "started_at": "2026-09-16T21:00:00Z",
-                "completed_at": "2026-09-16T21:01:00Z",
+                "started_at": started_at,
+                "completed_at": completed_at,
                 "duration_ms": 60000,
                 "status": "failed",
                 "files_scanned": 100,
