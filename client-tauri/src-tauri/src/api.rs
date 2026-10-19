@@ -789,8 +789,7 @@ impl ApiClient {
         };
         let mut last_err = String::new();
         for attempt in 0..4 {
-            let mut headers = self.headers();
-            headers.insert("X-E2E-Return-Temp-Password", "1".parse().unwrap());
+            let headers = self.headers();
             match self.client().post(&url).headers(headers).json(&body).header("Content-Type", "application/json").send() {
                 Ok(r) => {
                     if r.status().is_success() {
@@ -895,6 +894,34 @@ mod tests {
         client.set_sync_id(None);
         let h_without = client.headers();
         assert!(!h_without.contains_key("X-Sync-ID"));
+    }
+
+    #[test]
+    fn test_create_user_does_not_send_e2e_password_header() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            use std::io::{Read, Write};
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).unwrap();
+            let req = String::from_utf8_lossy(&buf[..n]).to_string();
+
+            let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Type: application/json\r\n\r\n{}";
+            let _ = stream.write_all(resp.as_bytes());
+            req
+        });
+
+        let client = ApiClient::new(format!("http://127.0.0.1:{}", port));
+        let _ = client.create_user("test@example.com", "Test", "User");
+
+        let req = handle.join().unwrap();
+        assert!(
+            !req.to_lowercase().contains("x-e2e-return-temp-password"),
+            "create_user must not send X-E2E-Return-Temp-Password header in production client calls, but got:\n{}",
+            req
+        );
     }
 }
 
