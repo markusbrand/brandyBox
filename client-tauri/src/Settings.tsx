@@ -32,6 +32,7 @@ import ExpandMore from "@mui/icons-material/ExpandMore";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import Refresh from "@mui/icons-material/Refresh";
 import FolderOpen from "@mui/icons-material/FolderOpen";
+import ContentCopy from "@mui/icons-material/ContentCopy";
 import { formatUserFacingError } from "./errors";
 
 function formatBytes(n: number): string {
@@ -71,6 +72,10 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [createUserError, setCreateUserError] = useState("");
   const [adminActionError, setAdminActionError] = useState<string | null>(null);
+  const [adminActionSuccess, setAdminActionSuccess] = useState<string | null>(null);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createdUserInfo, setCreatedUserInfo] = useState<{ email: string; temp_password?: string } | null>(null);
+  const [copiedPassword, setCopiedPassword] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserFirst, setNewUserFirst] = useState("");
   const [newUserLast, setNewUserLast] = useState("");
@@ -198,8 +203,16 @@ export default function Settings({ email, onLogout }: SettingsProps) {
 
   const handleCreateUser = async () => {
     setCreateUserError("");
+    setAdminActionError(null);
+    setAdminActionSuccess(null);
+    setCreatingUser(true);
     try {
-      await invoke("api_create_user", {
+      const res = await invoke<{
+        email: string;
+        first_name?: string;
+        last_name?: string;
+        temp_password?: string;
+      }>("api_create_user", {
         email: newUserEmail,
         first_name: newUserFirst,
         last_name: newUserLast,
@@ -208,11 +221,20 @@ export default function Settings({ email, onLogout }: SettingsProps) {
       setNewUserEmail("");
       setNewUserFirst("");
       setNewUserLast("");
-      setAdminActionError(null);
       loadUsers();
+      if (res?.temp_password) {
+        setCreatedUserInfo({
+          email: res.email,
+          temp_password: res.temp_password,
+        });
+      } else {
+        setAdminActionSuccess("User created successfully. Welcome email sent with login credentials.");
+      }
     } catch (e) {
       setCreateUserError(formatUserFacingError(e));
       console.error(e);
+    } finally {
+      setCreatingUser(false);
     }
   };
 
@@ -505,10 +527,16 @@ export default function Settings({ email, onLogout }: SettingsProps) {
                   {adminActionError}
                 </Alert>
               )}
+              {adminActionSuccess && (
+                <Alert severity="success" sx={{ mb: 1 }} onClose={() => setAdminActionSuccess(null)}>
+                  {adminActionSuccess}
+                </Alert>
+              )}
               <Button
                 size="small"
                 onClick={() => {
                   setCreateUserError("");
+                  setAdminActionSuccess(null);
                   setCreateUserOpen(true);
                 }}
               >
@@ -549,8 +577,10 @@ export default function Settings({ email, onLogout }: SettingsProps) {
       <Dialog
         open={createUserOpen}
         onClose={() => {
-          setCreateUserOpen(false);
-          setCreateUserError("");
+          if (!creatingUser) {
+            setCreateUserOpen(false);
+            setCreateUserError("");
+          }
         }}
         maxWidth="xs"
         fullWidth
@@ -563,15 +593,102 @@ export default function Settings({ email, onLogout }: SettingsProps) {
                 {createUserError}
               </Alert>
             )}
-            <TextField fullWidth label="Email" type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} margin="dense" />
-            <TextField fullWidth label="First name" value={newUserFirst} onChange={(e) => setNewUserFirst(e.target.value)} margin="dense" />
-            <TextField fullWidth label="Last name" value={newUserLast} onChange={(e) => setNewUserLast(e.target.value)} margin="dense" />
+            <TextField
+              fullWidth
+              label="Email"
+              type="email"
+              value={newUserEmail}
+              onChange={(e) => setNewUserEmail(e.target.value)}
+              margin="dense"
+              disabled={creatingUser}
+              required
+            />
+            <TextField
+              fullWidth
+              label="First name"
+              value={newUserFirst}
+              onChange={(e) => setNewUserFirst(e.target.value)}
+              margin="dense"
+              disabled={creatingUser}
+              required
+            />
+            <TextField
+              fullWidth
+              label="Last name"
+              value={newUserLast}
+              onChange={(e) => setNewUserLast(e.target.value)}
+              margin="dense"
+              disabled={creatingUser}
+              required
+            />
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setCreateUserOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="contained">Create</Button>
+            <Button onClick={() => setCreateUserOpen(false)} disabled={creatingUser}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="contained" disabled={creatingUser || !newUserEmail.trim()}>
+              {creatingUser ? <CircularProgress size={24} /> : "Create"}
+            </Button>
           </DialogActions>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(createdUserInfo)}
+        onClose={() => {
+          setCreatedUserInfo(null);
+          setCopiedPassword(false);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>User created</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            User <strong>{createdUserInfo?.email}</strong> was created successfully.
+          </Typography>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            SMTP is not configured on the server, so no email was sent. Please securely share this temporary password with the user. It will not be shown again.
+          </Alert>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Temporary password"
+              value={createdUserInfo?.temp_password ?? ""}
+              slotProps={{
+                input: {
+                  readOnly: true,
+                },
+              }}
+            />
+            <Button
+              variant="outlined"
+              size="medium"
+              startIcon={<ContentCopy />}
+              onClick={() => {
+                if (createdUserInfo?.temp_password) {
+                  navigator.clipboard.writeText(createdUserInfo.temp_password);
+                  setCopiedPassword(true);
+                  setTimeout(() => setCopiedPassword(false), 3000);
+                }
+              }}
+            >
+              {copiedPassword ? "Copied" : "Copy"}
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setCreatedUserInfo(null);
+              setCopiedPassword(false);
+            }}
+          >
+            Done
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );
