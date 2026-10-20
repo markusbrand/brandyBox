@@ -355,81 +355,6 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     let to_del_local_set: HashSet<String> = to_del_local.iter().cloned().collect();
     let to_del_remote_set: HashSet<String> = to_del_remote.iter().cloned().collect();
 
-    let total_work = to_del_remote.len() + to_del_local.len()
-        + current_remote.difference(&current_local).filter(|p| !is_ignored(p)).count()
-        + current_local.difference(&current_remote).filter(|p| !is_ignored(p)).count();
-    let total_work = total_work as u64;
-    let mut done = 0u64;
-
-    for path in &to_del_remote {
-        set_progress("delete_server", done, total_work);
-        if let Err(e) = client.delete_file(path) {
-            let err_code = classify_error(&e);
-            enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
-                trace_id: Some(trace_id.clone()),
-                created_at: Some(chrono::Utc::now().to_rfc3339()),
-                client_type: config::get_client_type().to_string(),
-                device_name: config::get_device_name(),
-                level: "ERROR".to_string(),
-                category: "sync.delete".to_string(),
-                error_code: err_code.to_string(),
-                message: format!("Delete server {}: {}", path, e),
-                context_json: Some(serde_json::json!({ "path": path }).to_string()),
-            });
-            return Err(format!("Delete server {}: {}", path, e));
-        }
-        state.file_hashes.remove(path);
-        done += 1;
-    }
-    let mut failed_local_deletions: HashSet<String> = HashSet::new();
-    for path in &to_del_local {
-        set_progress("delete_local", done, total_work);
-        let full = match safe_local_path(local_root, path) {
-            Some(p) => p,
-            None => {
-                log::warn!("delete_local: skipping unsafe path: {}", path);
-                done += 1;
-                continue;
-            }
-        };
-        if full.exists() && full.is_file() {
-            if let Err(e) = std::fs::remove_file(&full) {
-                log::warn!("Delete local {}: {}, keeping in synced state to avoid resurrection", path, e);
-                failed_local_deletions.insert(path.clone());
-                let err_code = classify_error(&e.to_string());
-                enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
-                    trace_id: Some(trace_id.clone()),
-                    created_at: Some(chrono::Utc::now().to_rfc3339()),
-                    client_type: config::get_client_type().to_string(),
-                    device_name: config::get_device_name(),
-                    level: "ERROR".to_string(),
-                    category: "sync.delete_local".to_string(),
-                    error_code: err_code.to_string(),
-                    message: format!("Delete local {}: {}", path, e),
-                    context_json: Some(serde_json::json!({ "path": path }).to_string()),
-                });
-            } else {
-                state.file_hashes.remove(path);
-                let mut parent = full.parent();
-                while let Some(p) = parent {
-                    if p != local_root && p.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false) {
-                        let _ = std::fs::remove_dir(p);
-                        parent = p.parent();
-                    } else {
-                        break;
-                    }
-                }
-            }
-        } else {
-            state.file_hashes.remove(path);
-        }
-        done += 1;
-    }
-
-    let remaining_local: HashSet<String> = current_local.difference(&to_del_local_set).cloned().collect();
-    let remaining_remote: HashSet<String> = current_remote.difference(&to_del_remote_set).cloned().collect();
-
-
     let mut to_download: Vec<String> = current_remote
         .difference(&current_local)
         .filter(|p| !is_ignored(p))
@@ -501,6 +426,85 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         .map(|(path, _)| path.clone())
         .collect();
 
+    let total_work = (to_del_remote.len() + to_del_local.len() + to_download.len() + to_upload.len()) as u64;
+    let mut done = 0u64;
+
+    log::info!(
+        "Sync plan: {} to_download, {} to_upload, {} delete_server, {} delete_local",
+        to_download.len(),
+        to_upload.len(),
+        to_del_remote.len(),
+        to_del_local.len()
+    );
+
+    for path in &to_del_remote {
+        set_progress("delete_server", done, total_work);
+        if let Err(e) = client.delete_file(path) {
+            let err_code = classify_error(&e);
+            enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
+                trace_id: Some(trace_id.clone()),
+                created_at: Some(chrono::Utc::now().to_rfc3339()),
+                client_type: config::get_client_type().to_string(),
+                device_name: config::get_device_name(),
+                level: "ERROR".to_string(),
+                category: "sync.delete".to_string(),
+                error_code: err_code.to_string(),
+                message: format!("Delete server {}: {}", path, e),
+                context_json: Some(serde_json::json!({ "path": path }).to_string()),
+            });
+            return Err(format!("Delete server {}: {}", path, e));
+        }
+        state.file_hashes.remove(path);
+        done += 1;
+    }
+    let mut failed_local_deletions: HashSet<String> = HashSet::new();
+    for path in &to_del_local {
+        set_progress("delete_local", done, total_work);
+        let full = match safe_local_path(local_root, path) {
+            Some(p) => p,
+            None => {
+                log::warn!("delete_local: skipping unsafe path: {}", path);
+                done += 1;
+                continue;
+            }
+        };
+        if full.exists() && full.is_file() {
+            if let Err(e) = std::fs::remove_file(&full) {
+                log::warn!("Delete local {}: {}, keeping in synced state to avoid resurrection", path, e);
+                failed_local_deletions.insert(path.clone());
+                let err_code = classify_error(&e.to_string());
+                enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
+                    trace_id: Some(trace_id.clone()),
+                    created_at: Some(chrono::Utc::now().to_rfc3339()),
+                    client_type: config::get_client_type().to_string(),
+                    device_name: config::get_device_name(),
+                    level: "ERROR".to_string(),
+                    category: "sync.delete_local".to_string(),
+                    error_code: err_code.to_string(),
+                    message: format!("Delete local {}: {}", path, e),
+                    context_json: Some(serde_json::json!({ "path": path }).to_string()),
+                });
+            } else {
+                state.file_hashes.remove(path);
+                let mut parent = full.parent();
+                while let Some(p) = parent {
+                    if p != local_root && p.read_dir().map(|mut d| d.next().is_none()).unwrap_or(false) {
+                        let _ = std::fs::remove_dir(p);
+                        parent = p.parent();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        } else {
+            state.file_hashes.remove(path);
+        }
+        done += 1;
+    }
+
+    let remaining_local: HashSet<String> = current_local.difference(&to_del_local_set).cloned().collect();
+    let remaining_remote: HashSet<String> = current_remote.difference(&to_del_remote_set).cloned().collect();
+
     let to_download_set: HashSet<String> = to_download.iter().cloned().collect();
     let to_upload_set: HashSet<String> = to_upload.iter().cloned().collect();
     let mut base_synced: HashSet<String> = remaining_local
@@ -511,14 +515,6 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
     for path in &failed_local_deletions {
         base_synced.insert(path.clone());
     }
-
-    log::info!(
-        "Sync plan: {} to_download, {} to_upload, {} delete_server, {} delete_local",
-        to_download.len(),
-        to_upload.len(),
-        to_del_remote.len(),
-        to_del_local.len()
-    );
 
     let mut bytes_downloaded = 0u64;
     let mut completed_downloads: HashSet<String> = HashSet::new();
@@ -879,6 +875,68 @@ mod tests {
         assert!(new_synced.contains("unchanged.txt"));
         assert!(!new_synced.contains("failed_download.txt"));
         assert!(!new_synced.contains("failed_upload.txt"));
+    }
+
+    #[test]
+    fn test_total_work_includes_modified_files_not_just_set_differences() {
+        // Scenario: A file exists both locally and remotely, but was modified locally.
+        let current_local: HashSet<String> = ["existing.txt".to_string()].into_iter().collect();
+        let current_remote: HashSet<String> = ["existing.txt".to_string()].into_iter().collect();
+        let to_del_remote: Vec<String> = Vec::new();
+        let to_del_local: Vec<String> = Vec::new();
+
+        // Old calculation:
+        let old_total_work = to_del_remote.len() + to_del_local.len()
+            + current_remote.difference(&current_local).filter(|p| !is_ignored(p)).count()
+            + current_local.difference(&current_remote).filter(|p| !is_ignored(p)).count();
+        assert_eq!(
+            old_total_work, 0,
+            "Old calculation missed modified files because their path exists in both local and remote sets"
+        );
+
+        // In reality, to_upload plans the modified file:
+        let to_download: Vec<String> = Vec::new();
+        let to_upload: Vec<String> = vec!["existing.txt".to_string()];
+
+        // New calculation:
+        let new_total_work = (to_del_remote.len() + to_del_local.len() + to_download.len() + to_upload.len()) as u64;
+        assert_eq!(new_total_work, 1, "New calculation must include all planned transfers in total_work");
+    }
+
+    #[test]
+    fn test_total_work_accurate_in_mixed_scenario() {
+        // 1 server deletion, 1 local deletion, 1 new download, 1 modified download, 1 new upload, 1 modified upload
+        let to_del_remote = vec!["deleted_locally.txt".to_string()];
+        let to_del_local = vec!["deleted_server.txt".to_string()];
+
+        let current_local: HashSet<String> = [
+            "modified_remote.txt".to_string(),
+            "new_local.txt".to_string(),
+            "modified_local.txt".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let current_remote: HashSet<String> = [
+            "new_remote.txt".to_string(),
+            "modified_remote.txt".to_string(),
+            "modified_local.txt".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let to_download = vec!["new_remote.txt".to_string(), "modified_remote.txt".to_string()];
+        let to_upload = vec!["new_local.txt".to_string(), "modified_local.txt".to_string()];
+
+        let old_total_work = to_del_remote.len() + to_del_local.len()
+            + current_remote.difference(&current_local).filter(|p| !is_ignored(p)).count()
+            + current_local.difference(&current_remote).filter(|p| !is_ignored(p)).count();
+        // Old calculation only saw 1 + 1 + 1 (new_remote) + 1 (new_local) = 4
+        assert_eq!(old_total_work, 4);
+
+        // New calculation sees all 6 operations:
+        let new_total_work = (to_del_remote.len() + to_del_local.len() + to_download.len() + to_upload.len()) as u64;
+        assert_eq!(new_total_work, 6);
     }
 
     #[test]
