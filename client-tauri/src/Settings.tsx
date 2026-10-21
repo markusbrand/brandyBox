@@ -127,8 +127,12 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   useEffect(() => {
     invoke<{ status: string; message?: string | null }>("get_sync_status")
       .then((s) => {
-        if (s.status === "error" && s.message) setSyncError(s.message);
-        if (s.status === "warning" && s.message) setSyncWarning(s.message);
+        if (s.status === "syncing") {
+          setSyncing(true);
+        } else {
+          if (s.status === "error" && s.message) setSyncError(s.message);
+          if (s.status === "warning" && s.message) setSyncWarning(s.message);
+        }
       })
       .catch(() => {});
   }, []);
@@ -140,7 +144,11 @@ export default function Settings({ email, onLogout }: SettingsProps) {
   useEffect(() => {
     const unlistenPromise = listen<{ status: string; message?: string | null }>("sync-status", (event) => {
       const { status, message } = event.payload;
-      if (status === "synced" || status === "error" || status === "warning") {
+      if (status === "syncing") {
+        setSyncing(true);
+        setSyncError(null);
+        setSyncWarning(null);
+      } else if (status === "synced" || status === "error" || status === "warning") {
         setSyncing(false);
         setSyncProgress(null);
         if (status === "error" && message) setSyncError(message);
