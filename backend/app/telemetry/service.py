@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,8 +84,8 @@ async def upsert_client_ping(
         set_=dict(
             client_version=stmt.excluded.client_version,
             last_seen_at=stmt.excluded.last_seen_at,
-            last_sync_at=stmt.excluded.last_sync_at,
-            last_sync_ok=stmt.excluded.last_sync_ok,
+            last_sync_at=func.coalesce(stmt.excluded.last_sync_at, ClientConnection.last_sync_at),
+            last_sync_ok=func.coalesce(stmt.excluded.last_sync_ok, ClientConnection.last_sync_ok),
             backend_version_at_ping=stmt.excluded.backend_version_at_ping,
         )
     )
