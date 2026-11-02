@@ -144,11 +144,16 @@ def test_telemetry_api_routes(client):
     token = login_r.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 2. Ingest telemetry batch
+    # 2. Ingest telemetry batch with relative timestamps
+    now = datetime.now(timezone.utc)
+    started_iso = (now - timedelta(minutes=10)).isoformat()
+    completed_iso = (now - timedelta(minutes=9)).isoformat()
+
     payload = {
         "events": [
             {
                 "trace_id": "sync-api-test-01",
+                "created_at": completed_iso,
                 "client_type": "desktop-macos",
                 "device_name": "TestMac",
                 "level": "ERROR",
@@ -164,8 +169,8 @@ def test_telemetry_api_routes(client):
                 "client_type": "desktop-macos",
                 "client_version": "1.3.2",
                 "device_name": "TestMac",
-                "started_at": "2026-09-16T21:00:00Z",
-                "completed_at": "2026-09-16T21:01:00Z",
+                "started_at": started_iso,
+                "completed_at": completed_iso,
                 "duration_ms": 60000,
                 "status": "failed",
                 "files_scanned": 100,
@@ -209,4 +214,71 @@ def test_telemetry_api_routes(client):
     assert evt_res_filtered.status_code == 200
     assert len(evt_res_filtered.json()) >= 1
     assert evt_res_filtered.json()[0]["trace_id"] == "sync-api-test-01"
+
+
+@pytest.mark.asyncio
+async def test_log_server_event_and_pruning_timezone_handling(session_factory):
+    """Verify log_server_event does not crash on offset-naive vs aware comparisons during pruning."""
+    from app.telemetry.service import log_server_event
+
+    async with session_factory() as session:
+        # Logging a server event triggers flush followed by prune_telemetry_records
+        await log_server_event(
+            session,
+            level="WARNING",
+            category="oauth.refresh",
+            message="Test server warning",
+            detail={"trace": "test-trace"},
+            user_email="test@example.com",
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_ingest_telemetry_batch_with_naive_timestamps(session_factory):
+    """Verify ingest_telemetry_batch normalizes offset-naive timestamps without raising errors."""
+    from app.telemetry.schemas import DiagnosticEventItem, SyncSummaryItem
+    from app.telemetry.service import ingest_telemetry_batch
+
+    naive_now = datetime.now()  # offset-naive
+    events = [
+        DiagnosticEventItem(
+            trace_id="sync-naive-01",
+            created_at=naive_now,
+            client_type="desktop-linux",
+            message="Naive event test",
+        )
+    ]
+    summaries = [
+        SyncSummaryItem(
+            trace_id="sync-naive-01",
+            started_at=naive_now - timedelta(minutes=5),
+            completed_at=naive_now,
+            client_type="desktop-linux",
+            status="ok",
+        )
+    ]
+
+    async with session_factory() as session:
+        await ingest_telemetry_batch(
+            session,
+            user_email="test@example.com",
+            events=events,
+            summaries=summaries,
+        )
+        await session.commit()
+
+
+def test_doctor_cli_timeline_mixed_timestamp_sorting():
+    """Verify doctor CLI timeline normalizer handles mixed naive and aware datetimes cleanly."""
+    from app.cli.doctor import _normalize_timeline_ts
+
+    naive_ts = datetime(2026, 11, 2, 10, 0, 0)
+    aware_ts = datetime(2026, 11, 2, 10, 0, 1, tzinfo=timezone.utc)
+
+    items = [(aware_ts, "second"), (naive_ts, "first")]
+    items.sort(key=lambda item: _normalize_timeline_ts(item[0]))
+
+    assert items[0][1] == "first"
+    assert items[1][1] == "second"
 

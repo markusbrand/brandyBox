@@ -23,9 +23,15 @@ async def prune_telemetry_records(session: AsyncSession, retention_days: Optiona
     days = retention_days if retention_days is not None else settings.server_events_retention_days
     if days and days > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        await session.execute(delete(ServerEvent).where(ServerEvent.created_at < cutoff))
-        await session.execute(delete(DiagnosticEvent).where(DiagnosticEvent.created_at < cutoff))
-        await session.execute(delete(SyncSummary).where(SyncSummary.started_at < cutoff))
+        await session.execute(
+            delete(ServerEvent).where(ServerEvent.created_at < cutoff).execution_options(synchronize_session=False)
+        )
+        await session.execute(
+            delete(DiagnosticEvent).where(DiagnosticEvent.created_at < cutoff).execution_options(synchronize_session=False)
+        )
+        await session.execute(
+            delete(SyncSummary).where(SyncSummary.started_at < cutoff).execution_options(synchronize_session=False)
+        )
 
 
 async def log_server_event(
@@ -39,6 +45,7 @@ async def log_server_event(
 ) -> None:
     """Append a server event and occasionally prune old rows."""
     row = ServerEvent(
+        created_at=datetime.now(timezone.utc),
         level=level[:16],
         category=category[:64],
         message=message,
@@ -68,13 +75,16 @@ async def upsert_client_ping(
     ct = client_type[:32]
     cv = client_version[:64]
     bv = backend_version[:32]
+    sync_at = last_sync_at
+    if sync_at is not None and sync_at.tzinfo is None:
+        sync_at = sync_at.replace(tzinfo=timezone.utc)
 
     stmt = insert(ClientConnection).values(
         user_email=user_email,
         client_type=ct,
         client_version=cv,
         last_seen_at=now,
-        last_sync_at=last_sync_at,
+        last_sync_at=sync_at,
         last_sync_ok=last_sync_ok,
         backend_version_at_ping=bv,
     )
@@ -124,9 +134,12 @@ async def ingest_telemetry_batch(
     """Persist batch of diagnostic events and sync summaries reported by a client."""
     now = datetime.now(timezone.utc)
     for evt in events:
+        evt_created = evt.created_at or now
+        if evt_created.tzinfo is None:
+            evt_created = evt_created.replace(tzinfo=timezone.utc)
         row = DiagnosticEvent(
             trace_id=evt.trace_id,
-            created_at=evt.created_at or now,
+            created_at=evt_created,
             user_email=user_email,
             client_type=evt.client_type[:32] if evt.client_type else "",
             device_name=evt.device_name[:128] if evt.device_name else "",
@@ -139,14 +152,21 @@ async def ingest_telemetry_batch(
         session.add(row)
 
     for sm in summaries:
+        started_at = sm.started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        completed_at = sm.completed_at or now
+        if completed_at.tzinfo is None:
+            completed_at = completed_at.replace(tzinfo=timezone.utc)
+
         stmt = insert(SyncSummary).values(
             trace_id=sm.trace_id[:64],
             user_email=user_email,
             client_type=sm.client_type[:32] if sm.client_type else "",
             client_version=sm.client_version[:64] if sm.client_version else "",
             device_name=sm.device_name[:128] if sm.device_name else "",
-            started_at=sm.started_at,
-            completed_at=sm.completed_at or now,
+            started_at=started_at,
+            completed_at=completed_at,
             duration_ms=sm.duration_ms,
             status=sm.status[:16] if sm.status else "ok",
             files_scanned=sm.files_scanned,
