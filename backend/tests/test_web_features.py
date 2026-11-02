@@ -155,6 +155,82 @@ def test_client_ping(client: TestClient) -> None:
     assert r.status_code == 204, r.text
 
 
+def test_client_ping_preserves_sync_status(client: TestClient) -> None:
+    h = _auth_headers(client)
+    # 1. Ping with sync status
+    r1 = client.post(
+        "/api/clients/ping",
+        headers=h,
+        json={
+            "client_type": "tauri-desktop",
+            "client_version": "1.0.0",
+            "last_sync_ok": True,
+            "last_sync_at": "2026-03-30T10:00:00Z",
+        },
+    )
+    assert r1.status_code == 204, r1.text
+
+    admin_res = client.get("/api/admin/clients", headers=h)
+    assert admin_res.status_code == 200
+    conn = next(c for c in admin_res.json() if c["client_type"] == "tauri-desktop")
+    assert conn["last_sync_ok"] is True
+    assert conn["last_sync_at"] is not None
+    saved_sync_at = conn["last_sync_at"]
+
+    # 2. Ping without sync status (heartbeat / presence check)
+    r2 = client.post(
+        "/api/clients/ping",
+        headers=h,
+        json={
+            "client_type": "tauri-desktop",
+            "client_version": "1.0.1",
+        },
+    )
+    assert r2.status_code == 204, r2.text
+
+    admin_res2 = client.get("/api/admin/clients", headers=h)
+    assert admin_res2.status_code == 200
+    conn2 = next(c for c in admin_res2.json() if c["client_type"] == "tauri-desktop")
+    assert conn2["client_version"] == "1.0.1"
+    assert conn2["last_sync_ok"] is True
+    assert conn2["last_sync_at"] == saved_sync_at
+
+    # 3. Ping with failed sync status
+    r3 = client.post(
+        "/api/clients/ping",
+        headers=h,
+        json={
+            "client_type": "tauri-desktop",
+            "client_version": "1.0.1",
+            "last_sync_ok": False,
+            "last_sync_at": "2026-03-30T11:00:00Z",
+        },
+    )
+    assert r3.status_code == 204, r3.text
+
+    admin_res3 = client.get("/api/admin/clients", headers=h)
+    assert admin_res3.status_code == 200
+    conn3 = next(c for c in admin_res3.json() if c["client_type"] == "tauri-desktop")
+    assert conn3["last_sync_ok"] is False
+
+    # 4. Subsequent heartbeat ping retains the failed sync status
+    r4 = client.post(
+        "/api/clients/ping",
+        headers=h,
+        json={
+            "client_type": "tauri-desktop",
+            "client_version": "1.0.2",
+        },
+    )
+    assert r4.status_code == 204, r4.text
+
+    admin_res4 = client.get("/api/admin/clients", headers=h)
+    assert admin_res4.status_code == 200
+    conn4 = next(c for c in admin_res4.json() if c["client_type"] == "tauri-desktop")
+    assert conn4["client_version"] == "1.0.2"
+    assert conn4["last_sync_ok"] is False
+
+
 def test_oauth_complete_invalid(client: TestClient) -> None:
     r = client.post("/api/auth/oauth/complete", json={"exchange": str(uuid.uuid4())})
     assert r.status_code == 401
