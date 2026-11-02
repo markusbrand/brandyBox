@@ -30,6 +30,13 @@ def format_bytes(size: float) -> str:
     return f"{size:.2f} PB"
 
 
+def _normalize_timeline_ts(ts: datetime) -> datetime:
+    """Normalize datetime to timezone-aware UTC for safe sorting across naive and aware timestamps."""
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=timezone.utc)
+    return ts.astimezone(timezone.utc)
+
+
 async def show_summary() -> None:
     """Display system and cross-client health overview."""
     settings = get_settings()
@@ -156,7 +163,7 @@ async def show_trace(trace_id: str) -> None:
         msg = f"[{evt.level}] [{evt.category}] [{evt.error_code or 'GENERIC'}] {evt.message}{ctx_str}"
         timeline_items.append((evt.created_at, msg))
 
-    timeline_items.sort(key=lambda item: item[0])
+    timeline_items.sort(key=lambda item: _normalize_timeline_ts(item[0]))
     for ts, line in timeline_items:
         print(f"  [{ts.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}] {line}")
     print("==================================================")
@@ -263,7 +270,7 @@ async def generate_llm_prompt(trace_id: Optional[str] = None) -> None:
         ctx_detail = f" (Context: {evt.context_json})" if evt.context_json else ""
         timeline_items.append((evt.created_at, f"[{evt.level}] {evt.message}{ctx_detail}"))
 
-    timeline_items.sort(key=lambda item: item[0])
+    timeline_items.sort(key=lambda item: _normalize_timeline_ts(item[0]))
     if not timeline_items:
         print("No timeline steps available.")
     else:
