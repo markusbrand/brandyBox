@@ -183,11 +183,10 @@ pub fn clear_stored() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn test_store_and_get() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = crate::config::ENV_MUTEX.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!("brandybox_test_{}", uuid::Uuid::new_v4()));
         std::env::set_var("BRANDYBOX_CONFIG_DIR", &temp_dir);
         clear_stored();
@@ -216,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_get_stored_expired_token() {
-        let _lock = TEST_MUTEX.lock().unwrap();
+        let _lock = crate::config::ENV_MUTEX.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!("brandybox_test_{}", uuid::Uuid::new_v4()));
         std::env::set_var("BRANDYBOX_CONFIG_DIR", &temp_dir);
         clear_stored();

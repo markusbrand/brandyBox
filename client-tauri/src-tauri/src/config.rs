@@ -312,6 +312,9 @@ pub fn get_device_name() -> String {
 }
 
 #[cfg(test)]
+pub static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
