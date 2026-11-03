@@ -365,6 +365,7 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
         set_progress("delete_server", done, total_work);
         if let Err(e) = client.delete_file(path) {
             let err_code = classify_error(&e);
+            let err_msg = format!("Delete server {}: {}", path, e);
             enqueue_diagnostic_event(crate::api::DiagnosticEventPayload {
                 trace_id: Some(trace_id.clone()),
                 created_at: Some(chrono::Utc::now().to_rfc3339()),
@@ -373,10 +374,27 @@ pub fn run_sync(client: &mut ApiClient, local_root: &Path) -> Result<(u64, u64, 
                 level: "ERROR".to_string(),
                 category: "sync.delete".to_string(),
                 error_code: err_code.to_string(),
-                message: format!("Delete server {}: {}", path, e),
+                message: err_msg.clone(),
                 context_json: Some(serde_json::json!({ "path": path }).to_string()),
             });
-            return Err(format!("Delete server {}: {}", path, e));
+            enqueue_sync_summary(crate::api::SyncSummaryPayload {
+                trace_id: trace_id.clone(),
+                client_type: config::get_client_type().to_string(),
+                client_version: env!("CARGO_PKG_VERSION").to_string(),
+                device_name: config::get_device_name(),
+                started_at: started_at.clone(),
+                completed_at: Some(chrono::Utc::now().to_rfc3339()),
+                duration_ms: start_instant.elapsed().as_millis() as i64,
+                status: "failed".to_string(),
+                files_scanned: (local_list.len() + remote_list.len()) as i64,
+                files_uploaded: 0,
+                files_downloaded: 0,
+                failure_count: 1,
+                bytes_transferred: 0,
+                error_summary_json: Some(serde_json::json!({ "error": err_msg }).to_string()),
+            });
+            let _ = flush_telemetry_queue(client);
+            return Err(err_msg);
         }
         state.file_hashes.remove(path);
         done += 1;
@@ -1107,6 +1125,79 @@ mod tests {
 
         state.file_hashes.remove("deleted.txt");
         assert_eq!(state.file_hashes.len(), 0);
+    }
+
+    #[test]
+    fn test_sync_delete_failure_records_summary_and_flushes_telemetry() {
+        let _lock = crate::config::ENV_MUTEX.lock().unwrap();
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let temp_dir = std::env::temp_dir().join(format!("test_sync_del_tel_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let sync_dir = temp_dir.join("sync_folder");
+        let _ = std::fs::create_dir_all(&sync_dir);
+        let config_dir = temp_dir.join("config");
+        let _ = std::fs::create_dir_all(&config_dir);
+
+        std::env::set_var("BRANDYBOX_CONFIG_DIR", config_dir.to_str().unwrap());
+
+        let mut initial_state = SyncStateFile::default();
+        initial_state.paths.push("to_remove.txt".to_string());
+        save_sync_state(&initial_state);
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let base_url = format!("http://127.0.0.1:{}", port);
+
+        let telemetry_flushed = Arc::new(AtomicBool::new(false));
+        let telemetry_flushed_clone = telemetry_flushed.clone();
+
+        let server_thread = std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                if let Ok(mut s) = stream {
+                    let mut buf = [0u8; 2048];
+                    let n = s.read(&mut buf).unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]);
+                    if req.starts_with("GET /api/files/list") {
+                        let body = r#"[{"path":"to_remove.txt","mtime":100.0,"size":10,"hash":"abc"}]"#;
+                        let resp = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        let _ = s.write_all(resp.as_bytes());
+                    } else if req.starts_with("DELETE /api/files/delete") {
+                        let resp = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        let _ = s.write_all(resp.as_bytes());
+                    } else if req.starts_with("POST /api/telemetry/events") {
+                        telemetry_flushed_clone.store(true, Ordering::SeqCst);
+                        // Return 500 so queue stays saved on disk for inspection
+                        let resp = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                        let _ = s.write_all(resp.as_bytes());
+                        break;
+                    }
+                }
+            }
+        });
+
+        let mut client = ApiClient::new(base_url);
+        client.set_access_token(Some("dummy_token".to_string()));
+
+        let res = run_sync(&mut client, &sync_dir);
+        assert!(res.is_err(), "run_sync should return Err on delete failure");
+
+        let queue = load_telemetry_queue();
+        assert_eq!(queue.summaries.len(), 1, "Expected 1 SyncSummaryPayload enqueued on delete failure");
+        assert_eq!(queue.summaries[0].status, "failed");
+        assert_eq!(queue.summaries[0].failure_count, 1);
+        assert!(telemetry_flushed.load(Ordering::SeqCst), "Expected flush_telemetry_queue to be called");
+
+        std::env::remove_var("BRANDYBOX_CONFIG_DIR");
+        let _ = server_thread.join();
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
 
