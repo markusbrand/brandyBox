@@ -201,6 +201,8 @@ export default function Settings({ email, onLogout }: SettingsProps) {
     try {
       await invoke("api_create_user", {
         email: newUserEmail,
+        firstName: newUserFirst,
+        lastName: newUserLast,
         first_name: newUserFirst,
         last_name: newUserLast,
       });
